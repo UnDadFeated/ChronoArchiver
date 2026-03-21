@@ -8,7 +8,7 @@ url="https://github.com/UnDadFeated/ChronoArchiver"
 license=('MIT')
 depends=(
     'python'
-    'python-customtkinter'
+    'pyside6'
     'python-pillow'
     'python-piexif'
     'python-psutil'
