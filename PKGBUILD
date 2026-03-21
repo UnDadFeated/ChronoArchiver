@@ -9,7 +9,7 @@ license=('MIT')
 depends=(
     'python'
     'python-customtkinter'
-    'opencv'
+    'python-opencv'
     'python-pillow'
     'python-piexif'
     'python-psutil'
