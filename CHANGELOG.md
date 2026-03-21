@@ -1,6 +1,10 @@
 # CHANGELOG
 
-## [1.0.9] - 2026-03-21
+## [1.0.10] - 2026-03-21
+### Fixed
+- **Extraction Warnings**: Fixed `DeprecationWarning` in Python 3.12+ environments by explicitly requesting `filter='data'` during AI model `.tar.gz` extractions.
+- **Model Download Statuses**: Download manager now correctly isolates the `.tar.gz` download state from the `.pb` network payload. 
+- **Dead Code**: Pruned unreachable initialization statements inside the OpenCV Deep Neural Network (`cv2.dnn`) constructor branches.## [1.0.9] - 2026-03-21
 ### Fixed
 - **Updater Repo Issue**: Corrected the destination URLs in the updater to point to `UnDadFeated/ChronoArchiver` instead of the old app name.
 - **Cancel Crash Fix**: Fixed an issue where stopping a model download would attempt to destroy an already-destroyed UI component.
