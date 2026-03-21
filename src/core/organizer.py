@@ -80,13 +80,14 @@ class OrganizerEngine:
                     count += 1
         return count
 
-    def organize(self, source_dir: str, dry_run: bool = True, use_flat_folders: bool = False, progress_callback=None):
+    def organize(self, source_dir: str, dry_run: bool = True, use_flat_folders: bool = False, valid_exts: Optional[set] = None, progress_callback=None):
         if not os.path.exists(source_dir):
             self.logger("Source directory does not exist.")
             return
 
         self.cancel_flag = False
-        valid_exts = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.avi', '.webm', '.mkv', '.gif', '.bmp', '.tiff'}
+        if valid_exts is None:
+            valid_exts = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.avi', '.webm', '.mkv', '.gif', '.bmp', '.tiff'}
         
         self.logger("Counting files...")
         if progress_callback: progress_callback(0, 0, "Counting files...")

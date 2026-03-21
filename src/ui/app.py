@@ -43,7 +43,6 @@ class App(ctk.CTk):
 
         self.title(f"{APP_NAME} {__version__}")
         self.geometry("1100x750") # Slightly larger for the new tab
-        self.minsize(1000, 700)
         self.resizable(False, False)
 
         # Set Icon

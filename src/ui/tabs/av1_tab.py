@@ -3,6 +3,7 @@ import os
 import pathlib
 import threading
 from tkinter import filedialog, messagebox
+import concurrent.futures
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
 from core.av1_settings import AV1Settings
 from ui.app import BG_PRIMARY, BG_SECONDARY, BG_TERTIARY, ACCENT, TEXT_PRIMARY, TEXT_MUTED, SEPARATOR, FONT_MAIN, FONT_HEADER
@@ -160,12 +161,15 @@ class AV1EncoderTab(ctk.CTkFrame):
         
         total_files = len(files)
         processed = 0
+        counter_lock = threading.Lock()
+        concurrent_jobs = self.settings.get("concurrent_jobs", 1)
         
-        for file_path, size in files:
-            if not self.is_encoding: break
-            
+        def encode_worker(file_info):
+            if not self.is_encoding: return
+            file_path, size = file_info
             filename = os.path.basename(file_path)
-            # Create target path (Check maintain_structure)
+            
+            # Create target path
             if self.settings.get("maintain_structure"):
                 rel_path = os.path.relpath(file_path, src)
                 target_path = os.path.join(dst, os.path.splitext(rel_path)[0] + "_av1.mkv")
@@ -175,20 +179,28 @@ class AV1EncoderTab(ctk.CTkFrame):
             
             self.after(0, lambda f=filename: self.log_callback(f"Encoding: {f}"))
             
-            success, _, _ = self.engine.encode_file(
+            # Use a fresh engine per thread to avoid state collision
+            worker_engine = AV1EncoderEngine()
+            success, _, _ = worker_engine.encode_file(
                 file_path, target_path, 
                 quality=self.settings.get("quality"),
                 preset=self.settings.get("preset"),
                 reencode_audio=self.settings.get("reencode_audio")
             )
             
-            processed += 1
-            self.after(0, lambda p=processed/total_files: self.master_progress.set(p))
+            nonlocal processed
+            with counter_lock:
+                processed += 1
+                prog = processed / total_files
+                self.after(0, lambda p=prog: self.master_progress.set(p))
             
             if success:
                 self.after(0, lambda f=filename: self.log_callback(f"Finished: {f}"))
             else:
                 self.after(0, lambda f=filename: self.log_callback(f"Failed: {f}"))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_jobs) as executor:
+            executor.map(encode_worker, files)
         
         self.after(0, self.stop_encoding)
         self.after(0, lambda: self.log_callback("Batch encoding process complete."))

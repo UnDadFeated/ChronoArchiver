@@ -75,7 +75,7 @@ class OrganizerTab(ctk.CTkFrame):
         self.chk_log_output.select()
         self.chk_log_output.pack(side="left")
         
-        ctk.CTkLabel(self.frame_action, text="Recommmended for first run.", text_color=TEXT_MUTED, font=FONT_MAIN).pack(anchor="w", padx=55, pady=0)
+        ctk.CTkLabel(self.frame_action, text="Recommended for first run.", text_color=TEXT_MUTED, font=FONT_MAIN).pack(anchor="w", padx=55, pady=0)
 
         self.button_frame = ctk.CTkFrame(self.frame_action, fg_color="transparent")
         self.button_frame.pack(fill="x", padx=20, pady=(30, 0))
@@ -112,6 +112,17 @@ class OrganizerTab(ctk.CTkFrame):
             
         dry_run = bool(self.chk_dry_run.get())
         use_flat_folders = bool(self.chk_flat_folders.get())
+
+        # Build extension filter
+        exts = set()
+        if self.chk_photos.get():
+            exts.update({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'})
+        if self.chk_videos.get():
+            exts.update({'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'})
+            
+        if not exts:
+            messagebox.showwarning("Warning", "Please select at least one media type (Photos or Videos).")
+            return
         
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
@@ -124,7 +135,7 @@ class OrganizerTab(ctk.CTkFrame):
 
         def run():
             try:
-                self.engine.organize(path, dry_run=dry_run, use_flat_folders=use_flat_folders, progress_callback=on_progress)
+                self.engine.organize(path, dry_run=dry_run, use_flat_folders=use_flat_folders, valid_exts=exts, progress_callback=on_progress)
             finally:
                 self.after(0, self.on_finished)
             
@@ -199,7 +210,6 @@ class AIScannerTab(ctk.CTkFrame):
         self.content_frame.grid_rowconfigure(1, weight=1)
 
         # Left List (Keep)
-        # Left List (Keep - Visual Name, actually contains Excluded/People files)
         ctk.CTkLabel(self.content_frame, text="KEEP (People/Animals)", text_color=TEXT_PRIMARY, font=FONT_HEADER).grid(row=0, column=0, sticky="w")
         
         self.list_keep = ctk.CTkScrollableFrame(self.content_frame, label_text="Files (0)")
@@ -214,7 +224,6 @@ class AIScannerTab(ctk.CTkFrame):
         self.btn_mv_left.pack(pady=5)
 
         # Right List (Excluded)
-        # Right List (Excluded - Visual Name, actually contains Keep/NoPeople files)
         ctk.CTkLabel(self.content_frame, text="MOVE (Other)", text_color=TEXT_PRIMARY, font=FONT_HEADER).grid(row=0, column=2, sticky="w")
         self.list_exclude = ctk.CTkScrollableFrame(self.content_frame, label_text="Files (0)")
         self.list_exclude.grid(row=1, column=2, sticky="nsew", padx=(5,0))
