@@ -5,6 +5,4 @@ piexif
 Pillow
 platformdirs
 psutil
-PySide6
-send2trash
 requests

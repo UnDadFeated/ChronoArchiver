@@ -1,6 +1,8 @@
 import os
 import shutil
 import hashlib
+import re
+import pathlib
 from datetime import datetime
 from typing import List, Callable, Optional
 import piexif
@@ -35,35 +37,22 @@ class OrganizerEngine:
             pass
             
         # 2. Try Filename Parsing (Smart Regex)
-        # Looks for patterns like:
-        # 20231225_..., 2023-12-25..., IMG_20231225..., VID-20231225...
-        # Signal-2023-12-25..., WP_20231225...
-        import re
         filename = os.path.basename(file_path)
         
         # Regex: Matches YYYY followed by MM followed by DD (with optional separators)
-        # We look for 4 digits (1900-2099), then 2 digits, then 2 digits.
-        patterns = [
-            r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", # Standard YYYY-MM-DD or YYYYMMDD
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, filename)
-            if match:
+        pattern = r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})"
+        match = re.search(pattern, filename)
+        if match:
+            y, m, d = match.groups()
+            for fmt in ["%Y%m%d", "%Y-%m-%d", "%Y_%m_%d"]:
                 try:
-                    y, m, d = match.groups()
-                    # Validate ranges
-                    if 1900 <= int(y) <= 2100 and 1 <= int(m) <= 12 and 1 <= int(d) <= 31:
-                        # Success
-                        return datetime(int(y), int(m), int(d))
-                except:
+                    return datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
+                except ValueError:
                     continue
 
         # 3. Fallback to file creation/modification (Standard for videos/webms if no other lib)
         try:
-            import pathlib
             timestamp = pathlib.Path(file_path).stat().st_mtime
-            # Check if timestamp is reasonable (e.g. not 1970)
             dt = datetime.fromtimestamp(timestamp)
             if dt.year < 1980: return None # Junk date
             return dt
@@ -151,8 +140,6 @@ class OrganizerEngine:
                     rel_base = os.path.join(year, month_name)
                 
                 # Logic: Check if file already has a YYYY-MM-DD prefix
-                # Regex for YYYY-MM-DD_ at start
-                import re
                 match = re.match(r'^(\d{4}-\d{2}-\d{2})_', file)
                 
                 if match:

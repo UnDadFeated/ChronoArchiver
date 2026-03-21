@@ -164,9 +164,13 @@ class AV1EncoderTab(ctk.CTkFrame):
         for file_path, size in files:
             if not self.is_encoding: break
             
-            filename = os.path.basename(file_path)
-            # Create target path (flat for now or maintain structure logic)
-            target_path = os.path.join(dst, os.path.splitext(filename)[0] + "_av1.mkv")
+            # Create target path (Check maintain_structure)
+            if self.settings.get("maintain_structure"):
+                rel_path = os.path.relpath(file_path, src)
+                target_path = os.path.join(dst, os.path.splitext(rel_path)[0] + "_av1.mkv")
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            else:
+                target_path = os.path.join(dst, os.path.splitext(filename)[0] + "_av1.mkv")
             
             self.after(0, lambda f=filename: self.log_callback(f"Encoding: {f}"))
             

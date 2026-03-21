@@ -58,7 +58,17 @@ class UpdaterEngine:
                 
                 self.logger(f"UPDATER: Latest version found: {latest_version} ({update_source})")
                 
-                if latest_version <= __version__:
+                def parse_version(v_str):
+                    # Remove 'v' prefix, split by '.', and convert to integers
+                    try:
+                        return tuple(map(int, v_str.lstrip('v').split('.')))
+                    except:
+                        return (0, 0, 0)
+
+                v_latest = parse_version(latest_version)
+                v_current = parse_version(__version__)
+
+                if v_latest <= v_current:
                     self.logger(f"UPDATER: App is already up to date (Local: {__version__}).")
                     if manual:
                         self.app.after(0, lambda: messagebox.showinfo("No Updates", f"You are on the latest version ({__version__})."))

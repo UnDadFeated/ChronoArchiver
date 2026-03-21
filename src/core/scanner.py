@@ -6,14 +6,15 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import threading
 import time
+import pathlib
 from typing import List, Callable, Optional
 
 class ScannerEngine:
     """
     AI Scanner using MediaPipe Face Detection.
     Logic: 
-    - No Face Detected -> 'No People' (Keep/Left)
-    - Face Detected -> 'Excluded' (Reject/Right)
+    - Subject (Person/Animal) Detected -> 'Keep'
+    - Not Detected -> 'Others'
     """
     
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None):
@@ -21,8 +22,8 @@ class ScannerEngine:
         self.stop_event = threading.Event()
         
         # Results
-        self.no_people_files: List[str] = []
-        self.excluded_files: List[str] = []
+        self.others_list: List[str] = [] # Files to be moved/archived
+        self.keep_list: List[str] = []   # Files containing subjects (people/animals)
         
         # Progress Callbacks (current, total, eta_seconds)
         self.progress_callback: Optional[Callable[[int, int, float], None]] = None
@@ -35,8 +36,8 @@ class ScannerEngine:
             self.logger(f"Error: Directory not found: {directory}")
             return
 
-        self.no_people_files.clear()
-        self.excluded_files.clear()
+        self.others_list.clear()
+        self.keep_list.clear()
         self.stop_event.clear()
 
         # Gather files
@@ -130,33 +131,11 @@ class ScannerEngine:
             fname_base = os.path.basename(f_path)
             
             if is_excluded:
-                # "Excluded" from Move list = KEEP (People/Animals)
-                # Wait, wait. logic revision.
-                # Project goals: "Separate family photos (Left/Keep) from Landscapes (Right/Move)"
-                # "Excluded" usually means "Not in the main set". 
-                # Let's check where `scan_result` goes.
-                # is_excluded -> self.excluded_files.append(f_path)
-                # no_people_files -> self.no_people_files.append(f_path)
-                
-                # RE-VERIFYING LOGIC:
-                # Old code: 
-                # if has_face: is_excluded = True
-                # if is_excluded: self.excluded_files.append
-                # else: self.no_people_files.append
-                
-                # UI: Left List = "KEEP (People/Animals)" -> driven by... self.keep_files? 
-                # Let's look at `tabs.py` usage of these lists.
-                # In tabs.py `update_lists`: 
-                # self.keep_files = scanner.excluded_files (Wait, "excluded" from removal?)
-                # self.exclude_files = scanner.no_people_files (To be moved?)
-                
-                # So `excluded_files` = PEOPLE (Keep).
-                # `no_people_files` = LANDSCAPE (Move).
-                
-                self.excluded_files.append(f_path)
-                # Log NOTHING for Keep files (User req: "show names ... of files flagged to be moved")
+                # SUBJECT DETECTED (Keep)
+                self.keep_list.append(f_path)
             else:
-                self.no_people_files.append(f_path)
+                # OTHERS (Move candidates)
+                self.others_list.append(f_path)
                 # Log MOVE candidates
                 self.logger(f"[MOVE] >> {fname_base}")
                 
@@ -171,7 +150,7 @@ class ScannerEngine:
         if self.stop_event.is_set():
             self.logger("Scan Cancelled.")
         else:
-            self.logger(f"Done. Kept: {len(self.no_people_files)}, Excluded: {len(self.excluded_files)}")
+            self.logger(f"Done. Subjects Found: {len(self.keep_list)}, Others: {len(self.others_list)}")
 
     def _init_opencv_face(self):
         model = self._get_model_path('face_detection_yunet_2023mar.onnx')
