@@ -1,6 +1,11 @@
 # NOTES.md
 
 <HISTORY_RESERVED_DO_NOT_REMOVE>
+### v2.0.0 Notes
+- **PySide6 Migration**: Ported Entire UI from CustomTkinter to PySide6.
+- **Architectural Shift**: Switched to a modular, panel-based system using `QStackedWidget`.
+- **Aesthetic**: Unified QSS stylesheet for a professional "Mass AV1 Encoder" design language.
+- **Headless Updater**: Completely non-blocking background update checks with callbacks.
 ### v1.0.21 Notes
 - **AUR Fix**: Corrected icon path in `PKGBUILD`.
 

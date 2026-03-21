@@ -1,7 +1,10 @@
-customtkinter
-opencv-python
-piexif
-Pillow
-platformdirs
+PySide6
 psutil
 requests
+Pillow
+platformdirs
+opencv-python
+piexif
+torch
+torchvision
+tqdm

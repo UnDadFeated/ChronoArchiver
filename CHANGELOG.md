@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.0] - 2026-03-21
+### Added
+- Complete migration from CustomTkinter to **PySide6**.
+- New high-density UI matching Mass AV1 Encoder v12 style.
+- Panel-based architecture (`MediaOrganizerPanel`, `AV1EncoderPanel`, `AIScannerPanel`).
+- Global QSS stylesheet support.
+- Headless `ApplicationUpdater` with callback integration.
+
+### Changed
+- Refactored `app.py` to use `QStackedWidget`.
+- Updated `requirements.txt` with PySide6 dependencies.
+
+### Removed
+- Legacy CustomTkinter UI files (`src/ui/tabs/`, `src/ui/theme.py`).
+
 ## [1.0.26] - 2026-03-21
 ### Fixed
 - Further optimized AV1 Tab layout for ultra-high-density (Top Strip ~150-160px).

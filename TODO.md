@@ -1,5 +1,6 @@
 # TODO.md
 <HISTORY_RESERVED_DO_NOT_REMOVE>
+- [x] v2.0.0: PySide6 Migration & High-Density UI (2026-03-21)
 - [x] v1.0.17: UI Overhaul & Feature Parity (2026-03-21)
 - [x] v1.0.16: GUI Fix & Icon Perfection
 - [x] v1.0.15: Dependency & Icon Refinement

@@ -1,5 +1,12 @@
 # TASKS
 
+## [x] v2.0.0 - PySide6 Migration
+- [x] Port UI Layer to PySide6.
+- [x] Implement panel-based architecture.
+- [x] Match Mass AV1 Encoder visual style.
+- [x] Headless updater rewrite.
+- [x] Version bump to v2.0.0.
+
 - [x] **v1.0.26: AV1 Tab Layout Optimization (2026-03-21)**
   - [x] Implement ultra-compact layout (strip ~150px).
   - [x] Move hints inline with checkboxes.
