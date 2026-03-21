@@ -3,6 +3,7 @@
 <HISTORY_RESERVED_DO_NOT_REMOVE>
 ### v1.0.15 Notes
 - Fixed `ModuleNotFoundError: No module named 'cv2'` by correctly identifying `python-opencv` as the required dependency in `PKGBUILD`.
+- Corrected AUR metadata by bumping `pkgver=1.0.15` (previously mislabeled as 1.0.14) to trigger update notifications for AUR users.
 - Refined the premium icon for a pixel-perfect "top-to-bottom" vertical fit. Motif now occupies exactly 256px height with zero padding and absolute alpha transparency.
 - Synchronized version 1.0.15 globally across GitHub and AUR.
 
