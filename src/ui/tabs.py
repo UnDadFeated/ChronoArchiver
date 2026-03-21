@@ -578,7 +578,7 @@ class DonateTab(ctk.CTkFrame):
         ctk.CTkLabel(self.frame, text="☕", font=FONT_HEADER).pack(pady=10)
         ctk.CTkLabel(self.frame, text="Enjoying the App?", font=FONT_HEADER).pack(pady=5)
         
-        ctk.CTkLabel(self.frame, text="Media Archive Organizer is completely free.\nIf this tool saved you time, consider buying me a coffee!", 
+        ctk.CTkLabel(self.frame, text="ChronoArchiver is completely free.\nIf this tool saved you time, consider buying me a coffee!", 
                      font=FONT_MAIN, text_color=TEXT_MUTED).pack(pady=20)
         
         # Buttons
@@ -592,7 +592,7 @@ class DonateTab(ctk.CTkFrame):
         link_paypal = "https://www.paypal.com/cgi-bin/webscr?business=jscheema@gmail.com&cmd=_xclick&currency_code=USD&item_name=Donation"
         
         # Venmo: Deep link or web
-        link_venmo = "https://venmo.com/?txn=pay&recipients=jscheema@gmail.com&note=MediaArchiveOrganizer"
+        link_venmo = "https://venmo.com/?txn=pay&recipients=jscheema@gmail.com&note=ChronoArchiver"
         
 
         

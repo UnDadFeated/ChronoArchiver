@@ -1,6 +1,6 @@
 # ChronoArchiver 🕰️
 
-**ChronoArchiver** is a unified, high-performance media management suite. It combines powerful AI-driven file organization with a professional-grade AV1 encoding pipeline, all wrapped in a sleek, modern interface.
+**ChronoArchiver** is a unified, high-performance media management suite designed for long-term data preservation and optimization. It combines intelligent data archival with professional-grade video transcoding, providing a seamless workflow for modern digital libraries.
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,66 +10,64 @@
 
 ## 🚀 Key Features
 
-### 📁 Media Organizer
-Effortlessly organize thousands of photos and videos.
-- **Smart Sorting**: Automatically categorizes files by Date (Year/Month).
-- **Metadata Aware**: Reads EXIF and file creation data for precise organization.
-- **Dry Run Mode**: Preview all changes before committing them to disk.
-- **Flat Layouts**: Option to use a clean `YYYY-MM` folder structure.
+### 📁 Archival Core
+Advanced data management for large-scale media collections.
+- **Smart Sorting**: Categorizes assets by chronological metadata (Year/Month).
+- **Metadata Analytics**: Processes EXIF and file-system headers for accurate historical mapping.
+- **Dry Run Mode**: Validates organizational shifts before execution.
+- **Flat Topographies**: Support for streamlined `YYYY-MM` archival structures.
 
 ### 🤖 AI Scanner
-Advanced media classification powered by MediaPipe and OpenCV.
-- **Face Detection**: Automatically identify files containing people.
-- **Animal Detection**: Special handling for your pet photos and wildlife.
-- **Smart Filtering**: Quickly separate "Keep" (People/Animals) from "Move" (Landscapes/Other).
-- **On-Demand Models**: Lightweight initial install; fetch AI models only when needed.
+Professional media classification leveraging industry-standard models.
+- **Feature Extraction**: Identify human and biological presence within media streams.
+- **Automated Filtering**: Distinction between primary archival assets and secondary captures.
+- **On-Demand Precision**: Modular architecture allowing for specialized model deployment.
 
-### 🎬 AV1 Encoder
-Built-in high-efficiency video encoding dashboard.
-- **Format Support**: Encode large media libraries into space-saving AV1 format.
-- **HDR Passthrough**: Full support for HDR10 and HLG metadata.
-- **Hardware Acceleration**: Leverage NVIDIA NVENC (AV1) or high-performance SVT-AV1.
-- **Batch Processing**: Encode entire directories with customizable quality and presets.
+### 🎬 Transcoding Dashboard
+Integrated high-efficiency video transformation suite.
+- **Modern Standards**: Conversion optimized for space-saving AV1 deployment.
+- **Cinematic Integrity**: Native passthrough for HDR10 and HLG high-dynamic-range metadata.
+- **Hardware Acceleration**: Deep integration with NVIDIA NVENC and high-performance SVT-AV1 engines.
 
 ---
 
 ## 🛠️ Installation
 
 ### Arch Linux (AUR)
-Install directly from the AUR using your favorite helper:
+Install via any AUR wrapper:
 ```bash
 yay -S chronoarchiver
 ```
 
-### Manual Installation (Standard Linux)
-1. **Clone the repository**:
+### Manual Deployment
+1. **Source Download**:
    ```bash
    git clone https://github.com/UnDadFeated/ChronoArchiver.git
    cd ChronoArchiver
    ```
-2. **Install dependencies**:
+2. **Environment Setup**:
    ```bash
    pip install -r requirements.txt
    ```
-3. **Run the application**:
+3. **Execution**:
    ```bash
    python src/ui/app.py
    ```
 
 ---
 
-## 📋 Requirements
+## 📋 System Requirements
 - **Python 3.10+**
-- **FFmpeg** (For encoding and metadata processing)
-- **NVIDIA GPU** (Optional, for NVENC AV1 acceleration)
+- **FFmpeg Core Utilities**
+- **NVIDIA GPU** (Optional, recommended for accelerated transcoding)
 
 ---
 
 ## ☕ Support
-If ChronoArchiver saves you time, consider supporting the developer through the **Donate** tab inside the app!
+If ChronoArchiver enhances your archival workflow, contributions are welcome via the **Donate** section within the application.
 
 ## 📜 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Independent software distributed under the MIT License.
 
 ---
-*Created by [UnDadFeated](https://github.com/UnDadFeated)*
+*Maintained by [UnDadFeated](https://github.com/UnDadFeated)*

@@ -72,9 +72,9 @@ class App(ctk.CTk):
         self.tab_view = ctk.CTkTabview(self.top_frame, fg_color=BG_SECONDARY, segmented_button_selected_color=ACCENT)
         self.tab_view.pack(fill="both", expand=True, padx=0, pady=0)
 
-        self.tab_org = self.tab_view.add("Media Organizer")
+        self.tab_org = self.tab_view.add("Archival Core")
         self.tab_ai = self.tab_view.add("AI Scan")
-        self.tab_av1 = self.tab_view.add("AV1 Encoder")
+        self.tab_av1 = self.tab_view.add("Transcoding Dashboard")
         self.tab_donate = self.tab_view.add("Donate")
 
         # Init Tabs
