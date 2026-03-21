@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [1.0.17] - 2026-03-21
+### Added
+- **Major UI Overhaul**: Renamed and reordered tabs for better workflow (Media Organizer, Mass AI Encoder, AI Scan).
+- **Global Status Footer**: Added a persistent footer showing app status, background activity, and quick-access support links.
+- **Mass AI Encoder Mastery**:
+  - High-density thread monitors with per-thread progress and speed.
+  - Stacked Video/Audio codec information per encoding slot.
+  - Master Queue progress bar with file count tracking.
+  - Real-time ETA and Elapsed Session Timer.
+  - Live Queue discovery list.
+- **Unified Status Architecture**: Integrated all functional tabs into the global status and background tracking system.
+
 ## [1.0.16] - 2026-03-21
 ### Fixed
 - **Startup Crash (TclError)**: Removed invalid `width` parameter from `.pack()` call in AV1 Encoder tab that caused the application to fail during initialization.

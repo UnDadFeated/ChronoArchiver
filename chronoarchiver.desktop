@@ -1,10 +1,11 @@
 [Desktop Entry]
+Version=1.0
+Type=Application
 Name=ChronoArchiver
+Comment=Unified Media Archive Organizer and AV1 Encoder
 Exec=chronoarchiver
 Icon=chronoarchiver
-Type=Application
-Categories=AudioVideo;Video;Graphics;
 Terminal=false
-Comment=Unified Media Archive Organizer and AV1 Encoder - Time to Archive!
-Keywords=media;archive;organizer;av1;encoder;
-StartupNotify=true
+Categories=Utility;Video;AudioVideo;
+Keywords=archive;organizer;encoder;av1;
+File:///home/jc/Documents/Coding_Workspace/ChronoArchiver/chronoarchiver.desktop

@@ -15,11 +15,13 @@ from core.model_manager import ModelManager
 import webbrowser
 
 class OrganizerTab(ctk.CTkFrame):
-    def __init__(self, master, log_callback, file_logger):
+    def __init__(self, master, log_callback, file_logger, status_callback, background_callback):
         super().__init__(master)
         # Make logger thread-safe
         self.log_callback = log_callback
         self.file_logger = file_logger
+        self.status_callback = status_callback
+        self.background_callback = background_callback
         
         def safe_log(msg):
             if hasattr(self, 'chk_log_output') and not self.chk_log_output.get():
@@ -132,6 +134,8 @@ class OrganizerTab(ctk.CTkFrame):
         self.btn_stop.configure(state="normal")
         self.progress_bar.set(0)
         self.lbl_progress.configure(text="Scanning files...")
+        self.status_callback("ORGANIZING", "#059669")
+        self.background_callback("Scanning files...")
         
         def on_progress(current, total, filename=""):
             # Thread-safe update
@@ -149,11 +153,14 @@ class OrganizerTab(ctk.CTkFrame):
         self.btn_start.configure(state="normal", text="Start Organization")
         self.btn_stop.configure(state="disabled")
         self.lbl_progress.configure(text="Finished.")
+        self.status_callback("READY")
+        self.background_callback("Idle")
 
     def update_progress(self, current, total, filename=""):
         if total > 0:
             self.progress_bar.set(current / total)
             self.lbl_progress.configure(text=f"Organizing... {current}/{total} ({filename})")
+            if filename: self.background_callback(f"Moving: {filename}")
 
 
 class ModelDownloadDialog(ctk.CTkToplevel):
@@ -220,10 +227,12 @@ class ModelDownloadDialog(ctk.CTkToplevel):
 
 
 class AIScannerTab(ctk.CTkFrame):
-    def __init__(self, master, log_callback, file_logger):
+    def __init__(self, master, log_callback, file_logger, status_callback, background_callback):
         super().__init__(master)
         self.log_callback = log_callback
         self.file_logger = file_logger
+        self.status_callback = status_callback
+        self.background_callback = background_callback
         
         def safe_log(msg):
             if hasattr(self, 'chk_log_output') and not self.chk_log_output.get():
@@ -463,6 +472,8 @@ class AIScannerTab(ctk.CTkFrame):
             
             self.file_logger.debug("SCAN: Updating Status Label")
             self.lbl_status.configure(text=f"Initializing Scan (GPU/OpenCV)...")
+            self.status_callback("SCANNING", "#059669")
+            self.background_callback("Loading AI Models...")
             
             self.file_logger.debug("SCAN: Setting Callbacks")
             self.scanner.progress_callback = self.on_progress
@@ -499,6 +510,8 @@ class AIScannerTab(ctk.CTkFrame):
             self.btn_move_files.configure(state="normal")
         self.lbl_status.configure(text="Scan Complete.")
         self.progress.set(1.0)
+        self.status_callback("READY")
+        self.background_callback("Idle")
 
     def on_progress(self, current, total, eta, filename=""):
         # We invoke 'after' to update UI safely
@@ -508,6 +521,8 @@ class AIScannerTab(ctk.CTkFrame):
         val = current / max(total, 1)
         self.progress.set(val)
         self.lbl_status.configure(text=f"Scanning... {current}/{total} ({int(eta)}s) - {filename}")
+        if filename: self.background_callback(f"Scanning: {filename}")
+        elif eta > 0: self.background_callback(f"AI Scanning... {int(val*100)}%")
 
     def refresh_lists(self):
         for widget in self.list_keep.winfo_children(): widget.destroy()

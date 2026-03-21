@@ -57,20 +57,20 @@ class App(ctk.CTk):
         self.tab_view = ctk.CTkTabview(self.top_frame, fg_color=BG_SECONDARY, segmented_button_selected_color=ACCENT)
         self.tab_view.pack(fill="both", expand=True, padx=0, pady=0)
 
-        self.tab_org = self.tab_view.add("Archival Core")
+        self.tab_org = self.tab_view.add("Media Organizer")
+        self.tab_av1 = self.tab_view.add("Mass AI Encoder")
         self.tab_ai = self.tab_view.add("AI Scan")
-        self.tab_av1 = self.tab_view.add("Transcoding Dashboard")
         self.tab_donate = self.tab_view.add("Donate")
 
         # Init Tabs
-        self.org_frame = OrganizerTab(self.tab_org, self.log, self.logger)
+        self.org_frame = OrganizerTab(self.tab_org, self.log, self.logger, self.set_status, self.set_background)
         self.org_frame.pack(fill="both", expand=True)
 
-        self.ai_frame = AIScannerTab(self.tab_ai, self.log, self.logger)
-        self.ai_frame.pack(fill="both", expand=True)
-
-        self.av1_frame = AV1EncoderTab(self.tab_av1, self.log, self.logger)
+        self.av1_frame = AV1EncoderTab(self.tab_av1, self.log, self.logger, self.set_status, self.set_background)
         self.av1_frame.pack(fill="both", expand=True)
+
+        self.ai_frame = AIScannerTab(self.tab_ai, self.log, self.logger, self.set_status, self.set_background)
+        self.ai_frame.pack(fill="both", expand=True)
 
         self.donate_frame = DonateTab(self.tab_donate)
         self.donate_frame.pack(fill="both", expand=True)
@@ -105,6 +105,20 @@ class App(ctk.CTk):
         
         self.paned_window.add(self.bottom_frame, minsize=100)
         
+        # === Global Footer ===
+        self.footer_frame = ctk.CTkFrame(self.main_wrapper, fg_color=BG_SECONDARY, height=28, corner_radius=6)
+        self.footer_frame.pack(fill="x", padx=0, pady=(10, 0))
+        
+        self.lbl_status = ctk.CTkLabel(self.footer_frame, text="READY", font=(FONT_MAIN[0], 10, "bold"), text_color=ACCENT)
+        self.lbl_status.pack(side="left", padx=15)
+        
+        self.lbl_background = ctk.CTkLabel(self.footer_frame, text="Idle", font=(FONT_MAIN[0], 10), text_color=TEXT_MUTED)
+        self.lbl_background.pack(side="left", expand=True)
+        
+        self.btn_footer_donate = ctk.CTkLabel(self.footer_frame, text="SUPPORT PROJECT", font=(FONT_MAIN[0], 9, "bold"), text_color=ACCENT, cursor="hand2")
+        self.btn_footer_donate.pack(side="right", padx=15)
+        self.btn_footer_donate.bind("<Button-1>", lambda e: self.tab_view.set("Donate"))
+        
         self.log(f"Welcome to {APP_NAME} {__version__} (Python Edition)")
         self.log("Ready.")
 
@@ -113,6 +127,16 @@ class App(ctk.CTk):
             self.log_text.insert("end", message + "\n")
             self.log_text.see("end")
         self.after(0, _insert)
+
+    def set_status(self, text, color=ACCENT):
+        def _update():
+            self.lbl_status.configure(text=text.upper(), text_color=color)
+        self.after(0, _update)
+
+    def set_background(self, text):
+        def _update():
+            self.lbl_background.configure(text=text)
+        self.after(0, _update)
 
 if __name__ == "__main__":
     app = App()
