@@ -1,5 +1,25 @@
 # TASKS
 
+- [/] **v1.0.19: AV1 Encoder Power-User Features (2026-03-21)**
+  - [/] Refactor top row into 4-column layout (Paths/Config/Options/Metrics).
+  - [ ] Implement Options: Shutdown, HW Accel, Skip Short, Delete Source.
+  - [ ] Implement Metrics: CPU, GPU, RAM polling.
+  - [ ] Implement Pause/Resume and Space Saved tracking.
+  - [ ] Bump version to 1.0.19 and synchronize GitHub/AUR.
+
+- [x] **v1.0.18: UI Refinement & Layout Polish (2026-03-21)**
+  - [x] Remove "Time to Archive!" catchline from log header.
+  - [x] Relocate "Check for Updates" to global status footer.
+  - [x] Implement custom split-aligned navbar (Media Organizer/Encoder/Scan Left, Donate Right).
+  - [x] Bump version to 1.0.18 and synchronize GitHub/AUR.
+
+- [x] **v1.0.17: Neon Green Branding & Layout (2026-03-21)**
+  - [x] Update hourglass icon to Neon Green (Full-Bleed).
+  - [x] Refine icon transparency and alpha edges.
+  - [x] Align functional tabs to left, Donate to right as a tab.
+  - [x] Bump version to 1.0.17 and synchronize GitHub/AUR.
+
+
 - [x] **v1.0.16: GUI Fix & Icon Perfection (2026-03-21)**
   - [x] Fix `_tkinter.TclError`: Remove `width=100` from `pack()` in `av1_tab.py`.
   - [x] Refine Icon: Generate full-frame motif with rounded corners and zero padding.

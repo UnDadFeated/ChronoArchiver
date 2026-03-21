@@ -1,4 +1,16 @@
-# CHANGELOG
+# Changelog
+
+## [1.0.19] - 2026-03-21
+### Added
+- Feature parity with Mass AV1 Encoder v12.0.0.
+- Restoration of the Options panel (Shutdown, HW Accel, Skip Short, Delete Source).
+- Real-time Metrics dashboard (CPU, GPU, RAM) in the top row.
+- Pause/Resume control for active encoding jobs.
+- Per-thread speed labels (e.g., "2.3x") and Space Saved telemetry.
+- Muted hint text under directory fields for better guidance.
+### Improved
+- Preset labels are now more descriptive (e.g., "P4: Standard").
+- Refactored top row layout to 4-column high-density grid.
 
 ## [1.0.18] - 2026-03-21
 ### Added

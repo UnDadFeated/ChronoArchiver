@@ -1,8 +1,11 @@
 import customtkinter as ctk
 import os
 import pathlib
+import platform
 import threading
 import time
+import psutil
+import subprocess
 from tkinter import filedialog, messagebox
 import concurrent.futures
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
@@ -62,11 +65,17 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.engine = AV1EncoderEngine()
         
         self.is_encoding = False
-        self.start_time = 0
+        self.is_paused = False
+        self.start_time = 0.0
         self.total_queue_size = 0
         self.processed_size = 0
+        self.total_space_saved = 0
         self.active_worker_engines = set()
         self.worker_lock = threading.Lock()
+        
+        # GPU Cache
+        self.gpu_usage_cache = "N/A"
+        self.last_gpu_check = 0.0
         
         # UI State
         self.slots = []
@@ -76,49 +85,131 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # === Top: Configuration ===
+        # === Top: Configuration Row ===
         self.frame_top = ctk.CTkFrame(self, fg_color=BG_SECONDARY)
         self.frame_top.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-        
-        # Paths
-        self.path_container = ctk.CTkFrame(self.frame_top, fg_color="transparent")
-        self.path_container.pack(fill="x", padx=10, pady=10)
-        
-        # Source
-        ctk.CTkLabel(self.path_container, text="SOURCE:", font=FONT_HEADER, text_color=TEXT_MUTED, width=80, anchor="w").grid(row=0, column=0, padx=(0,10), pady=2)
-        self.entry_src = ctk.CTkEntry(self.path_container, placeholder_text="Source directory...", fg_color=BG_TERTIARY, border_color=SEPARATOR, border_width=1)
-        self.entry_src.grid(row=0, column=1, sticky="ew", pady=2)
-        self.entry_src.insert(0, self.settings.get("source_folder"))
-        ctk.CTkButton(self.path_container, text="Browse", width=80, fg_color=ACCENT, command=self.browse_source).grid(row=0, column=2, padx=(10,0), pady=2)
-        
-        # Target
-        ctk.CTkLabel(self.path_container, text="TARGET:", font=FONT_HEADER, text_color=TEXT_MUTED, width=80, anchor="w").grid(row=1, column=0, padx=(0,10), pady=2)
-        self.entry_dst = ctk.CTkEntry(self.path_container, placeholder_text="Target directory...", fg_color=BG_TERTIARY, border_color=SEPARATOR, border_width=1)
-        self.entry_dst.grid(row=1, column=1, sticky="ew", pady=2)
-        self.entry_dst.insert(0, self.settings.get("target_folder"))
-        ctk.CTkButton(self.path_container, text="Browse", width=80, fg_color=ACCENT, command=self.browse_target).grid(row=1, column=2, padx=(10,0), pady=2)
-        self.path_container.grid_columnconfigure(1, weight=1)
+        self.frame_top.grid_columnconfigure(0, weight=2) # Paths
+        self.frame_top.grid_columnconfigure(1, weight=1) # Config
+        self.frame_top.grid_columnconfigure(2, weight=1) # Options
+        self.frame_top.grid_columnconfigure(3, weight=0) # Metrics (fixed width)
 
-        # Settings
-        self.ctrl_container = ctk.CTkFrame(self.frame_top, fg_color="transparent")
-        self.ctrl_container.pack(fill="x", padx=10, pady=(0, 10))
+        # 1. Paths Column
+        self.frame_paths = ctk.CTkFrame(self.frame_top, fg_color="transparent")
+        self.frame_paths.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         
-        ctk.CTkLabel(self.ctrl_container, text="QUALITY:", font=FONT_MAIN, text_color=TEXT_MUTED).pack(side="left", padx=(0,5))
-        self.slider_quality = ctk.CTkSlider(self.ctrl_container, from_=0, to=63, width=120, command=self.on_quality_change)
+        ctk.CTkLabel(self.frame_paths, text="DIRECTORIES", font=FONT_HEADER, text_color=TEXT_MUTED).pack(anchor="w")
+        
+        self.entry_src = ctk.CTkEntry(self.frame_paths, placeholder_text="Source directory...", fg_color=BG_TERTIARY, border_width=1)
+        self.entry_src.pack(fill="x", pady=(5, 0))
+        self.entry_src.insert(0, self.settings.get("source_folder"))
+        ctk.CTkLabel(self.frame_paths, text="Source — local path or network share", font=(FONT_MAIN[0], 9), text_color=TEXT_MUTED, anchor="w").pack(fill="x")
+        
+        self.btn_browse_src = ctk.CTkButton(self.frame_paths, text="Browse", width=80, height=24, fg_color=ACCENT, command=self.browse_source)
+        self.btn_browse_src.place(relx=1.0, rely=0.35, anchor="ne", x=-5)
+
+        self.entry_dst = ctk.CTkEntry(self.frame_paths, placeholder_text="Target directory...", fg_color=BG_TERTIARY, border_width=1)
+        self.entry_dst.pack(fill="x", pady=(10, 0))
+        self.entry_dst.insert(0, self.settings.get("target_folder"))
+        ctk.CTkLabel(self.frame_paths, text="Target — AV1 encoded output destination", font=(FONT_MAIN[0], 9), text_color=TEXT_MUTED, anchor="w").pack(fill="x")
+        
+        self.btn_browse_dst = ctk.CTkButton(self.frame_paths, text="Browse", width=80, height=24, fg_color=ACCENT, command=self.browse_target)
+        self.btn_browse_dst.place(relx=1.0, rely=0.75, anchor="ne", x=-5)
+
+        # 2. Configuration Column
+        self.frame_config = ctk.CTkFrame(self.frame_top, fg_color="transparent")
+        self.frame_config.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        ctk.CTkLabel(self.frame_config, text="CONFIGURATION", font=FONT_HEADER, text_color=TEXT_MUTED).pack(anchor="w")
+        
+        cfg_inner = ctk.CTkFrame(self.frame_config, fg_color="transparent")
+        cfg_inner.pack(fill="both", expand=True, pady=5)
+
+        ctk.CTkLabel(cfg_inner, text="Quality:", font=FONT_MAIN, text_color=TEXT_MUTED).grid(row=0, column=0, sticky="w")
+        self.slider_quality = ctk.CTkSlider(cfg_inner, from_=0, to=63, width=100, command=self.on_quality_change)
         self.slider_quality.set(self.settings.get("quality"))
-        self.slider_quality.pack(side="left", padx=(0, 5))
-        self.lbl_quality_val = ctk.CTkLabel(self.ctrl_container, text=str(self.settings.get("quality")), font=FONT_MAIN, text_color=ACCENT, width=30)
-        self.lbl_quality_val.pack(side="left", padx=(0, 15))
-        
-        ctk.CTkLabel(self.ctrl_container, text="PRESET:", font=FONT_MAIN, text_color=TEXT_MUTED).pack(side="left", padx=(0,5))
-        self.combo_preset = ctk.CTkComboBox(self.ctrl_container, values=["p1", "p2", "p3", "p4", "p5", "p6", "p7"], width=70, command=self.on_preset_change)
-        self.combo_preset.set(self.settings.get("preset"))
-        self.combo_preset.pack(side="left", padx=(0, 15))
-        
-        ctk.CTkLabel(self.ctrl_container, text="THREADS:", font=FONT_MAIN, text_color=TEXT_MUTED).pack(side="left", padx=(0,5))
-        self.combo_jobs = ctk.CTkComboBox(self.ctrl_container, values=["1", "2", "4"], width=60, command=self.on_jobs_change)
+        self.slider_quality.grid(row=0, column=1, padx=5)
+        self.lbl_quality_val = ctk.CTkLabel(cfg_inner, text=str(self.settings.get("quality")), font=FONT_MAIN, text_color=ACCENT, width=25)
+        self.lbl_quality_val.grid(row=0, column=2)
+
+        ctk.CTkLabel(cfg_inner, text="Preset:", font=FONT_MAIN, text_color=TEXT_MUTED).grid(row=1, column=0, sticky="w", pady=5)
+        preset_options = [
+            "P7: Deep Archival", "P6: High Quality", "P5: Balanced", 
+            "P4: Standard", "P3: Fast", "P2: Draft", "P1: Preview"
+        ]
+        self.combo_preset = ctk.CTkComboBox(cfg_inner, values=preset_options, width=140, command=self.on_preset_change)
+        # Find existing preset index or default to P4
+        curr_p = self.settings.get("preset")
+        found_preset = next((x for x in preset_options if x.startswith(curr_p.upper())), "P4: Standard")
+        self.combo_preset.set(found_preset)
+        self.combo_preset.grid(row=1, column=1, columnspan=2, padx=5, sticky="ew")
+
+        ctk.CTkLabel(cfg_inner, text="Threads:", font=FONT_MAIN, text_color=TEXT_MUTED).grid(row=2, column=0, sticky="w")
+        self.combo_jobs = ctk.CTkComboBox(cfg_inner, values=["1", "2", "4"], width=60, command=self.on_jobs_change)
         self.combo_jobs.set(str(self.settings.get("concurrent_jobs")))
-        self.combo_jobs.pack(side="left", padx=(0, 10))
+        self.combo_jobs.grid(row=2, column=1, padx=5, sticky="w")
+
+        # 3. Options Column
+        self.frame_options = ctk.CTkFrame(self.frame_top, fg_color="transparent")
+        self.frame_options.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
+        ctk.CTkLabel(self.frame_options, text="OPTIONS", font=FONT_HEADER, text_color=TEXT_MUTED).pack(anchor="w")
+        
+        opt_inner = ctk.CTkScrollableFrame(self.frame_options, fg_color="transparent", height=100)
+        opt_inner.pack(fill="both", expand=True, pady=5)
+        
+        self.check_subdirs = ctk.CTkCheckBox(opt_inner, text="Keep Subdirs", font=(FONT_MAIN[0], 10), command=lambda: self.settings.set("maintain_structure", self.check_subdirs.get()))
+        self.check_subdirs.pack(anchor="w", pady=2)
+        if self.settings.get("maintain_structure"): self.check_subdirs.select()
+        
+        self.check_shutdown = ctk.CTkCheckBox(opt_inner, text="Shutdown When Done", font=(FONT_MAIN[0], 10), command=lambda: self.settings.set("shutdown_on_finish", self.check_shutdown.get()))
+        self.check_shutdown.pack(anchor="w", pady=2)
+        if self.settings.get("shutdown_on_finish"): self.check_shutdown.select()
+
+        self.check_hwaccel = ctk.CTkCheckBox(opt_inner, text="HW Accelerated Decode", font=(FONT_MAIN[0], 10), command=lambda: self.settings.set("hw_accel_decode", self.check_hwaccel.get()))
+        self.check_hwaccel.pack(anchor="w", pady=2)
+        if self.settings.get("hw_accel_decode"): self.check_hwaccel.select()
+
+        # Skip Short Clips
+        skip_frame = ctk.CTkFrame(opt_inner, fg_color="transparent")
+        skip_frame.pack(fill="x", pady=2)
+        self.check_skip = ctk.CTkCheckBox(skip_frame, text="Skip Short Clips", font=(FONT_MAIN[0], 10), command=self.toggle_skip_fields)
+        self.check_skip.pack(side="left")
+        if self.settings.get("rejects_enabled"): self.check_skip.select()
+        
+        self.entry_skip_h = ctk.CTkEntry(skip_frame, width=25, height=20, font=(FONT_MAIN[0], 9))
+        self.entry_skip_h.pack(side="left", padx=(5, 2))
+        self.entry_skip_h.insert(0, str(self.settings.get("rejects_h")))
+        
+        self.entry_skip_m = ctk.CTkEntry(skip_frame, width=25, height=20, font=(FONT_MAIN[0], 9))
+        self.entry_skip_m.pack(side="left", padx=2)
+        self.entry_skip_m.insert(0, str(self.settings.get("rejects_m")))
+        
+        self.entry_skip_s = ctk.CTkEntry(skip_frame, width=25, height=20, font=(FONT_MAIN[0], 9))
+        self.entry_skip_s.pack(side="left", padx=2)
+        self.entry_skip_s.insert(0, str(self.settings.get("rejects_s")))
+
+        # Delete Source
+        del_frame = ctk.CTkFrame(opt_inner, fg_color="transparent")
+        del_frame.pack(fill="x", pady=2)
+        self.check_del = ctk.CTkCheckBox(del_frame, text="Delete Source on Success", font=(FONT_MAIN[0], 10), text_color="#ef4444", command=self.on_delete_toggle)
+        self.check_del.pack(anchor="w")
+        if self.settings.get("delete_on_success"): self.check_del.select()
+        
+        self.check_del_confirm = ctk.CTkCheckBox(del_frame, text="Confirm Delete Safety", font=(FONT_MAIN[0], 8), text_color=TEXT_MUTED, command=self.on_delete_toggle)
+        self.check_del_confirm.pack(anchor="w", padx=20)
+        if self.settings.get("delete_on_success_confirm"): self.check_del_confirm.select()
+
+        # 4. Metrics Column
+        self.frame_metrics = ctk.CTkFrame(self.frame_top, fg_color="transparent", width=120)
+        self.frame_metrics.grid(row=0, column=3, padx=10, pady=10, sticky="nsew")
+        ctk.CTkLabel(self.frame_metrics, text="METRICS", font=FONT_HEADER, text_color=TEXT_MUTED).pack(anchor="w")
+        
+        self.lbl_cpu = ctk.CTkLabel(self.frame_metrics, text="CPU: 0%", font=(FONT_MAIN[0], 10), anchor="w")
+        self.lbl_cpu.pack(fill="x", pady=(5,0))
+        self.lbl_gpu = ctk.CTkLabel(self.frame_metrics, text="GPU: N/A", font=(FONT_MAIN[0], 10), anchor="w")
+        self.lbl_gpu.pack(fill="x")
+        self.lbl_ram = ctk.CTkLabel(self.frame_metrics, text="RAM: 0%", font=(FONT_MAIN[0], 10), anchor="w")
+        self.lbl_ram.pack(fill="x")
+        
+        threading.Thread(target=self._metrics_loop, daemon=True).start()
 
         # === Middle: Dynamic Slots & Queue ===
         self.frame_mid = ctk.CTkFrame(self, fg_color="transparent")
@@ -160,6 +251,9 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.lbl_elapsed = ctk.CTkLabel(self.metric_strip, text="ELAPSED: 00:00:00", font=(FONT_MAIN[0], 10, "bold"), text_color=TEXT_MUTED)
         self.lbl_elapsed.pack(side="left")
         
+        self.lbl_saved = ctk.CTkLabel(self.metric_strip, text="SPACE SAVED: 0 MB", font=(FONT_MAIN[0], 10, "bold"), text_color="#10b981")
+        self.lbl_saved.pack(side="left", padx=20)
+
         self.lbl_eta = ctk.CTkLabel(self.metric_strip, text="ETA: --:--:--", font=(FONT_MAIN[0], 10, "bold"), text_color=ACCENT)
         self.lbl_eta.pack(side="right")
         
@@ -174,9 +268,13 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.btn_panel.pack(fill="x", padx=10, pady=(0, 10))
         
         self.btn_start = ctk.CTkButton(self.btn_panel, text="START ENCODING", font=FONT_HEADER, fg_color="#064e3b", hover_color="#065f46", height=40, command=self.start_encoding)
-        self.btn_start.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.btn_start.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        self.btn_pause = ctk.CTkButton(self.btn_panel, text="PAUSE", font=FONT_HEADER, fg_color=BG_TERTIARY, hover_color=BG_SECONDARY, width=100, height=40, state="disabled", command=self.toggle_pause)
+        self.btn_pause.pack(side="left", padx=5)
+
         self.btn_stop = ctk.CTkButton(self.btn_panel, text="STOP", font=FONT_HEADER, fg_color="#450a0a", hover_color="#7f1d1d", height=40, state="disabled", command=self.stop_encoding)
-        self.btn_stop.pack(side="right")
+        self.btn_stop.pack(side="right", padx=(5, 0))
 
     def browse_source(self):
         path = filedialog.askdirectory()
@@ -197,7 +295,60 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.settings.set("quality", int(val))
 
     def on_preset_change(self, val):
-        self.settings.set("preset", val)
+        # Extract "pX" from "PX: Label"
+        p_val = val.split(":")[0].lower()
+        self.settings.set("preset", p_val)
+
+    def toggle_skip_fields(self):
+        enabled = self.check_skip.get()
+        self.settings.set("rejects_enabled", enabled)
+        state = "normal" if enabled else "disabled"
+        self.entry_skip_h.configure(state=state)
+        self.entry_skip_m.configure(state=state)
+        self.entry_skip_s.configure(state=state)
+
+    def on_delete_toggle(self):
+        self.settings.set("delete_on_success", self.check_del.get())
+        self.settings.set("delete_on_success_confirm", self.check_del_confirm.get())
+
+    def _metrics_loop(self):
+        while True:
+            try:
+                cpu = psutil.cpu_percent()
+                ram = psutil.virtual_memory().percent
+                
+                # GPU Check (5s cache)
+                if time.time() - self.last_gpu_check > 5:
+                    self.gpu_usage_cache = self._get_gpu_usage()
+                    self.last_gpu_check = time.time()
+                
+                self.after(0, lambda: self.lbl_cpu.configure(text=f"CPU: {cpu}%"))
+                self.after(0, lambda: self.lbl_gpu.configure(text=f"GPU: {self.gpu_usage_cache}"))
+                self.after(0, lambda: self.lbl_ram.configure(text=f"RAM: {ram}%"))
+            except: pass
+            time.sleep(2)
+
+    def _get_gpu_usage(self):
+        try:
+            cmd = ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"]
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True).strip()
+            return f"{out}%"
+        except: return "N/A"
+
+    def toggle_pause(self):
+        if not self.is_encoding: return
+        self.is_paused = not self.is_paused
+        
+        if self.is_paused:
+            self.btn_pause.configure(text="RESUME", fg_color=ACCENT)
+            with self.worker_lock:
+                for eng in self.active_worker_engines: eng.pause()
+            self.log_callback("Encoding paused.")
+        else:
+            self.btn_pause.configure(text="PAUSE", fg_color=BG_TERTIARY)
+            with self.worker_lock:
+                for eng in self.active_worker_engines: eng.resume()
+            self.log_callback("Encoding resumed.")
 
     def on_jobs_change(self, val):
         num = int(val)
@@ -214,8 +365,11 @@ class AV1EncoderTab(ctk.CTkFrame):
             return
         
         self.is_encoding = True
+        self.is_paused = False
         self.start_time = time.time()
+        self.total_space_saved = 0
         self.btn_start.configure(state="disabled")
+        self.btn_pause.configure(state="normal", text="PAUSE", fg_color=BG_TERTIARY)
         self.btn_stop.configure(state="normal")
         self.log_callback("Batch process started.")
         self.status_callback("ENCODING", "#059669")
@@ -225,9 +379,11 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def stop_encoding(self):
         self.is_encoding = False
+        self.is_paused = False
         with self.worker_lock:
             for eng in self.active_worker_engines: eng.cancel()
         self.btn_start.configure(state="normal")
+        self.btn_pause.configure(state="disabled", text="PAUSE")
         self.btn_stop.configure(state="disabled")
         for slot in self.slots: slot.reset()
         self.status_callback("READY")
@@ -252,12 +408,33 @@ class AV1EncoderTab(ctk.CTkFrame):
         total_files = len(files)
         self.total_queue_size = sum(f[1] for f in files)
         self.processed_size = 0
-        processed_count = 0
+        processed_count = [0]
         counter_lock = threading.Lock()
         
+        # Check for Skip threshold
+        reject_threshold = 0
+        if self.settings.get("rejects_enabled"):
+            try:
+                h = int(self.entry_skip_h.get() or 0)
+                m = int(self.entry_skip_m.get() or 0)
+                s = int(self.entry_skip_s.get() or 0)
+                reject_threshold = (h * 3600) + (m * 60) + s
+            except ValueError: pass
+
         def encode_worker(file_info, slot_idx):
             if not self.is_encoding: return
             file_path, size = file_info
+            
+            # Skip check
+            if reject_threshold > 0:
+                duration = self.engine._get_video_duration(file_path)
+                if duration < reject_threshold:
+                    self.log_callback(f"Skipping {os.path.basename(file_path)} (Duration {duration:.1f}s < {reject_threshold}s)")
+                    with counter_lock:
+                        processed_count[0] += 1
+                        self.after(0, self._update_master_ui, processed_count[0], total_files, processed_count[0] / total_files)
+                    return
+
             worker_engine = AV1EncoderEngine(job_id=slot_idx)
             
             # Progress Callbacks
@@ -267,21 +444,48 @@ class AV1EncoderTab(ctk.CTkFrame):
             with self.worker_lock:
                 if not self.is_encoding: return
                 self.active_worker_engines.add(worker_engine)
+                if self.is_paused: worker_engine.pause()
             
             # Setup output path
             filename = os.path.basename(file_path)
-            target_path = os.path.join(dst, os.path.splitext(filename)[0] + "_av1.mkv")
+            if self.settings.get("maintain_structure"):
+                rel_path = os.path.relpath(file_path, src)
+                target_path = os.path.join(dst, str(os.path.splitext(rel_path)[0]) + "_av1.mkv")
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            else:
+                target_path = os.path.join(dst, str(os.path.splitext(filename)[0]) + "_av1.mkv")
             
             try:
-                worker_engine.encode_file(file_path, target_path, self.settings.get("quality"), self.settings.get("preset"), self.settings.get("reencode_audio"))
+                success, in_p, out_p = worker_engine.encode_file(
+                    file_path, target_path, 
+                    self.settings.get("quality"), 
+                    self.settings.get("preset"), 
+                    self.settings.get("reencode_audio"),
+                    hw_accel=self.settings.get("hw_accel_decode")
+                )
+                
+                if success and self.is_encoding:
+                    out_size = os.path.getsize(out_p)
+                    saved = size - out_size
+                    with counter_lock:
+                        self.total_space_saved += max(0, saved)
+                        self.after(0, lambda: self.lbl_saved.configure(text=f"SPACE SAVED: {self.total_space_saved // (1024*1024)} MB"))
+                    
+                    # Delete Source
+                    if self.settings.get("delete_on_success") and self.settings.get("delete_on_success_confirm"):
+                        try:
+                            os.remove(file_path)
+                            self.log_callback(f"Deleted source: {filename}")
+                        except Exception as e:
+                            self.log_callback(f"Failed to delete {filename}: {e}")
+
             finally:
                 with self.worker_lock: self.active_worker_engines.discard(worker_engine)
-                nonlocal processed_count
                 with counter_lock:
-                    processed_count += 1
+                    processed_count[0] += 1
                     self.processed_size += size
-                    prog = processed_count / total_files
-                    self.after(0, self._update_master_ui, processed_count, total_files, prog)
+                    prog = processed_count[0] / total_files
+                    self.after(0, self._update_master_ui, processed_count[0], total_files, prog)
 
         concurrent_jobs = self.settings.get("concurrent_jobs", 1)
         with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_jobs) as executor:
@@ -290,6 +494,12 @@ class AV1EncoderTab(ctk.CTkFrame):
         
         self.after(0, self.stop_encoding)
         self.log_callback("Process complete.")
+        
+        # Shutdown
+        if self.settings.get("shutdown_on_finish") and self.is_encoding:
+            self.log_callback("Shutting down system as requested...")
+            if platform.system() == "Windows": os.system("shutdown /s /t 60")
+            else: os.system("shutdown -h +1")
 
     def _populate_queue_list(self, filenames):
         for widget in self.scroll_queue.winfo_children(): widget.destroy()
