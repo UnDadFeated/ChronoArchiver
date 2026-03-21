@@ -731,11 +731,11 @@ class DonateTab(ctk.CTkFrame):
         
         # Custom Links for jscheema@gmail.com
         
-        # PayPal: Generic Send
-        link_paypal = "https://paypal.me/jscheema"
+        # PayPal: $5 USD Support
+        link_paypal = "https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=jscheema@gmail.com&item_name=ChronoArchiver+Support&amount=5.00&currency_code=USD"
         
-        # Venmo: Deep link or web
-        link_venmo = "https://venmo.com/u/jscheema"
+        # Venmo: $5 USD Support
+        link_venmo = "https://venmo.com/jscheema?txn=pay&amount=5&note=ChronoArchiver+Support"
         
 
         

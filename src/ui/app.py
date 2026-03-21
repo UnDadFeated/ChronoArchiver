@@ -32,7 +32,7 @@ class App(ctk.CTk):
         self.resizable(False, False)
 
         # Set Icon
-        assets_dir = pathlib.Path(__file__).parent.parent / 'assets'
+        assets_dir = pathlib.Path(__file__).parent / 'assets'
         if sys.platform == 'win32':
             icon_path = assets_dir / 'icon.ico'
             if icon_path.exists():

@@ -1,5 +1,13 @@
 # TASKS
 
+- [x] **v1.0.20: Stability Hotfix & Asset Restoration (2026-03-21)**
+  - [x] Fix startup crash (restore `__version__` in `version.py`).
+  - [x] Fix asset paths (move to `src/ui/assets`) and update `app.py`.
+  - [x] Fix malformed `.desktop` entry (remove redundant paths).
+  - [x] Hardcode $5 USD donation links for PayPal and Venmo.
+  - [x] Repair corrupted `CHANGELOG.md` formatting.
+  - [x] Bump version to 1.0.20 and synchronize GitHub/AUR.
+
 - [x] **v1.0.19: AV1 Encoder Power-User Features (2026-03-21)**
   - [x] Refactor top row into 4-column layout (Paths/Config/Options/Metrics).
   - [x] Implement Options: Shutdown, HW Accel, Skip Short, Delete Source.
