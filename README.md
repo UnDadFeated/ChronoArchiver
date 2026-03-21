@@ -5,7 +5,6 @@ A unified media management platform for archival, classification, and transcodin
 [![Version](https://img.shields.io/badge/version-2.0.8-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey.svg)](#system-requirements)
-[![AUR](https://img.shields.io/aur/version/chronoarchiver)](https://aur.archlinux.org/packages/chronoarchiver)
 
 ---
 
