@@ -1,6 +1,6 @@
 # Maintainer: UnDadFeated <jscheema@gmail.com>
 pkgname=chronoarchiver
-pkgver=1.0.5
+pkgver=1.0.6
 pkgrel=1
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder"
 arch=('any')
@@ -9,11 +9,9 @@ license=('MIT')
 depends=(
     'python'
     'python-customtkinter'
-    'python-mediapipe'
     'opencv'
     'python-pillow'
     'python-piexif'
-    'python-send2trash'
     'python-psutil'
     'python-platformdirs'
     'python-requests'
