@@ -133,7 +133,18 @@ class ApplicationUpdater:
         """
         Background check for updates.
         Calls callback(latest_version, changelog) when done.
+        Uses a watchdog to ensure callback is invoked even if the request hangs.
         """
+        _callback_done = threading.Event()
+
+        def _safe_callback(latest, changelog):
+            if not _callback_done.is_set():
+                _callback_done.set()
+                try:
+                    callback(latest, changelog)
+                except Exception:
+                    pass
+
         def _task():
             try:
                 req = urllib.request.Request(
@@ -144,12 +155,17 @@ class ApplicationUpdater:
                     data = json.loads(resp.read().decode())
                     self._latest_version = data.get("tag_name", "").replace("v", "")
                     self._changelog = data.get("body", "No changelog provided.")
-                    callback(self._latest_version, self._changelog)
+                    _safe_callback(self._latest_version, self._changelog)
             except Exception as e:
                 print(f"Update check failed: {e}")
-                callback(None, None)
+                _safe_callback(None, None)
+
+        def _watchdog():
+            if not _callback_done.wait(timeout=15):
+                _safe_callback(None, None)
 
         threading.Thread(target=_task, daemon=True).start()
+        threading.Thread(target=_watchdog, daemon=True).start()
 
     def get_latest_version(self):
         return self._latest_version

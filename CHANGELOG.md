@@ -4,6 +4,8 @@
 ### Changed
 - AI Encoder: Options box now matches vertical height of Directories + Configuration columns.
 - AI Encoder: Fixed overlapping dual-checkbox for "Delete Source on Success"; label moved to top, verification checkboxes placed on separate line and right-aligned.
+### Fixed
+- Updater button no longer stuck on "CHECKING..."; uses Qt Signal for thread-safe main-thread callback and adds 15s watchdog fallback.
 
 ## [2.0.5] - 2026-03-21
 ### Added

@@ -6,7 +6,6 @@ Uses a QStackedWidget to manage distinct application panels.
 
 import sys
 import os
-import threading
 import webbrowser
 import pathlib
 
@@ -130,6 +129,8 @@ QPushButton#navBtn[active="true"] {
 """
 
 class ChronoArchiverApp(QMainWindow):
+    updateCheckDone = Signal(object, object)  # latest, changelog — emitted from worker, handled on main thread
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"ChronoArchiver v{__version__}")
@@ -138,6 +139,7 @@ class ChronoArchiverApp(QMainWindow):
 
         self.logger = setup_logger()
         self.updater = ApplicationUpdater()
+        self.updateCheckDone.connect(self._on_update_check_done)
 
         # UI Components
         self.central_widget = QWidget()
@@ -250,17 +252,15 @@ class ChronoArchiverApp(QMainWindow):
             self._confirm_and_perform_update()
             return
         self.btn_update.setText("CHECKING...")
-        def _on_done(latest, changelog):
-            if self.updater.is_update_available():
-                self.btn_update.setText(f"UPDATE v{latest} AVAILABLE")
-                self.btn_update.setStyleSheet("font-size: 8px; color: #10b981; font-weight:bold;")
-            else:
-                self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
-                self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563;")
+        self.updater.check_for_updates(self.updateCheckDone.emit)
 
-        def _do_check():
-            self.updater.check_for_updates(lambda l, c: QTimer.singleShot(0, lambda: _on_done(l, c)))
-        threading.Thread(target=_do_check, daemon=True).start()
+    def _on_update_check_done(self, latest, changelog):
+        if self.updater.is_update_available():
+            self.btn_update.setText(f"UPDATE v{latest} AVAILABLE")
+            self.btn_update.setStyleSheet("font-size: 8px; color: #10b981; font-weight:bold;")
+        else:
+            self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
+            self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563;")
 
     def _confirm_and_perform_update(self):
         latest = self.updater.get_latest_version()
