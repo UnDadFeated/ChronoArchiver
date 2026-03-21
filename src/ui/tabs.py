@@ -370,7 +370,7 @@ class AIScannerTab(ctk.CTkFrame):
                 if not self.model_manager.stop_event.is_set():
                     self.after(0, lambda: messagebox.showerror("Download Error", "Failed to download AI models. Please check your internet connection."))
             
-            self.after(0, self._init_model_check)
+            self.after(0, lambda: threading.Thread(target=self._init_model_check, daemon=True).start())
 
         threading.Thread(target=run, daemon=True).start()
 

@@ -175,19 +175,19 @@ class ScannerEngine:
         blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), swapRB=True, crop=False)
         net.setInput(blob)
         
-        # SSD MobileNet V1 outputs standard [1, 1, N, 7] detections
-        detections = net.forward()
+        outputs = net.forward(net.getUnconnectedOutLayersNames())
+        
+        # Task Library model: boxes[0], class_ids[1], scores[2], num_dets[3]
+        scores = outputs[2][0]      # shape [100]
+        class_ids = outputs[1][0]   # shape [100]
+        num_dets = int(outputs[3][0])
         
         # COCO-based indices for animal_labels
         animal_ids = {16, 17, 18, 19, 20, 21, 23, 24, 25}
         
-        # Parse detections [1, 1, 100, 7]
-        for i in range(detections.shape[2]):
-            score = detections[0, 0, i, 2]
-            if score > 0.4:
-                class_id = int(detections[0, 0, i, 1])
-                if class_id in animal_ids:
-                    return True
+        for i in range(num_dets):
+            if scores[i] > 0.4 and int(class_ids[i]) in animal_ids:
+                return True
         return False
 
     def _get_model_path(self, filename):

@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [1.0.8] - 2026-03-21
+### Fixed
+- **Post-Download Freeze**: Ensured the SHA-256 hash verification runs in a background thread immediately after downloading models, preventing a temporary UI hang.
+- **Animal Detection Logic**: Updated parsing logic in `_detect_animal()` to properly index the 4-tensor output (boxes, class_ids, scores, num_detections) from the TF Task Library SSD model.
+
 ## [1.0.7] - 2026-03-21
 ### Added
 - **AI Scanner UX**: Added a dedicated `ModelDownloadDialog` with real-time progress bars, speed tracking, and a responsive cancellation option.
