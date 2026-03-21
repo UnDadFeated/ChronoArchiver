@@ -167,8 +167,6 @@ class ScannerEngine:
         """Initialize animal detector using OpenCV DNN with frozen graph (SSD MobileNet V1)."""
         pb_path = self._get_model_path('ssd_mobilenet_v1_coco.pb')
         pbtxt_path = self._get_model_path('ssd_mobilenet_v1_coco.pbtxt')
-        if not pb_path or not pbtxt_path:
-            return None
         net = cv2.dnn.readNetFromTensorflow(pb_path, pbtxt_path)
         return net
 

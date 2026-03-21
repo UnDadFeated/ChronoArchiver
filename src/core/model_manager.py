@@ -101,7 +101,7 @@ class ModelManager:
                             f.write(chunk)
                             downloaded += len(chunk)
                             if progress_callback:
-                                progress_callback(downloaded, total_size, info["filename"])
+                                progress_callback(downloaded, total_size, dl_dest.name)
                 
                 if self.stop_event.is_set():
                     if dl_dest.exists(): dl_dest.unlink()
@@ -110,10 +110,15 @@ class ModelManager:
 
                 # Extract tar if needed
                 if "tar_extract" in info:
+                    if progress_callback:
+                        progress_callback(total_size, total_size, f"Extracting {info['filename']}...")
                     with tarfile.open(dl_dest, "r:gz") as tar:
                         member = tar.getmember(info["tar_extract"])
                         member.name = dest.name
-                        tar.extract(member, path=dest.parent)
+                        if hasattr(tarfile, 'data_filter'):
+                            tar.extract(member, path=dest.parent, filter='data')
+                        else:
+                            tar.extract(member, path=dest.parent)
                     dl_dest.unlink()
 
                 # Verify after download
