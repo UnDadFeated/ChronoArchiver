@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.13] - 2026-03-21
+### Changed
+- **Mass AV1 Encoder**: Skinnier dropdowns (Preset, Threads) for better alignment of Directories + Configuration with Options box.
+- **AI Media Scanner**: "ResNet Needs Setup" → "AI Models Missing!"; Start AI Scan button disabled until models are verified present.
+
 ## [2.0.12] - 2026-03-21
 ### Changed
 - **Debug logging**: Filename now includes app-start date/time (`chronoarchiver_debug_YYYY-MM-DD_HH-MM-SS.log`); keeps last 3 instances.

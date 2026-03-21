@@ -2,7 +2,7 @@
 
 A unified media management platform for archival, classification, and transcoding. ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application built on PySide6.
 
-[![Version](https://img.shields.io/badge/version-2.0.12-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-2.0.13-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey.svg)](#system-requirements)
 
@@ -50,7 +50,7 @@ Dual-list workflow: **Keep** (subjects detected) and **Move** (no subjects). Det
 - **Face** — OpenCV YuNet (`face_detection_yunet_2023mar.onnx`), OpenCL when available
 - **Animals** — OpenCV DNN SSD MobileNet V1 (optional, configurable confidence threshold)
 
-Models are bundled and verified by SHA-256; corrupt files are re-downloaded on launch.
+Models are verified on launch; Start AI Scan is disabled until models exist (use Setup Models if missing).
 
 Features:
 

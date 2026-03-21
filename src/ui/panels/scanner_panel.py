@@ -145,6 +145,7 @@ class AIScannerPanel(QWidget):
         self._btn_start = QPushButton("START AI SCAN")
         self._btn_start.setObjectName("btnStart")
         self._btn_start.setFixedHeight(28)
+        self._btn_start.setEnabled(False)
         self._btn_start.clicked.connect(self._run_job)
         h_exec.addWidget(self._btn_start)
         self._btn_stop = QPushButton("STOP")
@@ -216,15 +217,18 @@ class AIScannerPanel(QWidget):
         QTimer.singleShot(500, self._check_models)
 
     def _check_models(self):
-        if self._model_mgr.is_up_to_date():
+        ready = self._model_mgr.is_up_to_date()
+        if ready:
             self._lbl_model.setText("Models Ready")
             self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
             self._btn_setup.hide()
+            self._btn_start.setEnabled(True)
             debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready")
         else:
-            self._lbl_model.setText("ResNet Needs Setup")
+            self._lbl_model.setText("AI Models Missing!")
             self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
             self._btn_setup.show()
+            self._btn_start.setEnabled(False)
             debug(UTILITY_AI_MEDIA_SCANNER, f"Models check: missing {self._model_mgr.get_missing_models()}")
 
     def _setup_models(self):
@@ -284,7 +288,7 @@ class AIScannerPanel(QWidget):
 
     def _on_finished(self):
         self._is_running = False
-        self._btn_start.setEnabled(True)
+        self._btn_start.setEnabled(self._model_mgr.is_up_to_date())
         self._btn_stop.setEnabled(False)
         self._bar.setFormat("Complete")
         self._lbl_status.setText("Scan Complete")
