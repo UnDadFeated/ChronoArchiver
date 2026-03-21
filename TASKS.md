@@ -1,5 +1,11 @@
 # TASKS
 
+- [x] **v1.0.25: AV1 Tab UX Refinement (2026-03-21)**
+  - [x] Implement high-density layout (strip <= 200px).
+  - [x] Reduce checkbox sizes to 16x16px.
+  - [x] Fix vertical overflow via grid weighting.
+  - [x] Bump version and synchronize.
+
 - [x] **v1.0.24: AV1 Tab UI Overhaul (2026-03-21)**
   - [x] Replace absolute positioning with frame rows for Browse buttons.
   - [x] Add "Optimize Audio" configuration and hints.

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.25] - 2026-03-21
+### Fixed
+- Refined AV1 Tab layout for high-density environments (Top Strip <= 200px).
+- Reduced checkbox sizes (16x16px) and padding to prevent vertical overflow.
+- Implemented explicit grid row weighting to ensure thread slots expand correctly.
+- Enhanced browse button anchoring using a 100% width entry grid.
+
 ## [1.0.24] - 2026-03-21
 ### Fixed
 - Overhauled AV1 Tab layout: replaced broken absolute positioning on Browse buttons with proper relative rows.
