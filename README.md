@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![AUR](https://img.shields.io/aur/version/chronoarchiver?color=blue&logo=arch-linux)](https://aur.archlinux.org/packages/chronoarchiver)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey.svg)](#system-requirements)
 
 ChronoArchiver is a desktop application for organizing, classifying, and re-encoding large media libraries. It combines three independent tools — a date-based file organizer, an AI-powered photo scanner, and a batch AV1 encoder — into a single fixed-window interface built with CustomTkinter.
 
