@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.26] - 2026-03-21
+### Fixed
+- Further optimized AV1 Tab layout for ultra-high-density (Top Strip ~150-160px).
+- Moved configuration hints inline with checkboxes/controls to save vertical rows.
+- Simplified ThreadSlot UI: removed redundant VID/AUD labels to focus on progress and speed.
+- Tightened all vertical padding across the tab to prevent any UI overflow.
+
 ## [1.0.25] - 2026-03-21
 ### Fixed
 - Refined AV1 Tab layout for high-density environments (Top Strip <= 200px).

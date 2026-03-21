@@ -1,5 +1,11 @@
 # TASKS
 
+- [x] **v1.0.26: AV1 Tab Layout Optimization (2026-03-21)**
+  - [x] Implement ultra-compact layout (strip ~150px).
+  - [x] Move hints inline with checkboxes.
+  - [x] Simplify ThreadSlot (remove VID/AUD info).
+  - [x] Bump version and synchronize.
+
 - [x] **v1.0.25: AV1 Tab UX Refinement (2026-03-21)**
   - [x] Implement high-density layout (strip <= 200px).
   - [x] Reduce checkbox sizes to 16x16px.

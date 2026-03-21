@@ -58,54 +58,41 @@ def _cb(parent, text: str, text_color=None, **kw) -> ctk.CTkCheckBox:
 
 
 class ThreadSlot(ctk.CTkFrame):
-    """Single encoding-thread monitor row."""
+    """Single encoding-thread monitor row — compact, title+progress+speed only."""
 
     def __init__(self, master, thread_id: int):
         super().__init__(
             master, fg_color=BG_TERTIARY,
-            corner_radius=4, border_width=1, border_color=SEPARATOR,
+            corner_radius=3, border_width=1, border_color=SEPARATOR,
         )
         self.thread_id = thread_id
 
-        top = ctk.CTkFrame(self, fg_color="transparent")
-        top.pack(fill="x", padx=8, pady=(3, 0))
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=6, pady=(2, 0))
 
         self.lbl_title = ctk.CTkLabel(
-            top, text=f"Thread {thread_id}", font=(_F, 9, "bold"),
+            row, text=f"Thread {thread_id}", font=(_F, 9, "bold"),
             text_color=TEXT_MUTED, anchor="w",
         )
         self.lbl_title.pack(side="left", fill="x", expand=True)
 
-        self.lbl_speed = ctk.CTkLabel(top, text="-", font=(_F, 9, "bold"), text_color=ACCENT)
+        self.lbl_speed = ctk.CTkLabel(
+            row, text="-", font=(_F, 9, "bold"), text_color=ACCENT)
         self.lbl_speed.pack(side="right")
 
-        self.progress = ctk.CTkProgressBar(self, height=10, progress_color=ACCENT)
-        self.progress.pack(fill="x", padx=8, pady=(2, 1))
+        self.progress = ctk.CTkProgressBar(self, height=8, progress_color=ACCENT)
+        self.progress.pack(fill="x", padx=6, pady=(2, 3))
         self.progress.set(0)
 
-        bot = ctk.CTkFrame(self, fg_color="transparent")
-        bot.pack(fill="x", padx=8, pady=(0, 3))
-
-        self.lbl_vid = ctk.CTkLabel(bot, text="VID: -", font=_SML, text_color=TEXT_MUTED, anchor="w")
-        self.lbl_vid.pack(side="left")
-        self.lbl_aud = ctk.CTkLabel(bot, text="AUD: -", font=_SML, text_color=TEXT_MUTED, anchor="w")
-        self.lbl_aud.pack(side="left", padx=(12, 0))
-
     def update(self, filename, percent, vid_info, aud_info, speed):
-        short = (filename[:28] + "…") if len(filename) > 28 else filename
+        short = (filename[:35] + "…") if len(filename) > 35 else filename
         self.lbl_title.configure(text=f"T{self.thread_id}: {short}")
         self.progress.set(percent / 100)
-        if vid_info:
-            self.lbl_vid.configure(text=f"VID: {vid_info}")
-        if aud_info:
-            self.lbl_aud.configure(text=f"AUD: {aud_info}")
         self.lbl_speed.configure(text=f"{speed:.1f}x")
 
     def reset(self):
         self.lbl_title.configure(text=f"Thread {self.thread_id}")
         self.progress.set(0)
-        self.lbl_vid.configure(text="VID: -")
-        self.lbl_aud.configure(text="AUD: -")
         self.lbl_speed.configure(text="-")
 
 
@@ -152,7 +139,7 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def _build_top_strip(self):
         top = ctk.CTkFrame(self, fg_color=BG_SECONDARY)
-        top.grid(row=0, column=0, padx=10, pady=(8, 4), sticky="ew")
+        top.grid(row=0, column=0, padx=10, pady=(4, 2), sticky="ew")
 
         # Relative widths matching the original: Directories widest, Metrics narrowest
         top.grid_columnconfigure(0, weight=10)
@@ -167,7 +154,7 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def _build_directories(self, parent, col: int):
         f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.grid(row=0, column=col, padx=8, pady=8, sticky="nsew")
+        f.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
         _section(f, "DIRECTORIES")
 
         def _path_row(placeholder, hint_text, browse_cmd, saved_key):
@@ -210,7 +197,7 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def _build_configuration(self, parent, col: int):
         f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.grid(row=0, column=col, padx=8, pady=8, sticky="nsew")
+        f.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
         _section(f, "CONFIGURATION")
 
         lbl_w = 52
@@ -225,7 +212,7 @@ class AV1EncoderTab(ctk.CTkFrame):
 
         # Quality
         r = ctk.CTkFrame(f, fg_color="transparent")
-        r.pack(fill="x", pady=1)
+        r.pack(fill="x", pady=0)
         _lbl("Quality").pack(in_=r, side="left")
         self.lbl_quality_val = ctk.CTkLabel(
             r, text=str(self.settings.get("quality")),
@@ -279,42 +266,54 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def _build_options(self, parent, col: int):
         f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.grid(row=0, column=col, padx=8, pady=8, sticky="nsew")
+        f.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
         _section(f, "OPTIONS")
 
+        def _opt_row(text, setting_key, hint_text, text_color=None):
+            """One checkbox + inline hint on the same horizontal row."""
+            row = ctk.CTkFrame(f, fg_color="transparent")
+            row.pack(anchor="w", fill="x", pady=1)
+            cb = _cb(row, text, text_color=text_color)
+            cb.pack(side="left")
+            ctk.CTkLabel(
+                row, text=hint_text, font=(_F, 7),
+                text_color="#444444", anchor="w",
+            ).pack(side="left", padx=(6, 0))
+            return cb
+
         # Keep Subdirs
-        self.check_subdirs = _cb(
-            f, "Keep Subdirs",
-            command=lambda: self.settings.set(
-                "maintain_structure", bool(self.check_subdirs.get())))
+        self.check_subdirs = _opt_row(
+            "Keep Subdirs", "maintain_structure",
+            "Mirror source folder tree in target")
         if self.settings.get("maintain_structure"):
             self.check_subdirs.select()
-        self.check_subdirs.pack(anchor="w", pady=(1, 0))
-        _hint(f, "Mirror source folder tree in target")
+        self.check_subdirs.configure(
+            command=lambda: self.settings.set(
+                "maintain_structure", bool(self.check_subdirs.get())))
 
         # Shutdown When Done
-        self.check_shutdown = _cb(
-            f, "Shutdown When Done",
-            command=lambda: self.settings.set(
-                "shutdown_on_finish", bool(self.check_shutdown.get())))
+        self.check_shutdown = _opt_row(
+            "Shutdown When Done", "shutdown_on_finish",
+            "Power off system after queue finishes")
         if self.settings.get("shutdown_on_finish"):
             self.check_shutdown.select()
-        self.check_shutdown.pack(anchor="w", pady=(2, 0))
-        _hint(f, "Power off system after queue finishes")
+        self.check_shutdown.configure(
+            command=lambda: self.settings.set(
+                "shutdown_on_finish", bool(self.check_shutdown.get())))
 
         # HW Accelerated Decode
-        self.check_hwaccel = _cb(
-            f, "HW Accelerated Decode",
-            command=lambda: self.settings.set(
-                "hw_accel_decode", bool(self.check_hwaccel.get())))
+        self.check_hwaccel = _opt_row(
+            "HW Accelerated Decode", "hw_accel_decode",
+            "Use GPU for demux / decode stage")
         if self.settings.get("hw_accel_decode"):
             self.check_hwaccel.select()
-        self.check_hwaccel.pack(anchor="w", pady=(2, 0))
-        _hint(f, "Use GPU for demux / decode stage")
+        self.check_hwaccel.configure(
+            command=lambda: self.settings.set(
+                "hw_accel_decode", bool(self.check_hwaccel.get())))
 
-        # Skip Short Clips — checkbox + HH MM SS inline
+        # Skip Short Clips — checkbox + HH MM SS on one row
         skip_row = ctk.CTkFrame(f, fg_color="transparent")
-        skip_row.pack(anchor="w", fill="x", pady=(2, 0))
+        skip_row.pack(anchor="w", fill="x", pady=1)
         self.check_skip = _cb(skip_row, "Skip Short Clips",
                                command=self.toggle_skip_fields)
         if self.settings.get("rejects_enabled"):
@@ -330,30 +329,34 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.entry_skip_h = _te(self.settings.get("rejects_h"))
         self.entry_skip_m = _te(self.settings.get("rejects_m"))
         self.entry_skip_s = _te(self.settings.get("rejects_s"))
-        _hint(f, "Skip files shorter than HH:MM:SS threshold")
+        ctk.CTkLabel(skip_row, text="HH:MM:SS min", font=(_F, 7),
+                     text_color="#444444").pack(side="left", padx=(4, 0))
 
         # Delete Source on Success
-        self.check_del = _cb(
-            f, "Delete Source on Success",
-            text_color="#ef4444",
-            command=self.on_delete_toggle)
+        del_row = ctk.CTkFrame(f, fg_color="transparent")
+        del_row.pack(anchor="w", fill="x", pady=(2, 0))
+        self.check_del = _cb(del_row, "Delete Source on Success",
+                              text_color="#ef4444",
+                              command=self.on_delete_toggle)
         if self.settings.get("delete_on_success"):
             self.check_del.select()
-        self.check_del.pack(anchor="w", pady=(2, 0))
+        self.check_del.pack(side="left")
 
-        self.check_del_confirm = _cb(
-            f, "Confirm Delete Safety",
-            command=self.on_delete_toggle)
+        confirm_row = ctk.CTkFrame(f, fg_color="transparent")
+        confirm_row.pack(anchor="w", fill="x", pady=(1, 0))
+        self.check_del_confirm = _cb(confirm_row, "Confirm Delete Safety",
+                                      command=self.on_delete_toggle)
         if self.settings.get("delete_on_success_confirm"):
             self.check_del_confirm.select()
-        self.check_del_confirm.pack(anchor="w", padx=(18, 0))
-        _hint(f, "Both boxes must be checked to enable", padx_left=18)
+        self.check_del_confirm.pack(side="left", padx=(18, 0))
+        ctk.CTkLabel(confirm_row, text="Both boxes must be checked",
+                     font=(_F, 7), text_color="#444444").pack(side="left", padx=(6, 0))
 
         self.toggle_skip_fields()
 
     def _build_metrics(self, parent, col: int):
         f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.grid(row=0, column=col, padx=8, pady=8, sticky="nsew")
+        f.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
         _section(f, "METRICS")
 
         def _row(label):
@@ -376,7 +379,7 @@ class AV1EncoderTab(ctk.CTkFrame):
 
     def _build_thread_area(self):
         mid = ctk.CTkFrame(self, fg_color="transparent")
-        mid.grid(row=1, column=0, padx=10, pady=2, sticky="nsew")
+        mid.grid(row=1, column=0, padx=10, pady=1, sticky="nsew")
         mid.grid_columnconfigure(0, weight=3)
         mid.grid_columnconfigure(1, weight=1)
         mid.grid_rowconfigure(0, weight=1)
@@ -386,7 +389,7 @@ class AV1EncoderTab(ctk.CTkFrame):
         slots_outer.grid(row=0, column=0, padx=(0, 6), sticky="nsew")
 
         hdr = ctk.CTkFrame(slots_outer, fg_color="transparent")
-        hdr.pack(fill="x", padx=8, pady=(4, 2))
+        hdr.pack(fill="x", padx=8, pady=(3, 1))
         ctk.CTkLabel(hdr, text="WORK PROGRESS", font=_HDR,
                      text_color="#555555").pack(side="left")
         self.lbl_io = ctk.CTkLabel(hdr, text="I/O: –", font=_SML, text_color=ACCENT)
@@ -399,7 +402,7 @@ class AV1EncoderTab(ctk.CTkFrame):
         self.lbl_time.pack(side="right")
 
         slots_inner = ctk.CTkFrame(slots_outer, fg_color="transparent")
-        slots_inner.pack(fill="both", expand=True, padx=8, pady=(0, 6))
+        slots_inner.pack(fill="both", expand=True, padx=6, pady=(0, 4))
 
         for i in range(4):
             slot = ThreadSlot(slots_inner, i + 1)
