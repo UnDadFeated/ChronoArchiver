@@ -1,16 +1,17 @@
 """
 scanner_panel.py — AI Media Scanner panel for ChronoArchiver.
 Visual style exactly matches Mass AV1 Encoder v12.
-Uses src/core/scanner.py and src/core/model_manager.py unchanged.
 """
 
+import csv
 import os
+import shutil
 import threading
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QPushButton, QLabel, QLineEdit, QCheckBox,
-    QProgressBar, QFileDialog, QListWidget,
+    QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
+    QProgressBar, QFileDialog, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
@@ -84,7 +85,20 @@ class AIScannerPanel(QWidget):
         self._chk_recursive = QCheckBox("Recursive"); self._chk_recursive.setChecked(True)
         self._chk_recursive.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; spacing:4px;")
         v_opts.addWidget(self._chk_recursive)
-        
+
+        self._chk_animals = QCheckBox("Keep Animals")
+        self._chk_animals.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; spacing:4px;")
+        self._chk_animals.setToolTip("Also keep photos with detected animals (cats, dogs, etc.)")
+        v_opts.addWidget(self._chk_animals)
+
+        h_thr = QHBoxLayout(); h_thr.setSpacing(4)
+        lbl_thr = QLabel("Animal conf:"); lbl_thr.setStyleSheet("font-size:8px; color:#888;")
+        self._spin_thresh = QSpinBox(); self._spin_thresh.setRange(10, 90); self._spin_thresh.setValue(40)
+        self._spin_thresh.setSuffix("%"); self._spin_thresh.setStyleSheet("font-size:8px;")
+        self._spin_thresh.setToolTip("Detection confidence threshold (higher = stricter)")
+        h_thr.addWidget(lbl_thr); h_thr.addWidget(self._spin_thresh, 1)
+        v_opts.addLayout(h_thr)
+
         v_opts.addStretch(1)
         h_strip.addWidget(grp_opts, 3)
 
@@ -141,9 +155,32 @@ class AIScannerPanel(QWidget):
         v_exec.addLayout(h_ctrl)
         root.addWidget(grp_exec)
 
+        # ── RESULTS (Keep | Move) ───────────────────────────────────────────
+        grp_res = QGroupBox("Results")
+        v_res = QVBoxLayout(grp_res)
+        v_res.setContentsMargins(8, 2, 8, 2)
+        h_lists = QHBoxLayout(); h_lists.setSpacing(8)
+        v_k = QVBoxLayout(); v_k.addWidget(QLabel("Keep (subjects)")); self._list_keep = QListWidget(); self._list_keep.setMinimumWidth(180); v_k.addWidget(self._list_keep)
+        v_m = QVBoxLayout(); v_m.addWidget(QLabel("Move (others)")); self._list_move = QListWidget(); self._list_move.setMinimumWidth(180); v_m.addWidget(self._list_move)
+        w_k = QWidget(); w_k.setLayout(v_k); h_lists.addWidget(w_k, 1)
+        w_m = QWidget(); w_m.setLayout(v_m); h_lists.addWidget(w_m, 1)
+        v_res.addLayout(h_lists)
+        h_res_btns = QHBoxLayout(); h_res_btns.setSpacing(8)
+        self._btn_move_files = QPushButton("Move Files")
+        self._btn_move_files.setStyleSheet("font-size:8px; font-weight:700;")
+        self._btn_move_files.clicked.connect(self._move_others)
+        self._btn_export = QPushButton("Export CSV")
+        self._btn_export.setStyleSheet("font-size:8px; font-weight:700;")
+        self._btn_export.clicked.connect(self._export_csv)
+        h_res_btns.addWidget(self._btn_move_files); h_res_btns.addWidget(self._btn_export)
+        h_res_btns.addStretch()
+        v_res.addLayout(h_res_btns)
+        grp_res.setMaximumHeight(200)
+        root.addWidget(grp_res)
+
         # ── CONSOLE ───────────────────────────────────────────────────────────
         grp_log = QGroupBox("Console")
-        grp_log.setFixedHeight(220)
+        grp_log.setFixedHeight(180)
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 4, 6, 4); v_log.setSpacing(0)
         self._log_list = QListWidget()
@@ -197,7 +234,8 @@ class AIScannerPanel(QWidget):
         def _run():
             self._engine.run_scan(path,
                 include_subfolders=self._chk_recursive.isChecked(),
-                keep_animals=False)
+                keep_animals=self._chk_animals.isChecked(),
+                animal_threshold=self._spin_thresh.value() / 100.0)
             self._sig.finished.emit()
 
         threading.Thread(target=_run, daemon=True).start()
@@ -217,6 +255,60 @@ class AIScannerPanel(QWidget):
         self._bar.setFormat("Complete")
         self._lbl_status.setText("Scan Complete")
         self._add_log("Batch scan complete.")
+        self._populate_results()
+
+    def _populate_results(self):
+        self._list_keep.clear()
+        self._list_move.clear()
+        if not self._engine:
+            return
+        for p in self._engine.keep_list:
+            self._list_keep.addItem(os.path.basename(p))
+        for p in self._engine.others_list:
+            it = QListWidgetItem(os.path.basename(p))
+            it.setData(Qt.UserRole, p)
+            self._list_move.addItem(it)
+
+    def _move_others(self):
+        if not self._engine or not self._engine.others_list:
+            self._add_log("No files to move. Run a scan first.")
+            return
+        base = self._edit_path.text().strip()
+        if not base or not os.path.isdir(base):
+            self._add_log("ERROR: Invalid source path.")
+            return
+        dest_dir = os.path.join(base, "Archived_Others")
+        os.makedirs(dest_dir, exist_ok=True)
+        moved = 0
+        for p in self._engine.others_list:
+            if os.path.isfile(p):
+                try:
+                    shutil.move(p, os.path.join(dest_dir, os.path.basename(p)))
+                    moved += 1
+                except Exception as e:
+                    self._add_log(f"Move failed: {p} — {e}")
+        self._add_log(f"Moved {moved} files to {dest_dir}.")
+        self._list_move.clear()
+        self._engine.others_list.clear()
+
+    def _export_csv(self):
+        if not self._engine:
+            self._add_log("Run a scan first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Category", "Path"])
+                for p in self._engine.keep_list:
+                    w.writerow(["Keep", p])
+                for p in self._engine.others_list:
+                    w.writerow(["Move", p])
+            self._add_log(f"Exported to {path}.")
+        except Exception as e:
+            self._add_log(f"Export failed: {e}")
 
     def _add_log(self, msg):
         sb = self._log_list.verticalScrollBar()

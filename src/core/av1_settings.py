@@ -11,6 +11,7 @@ class AV1Settings:
         self.defaults = {
             "quality": 30,
             "preset": "p4",
+            "output_ext": ".mkv",
             "reencode_audio": True,
             "concurrent_jobs": 2,
             "source_folder": "",

@@ -13,7 +13,7 @@ from typing import List, Callable, Optional
 
 class ScannerEngine:
     """
-    AI Scanner using OpenCV YuNet (Face) and SSD MobileNet (Animals).
+    AI Media Scanner using OpenCV YuNet (Face) and SSD MobileNet (Animals).
     Logic: 
     - Subject (Person/Animal) Detected -> 'Keep'
     - Not Detected -> 'Others'
@@ -33,7 +33,8 @@ class ScannerEngine:
     def cancel(self):
         self.stop_event.set()
 
-    def run_scan(self, directory: str, include_subfolders: bool = True, keep_animals: bool = False):
+    def run_scan(self, directory: str, include_subfolders: bool = True, keep_animals: bool = False,
+                 animal_threshold: float = 0.4):
         if not OPENCV_AVAILABLE:
             self.logger("Error: OpenCV (python-opencv) is not installed. AI features are disabled.")
             return
@@ -129,11 +130,9 @@ class ScannerEngine:
                 is_excluded = True
             else:
                 # No human. Check animal?
-                if keep_animals:
-                    # We need to detect animals here
-                    if animal_engine:
-                         if self._detect_animal(animal_engine, image):
-                             is_excluded = True
+                if keep_animals and animal_engine:
+                    if self._detect_animal(animal_engine, image, animal_threshold):
+                        is_excluded = True
 
             fname_base = os.path.basename(f_path)
             
@@ -180,21 +179,15 @@ class ScannerEngine:
         net = cv2.dnn.readNetFromTensorflow(pb_path, pbtxt_path)
         return net
 
-    def _detect_animal(self, net, image):
+    def _detect_animal(self, net, image, threshold: float = 0.4):
         """Performs animal detection using OpenCV DNN (SSD Format)."""
-        # Preprocessing: SSD MobileNet V1 usually expects 300x300
         blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), swapRB=True, crop=False)
         net.setInput(blob)
-        
-        # SSD MobileNet V1 Frozen Graph outputs [1, 1, N, 7]
         detections = net.forward()
-        
-        # COCO-based indices for animal_labels (1-indexed for PB model)
         animal_ids = {16, 17, 18, 19, 20, 21, 23, 24, 25}
-        
         for i in range(detections.shape[2]):
             score = detections[0, 0, i, 2]
-            if score > 0.4:
+            if score > threshold:
                 class_id = int(detections[0, 0, i, 1])
                 if class_id in animal_ids:
                     return True

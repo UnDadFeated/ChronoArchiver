@@ -6,7 +6,9 @@ Uses a QStackedWidget to manage distinct application panels.
 
 import sys
 import os
+import platform
 import queue
+import subprocess
 import webbrowser
 
 from PySide6.QtWidgets import (
@@ -24,6 +26,7 @@ from ui.panels.encoder_panel import AV1EncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
 from core.updater import ApplicationUpdater
 from core.logger import setup_logger
+from core.debug_logger import get_log_path
 
 # Global Stylesheet (Mass AV1 Encoder QSS)
 QSS = """
@@ -158,8 +161,8 @@ class ChronoArchiverApp(QMainWindow):
         self.nav_layout.addWidget(self.lbl_brand)
 
         self.btn_org = self._create_nav_btn("MEDIA ORGANIZER", 0)
-        self.btn_enc = self._create_nav_btn("AI ENCODER", 1)
-        self.btn_scn = self._create_nav_btn("AI SCANNER", 2)
+        self.btn_enc = self._create_nav_btn("MASS AV1 ENCODER", 1)
+        self.btn_scn = self._create_nav_btn("AI MEDIA SCANNER", 2)
         
         self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn]
         
@@ -203,6 +206,18 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout.addWidget(self.lbl_status)
         self.status_layout.addStretch()
 
+        self.btn_copy_console = QPushButton("COPY CONSOLE")
+        self.btn_copy_console.setStyleSheet("font-size: 7px; color: #6b7280; border:none; background:transparent;")
+        self.btn_copy_console.setToolTip("Copy current panel console to clipboard")
+        self.btn_copy_console.clicked.connect(self._copy_console)
+        self.status_layout.addWidget(self.btn_copy_console)
+
+        self.btn_debug = QPushButton("DEBUG")
+        self.btn_debug.setStyleSheet("font-size: 7px; color: #6b7280; border:none; background:transparent;")
+        self.btn_debug.setToolTip("Open debug log folder")
+        self.btn_debug.clicked.connect(self._open_debug_folder)
+        self.status_layout.addWidget(self.btn_debug)
+
         self.lbl_metrics = QLabel("")
         self.lbl_metrics.setStyleSheet("font-size: 8px; color: #6b7280; font-weight: 600;")
         self.status_layout.addWidget(self.lbl_metrics)
@@ -227,7 +242,7 @@ class ChronoArchiverApp(QMainWindow):
             btn.setProperty("active", i == index)
             btn.setChecked(i == index)
             btn.setStyle(btn.style())  # Refresh style
-        # Show metrics only when on AI Encoder panel
+        # Show metrics only when on Mass AV1 Encoder panel
         self.lbl_metrics.setVisible(index == 1)
         if index != 1:
             self.lbl_metrics.setText("")
@@ -235,6 +250,29 @@ class ChronoArchiverApp(QMainWindow):
     def _log(self, msg):
         self.logger.info(msg)
         self.lbl_status.setText(msg[:100].upper())
+
+    def _copy_console(self):
+        panel = self.stack.currentWidget()
+        if hasattr(panel, "_log_list"):
+            lines = [panel._log_list.item(i).text() for i in range(panel._log_list.count())]
+            text = "\n".join(lines)
+        else:
+            text = ""
+        QApplication.clipboard().setText(text)
+
+    def _open_debug_folder(self):
+        folder = os.path.dirname(get_log_path())
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+        try:
+            if platform.system() == "Windows":
+                os.startfile(folder)
+            elif platform.system() == "Darwin":
+                subprocess.run(["open", folder], check=False)
+            else:
+                subprocess.run(["xdg-open", folder], check=False)
+        except Exception:
+            pass
 
     def _on_encoder_metrics(self, cpu, gpu, ram):
         self.lbl_metrics.setText(f"  CPU {cpu}  ·  GPU {gpu}  ·  RAM {ram}")

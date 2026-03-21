@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox,
     QProgressBar, QFileDialog, QComboBox, QSlider,
-    QListWidget, QSizePolicy,
+    QListWidget, QListWidgetItem, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
@@ -139,7 +139,8 @@ class AV1EncoderPanel(QWidget):
         self._slider_q.valueChanged.connect(self._on_quality_changed)
         h_q.addWidget(lbl_q); h_q.addWidget(self._lbl_qval)
         h_q.addWidget(self._slider_q, 1)
-        h_q.addWidget(QLabel("CQ level — lower = better quality", styleSheet="font-size:7px; color:#444;"))
+        self._lbl_cq_hint = QLabel("CQ — lower = better quality", styleSheet="font-size:7px; color:#444;")
+        h_q.addWidget(self._lbl_cq_hint)
         v_cfg.addLayout(h_q)
 
         # Preset
@@ -155,6 +156,7 @@ class AV1EncoderPanel(QWidget):
             if self._combo_preset.itemText(i).startswith(curr_p):
                 self._combo_preset.setCurrentIndex(i); break
         self._combo_preset.currentIndexChanged.connect(self._on_preset_changed)
+        self._combo_preset.currentIndexChanged.connect(self._update_cq_hint)
         h_p.addWidget(lbl_p); h_p.addWidget(self._combo_preset, 1)
         h_p.addWidget(QLabel("Encode speed vs. efficiency tradeoff", styleSheet="font-size:7px; color:#444;"))
         v_cfg.addLayout(h_p)
@@ -170,6 +172,20 @@ class AV1EncoderPanel(QWidget):
         h_t.addWidget(lbl_t); h_t.addWidget(self._combo_jobs, 1)
         h_t.addWidget(QLabel("Parallel encoding slots (1 / 2 / 4)", styleSheet="font-size:7px; color:#444;"))
         v_cfg.addLayout(h_t)
+
+        # Output format
+        h_ext = QHBoxLayout(); h_ext.setSpacing(5)
+        lbl_ext = QLabel("Output"); lbl_ext.setStyleSheet(_slbl); lbl_ext.setFixedWidth(42)
+        self._combo_ext = QComboBox()
+        self._combo_ext.addItems([".mkv", ".webm", ".mp4"])
+        ext = self._settings.get("output_ext") or ".mkv"
+        idx = self._combo_ext.findText(ext)
+        if idx >= 0:
+            self._combo_ext.setCurrentIndex(idx)
+        self._combo_ext.currentTextChanged.connect(lambda t: self._settings.set("output_ext", t))
+        h_ext.addWidget(lbl_ext); h_ext.addWidget(self._combo_ext, 1)
+        h_ext.addWidget(QLabel("Container format", styleSheet="font-size:7px; color:#444;"))
+        v_cfg.addLayout(h_ext)
 
         # Audio
         h_a = QHBoxLayout(); h_a.setSpacing(5)
@@ -269,6 +285,31 @@ class AV1EncoderPanel(QWidget):
         grid_strip.setColumnStretch(0, 1)  # Directories + Configuration expand horizontally
 
         root.addLayout(grid_strip)
+
+        # ── QUEUE PREVIEW ─────────────────────────────────────────────────────
+        grp_queue = QGroupBox("Queue Preview")
+        v_queue = QVBoxLayout(grp_queue)
+        v_queue.setContentsMargins(8, 2, 8, 2)
+        v_queue.setSpacing(4)
+        h_qbtns = QHBoxLayout()
+        self._btn_scan = QPushButton("Scan")
+        self._btn_scan.setStyleSheet("font-size:8px; font-weight:700;")
+        self._btn_scan.clicked.connect(self._scan_queue)
+        self._btn_remove = QPushButton("Remove Selected")
+        self._btn_remove.setStyleSheet("font-size:8px; font-weight:700;")
+        self._btn_remove.clicked.connect(self._remove_from_queue)
+        self._btn_remove.setEnabled(False)
+        h_qbtns.addWidget(self._btn_scan)
+        h_qbtns.addWidget(self._btn_remove)
+        h_qbtns.addStretch()
+        v_queue.addLayout(h_qbtns)
+        self._queue_list = QListWidget()
+        self._queue_list.setMaximumHeight(80)
+        self._queue_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self._queue_list.itemSelectionChanged.connect(lambda: self._btn_remove.setEnabled(len(self._queue_list.selectedItems()) > 0))
+        v_queue.addWidget(self._queue_list)
+        grp_queue.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        root.addWidget(grp_queue)
 
         # ── WORK PROGRESS ─────────────────────────────────────────────────────
         grp_work = QGroupBox("Work Progress")
@@ -380,8 +421,9 @@ class AV1EncoderPanel(QWidget):
         self._tel_timer.timeout.connect(self._poll_telemetry)
         self._tel_timer.start()
 
-        # Initialise slot visibility
+        # Initialise slot visibility and CQ hint
         self._on_jobs_changed(self._combo_jobs.currentIndex())
+        self._update_cq_hint()
 
     # ── settings helpers ──────────────────────────────────────────────────────
 
@@ -393,6 +435,12 @@ class AV1EncoderPanel(QWidget):
         p_list = ["p7", "p6", "p5", "p4", "p3", "p2", "p1"]
         if idx < len(p_list):
             self._settings.set("preset", p_list[idx])
+
+    def _update_cq_hint(self):
+        hints = ["18-28", "22-32", "25-35", "28-38", "30-40", "32-42", "35-45"]
+        idx = self._combo_preset.currentIndex()
+        h = hints[min(idx, len(hints) - 1)]
+        self._lbl_cq_hint.setText(f"CQ suggested {h}")
 
     def _on_jobs_changed(self, idx):
         jobs = [1, 2, 4][idx]
@@ -422,6 +470,26 @@ class AV1EncoderPanel(QWidget):
             self._edit_dst.setText(f)
             self._settings.set("target_folder", f)
 
+    def _scan_queue(self):
+        src = self._edit_src.text().strip()
+        if not src or not os.path.isdir(src):
+            self._add_log("ERROR: Select source directory first.")
+            return
+        self._add_log("Scanning source...")
+        scan_engine = AV1EncoderEngine()
+        items = list(scan_engine.scan_files(src))
+        self._queue_list.clear()
+        for path, size in items:
+            it = QListWidgetItem(os.path.basename(path))
+            it.setData(Qt.UserRole, (path, size))
+            self._queue_list.addItem(it)
+        self._add_log(f"Found {len(items)} files. Remove any to exclude, then Start.")
+
+    def _remove_from_queue(self):
+        rows = sorted((self._queue_list.row(it) for it in self._queue_list.selectedItems()), reverse=True)
+        for r in rows:
+            self._queue_list.takeItem(r)
+
     # ── encoding lifecycle ────────────────────────────────────────────────────
 
     def _toggle_encoding(self):
@@ -437,11 +505,19 @@ class AV1EncoderPanel(QWidget):
             self._add_log("ERROR: Please select source and target directories.")
             return
 
-        self._add_log(f"Scanning {src} ...")
-        scan_engine = AV1EncoderEngine()
-        self._queue = list(scan_engine.scan_files(src))
+        # Use queue from list if populated, else scan
+        self._queue = []
+        for i in range(self._queue_list.count()):
+            it = self._queue_list.item(i)
+            data = it.data(Qt.UserRole)
+            if data:
+                self._queue.append(data)
         if not self._queue:
-            self._add_log("No compatible files found.")
+            self._add_log(f"Scanning {src} ...")
+            scan_engine = AV1EncoderEngine()
+            self._queue = list(scan_engine.scan_files(src))
+        if not self._queue:
+            self._add_log("No compatible files found. Use Scan to build queue.")
             return
 
         self._queue_sizes = {p: s for p, s in self._queue}
@@ -525,13 +601,16 @@ class AV1EncoderPanel(QWidget):
                     continue
 
             # Build output path
+            out_ext = self._settings.get("output_ext") or ".mkv"
+            if not out_ext.startswith("."):
+                out_ext = "." + out_ext
             fname = os.path.basename(input_path)
             if self._settings.get("maintain_structure") and src:
-                rel   = os.path.relpath(input_path, src)
-                tpath = os.path.join(dst, os.path.splitext(rel)[0] + "_av1.mkv")
+                rel = os.path.relpath(input_path, src)
+                tpath = os.path.join(dst, os.path.splitext(rel)[0] + "_av1" + out_ext)
                 os.makedirs(os.path.dirname(tpath), exist_ok=True)
             else:
-                tpath = os.path.join(dst, os.path.splitext(fname)[0] + "_av1.mkv")
+                tpath = os.path.join(dst, out_name)
 
             ok, in_p, out_p = engine.encode_file(
                 input_path, tpath,

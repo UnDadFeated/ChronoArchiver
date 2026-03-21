@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.8] - 2026-03-21
+### Added
+- **Debug logging**: Centralized `chronoarchiver_debug.log` with timestamps and utility name (Media Organizer, Mass AV1 Encoder, AI Media Scanner). Rotation keeps last 3 log files to prevent storage bloat.
+- **Footer buttons**: COPY CONSOLE (copy current panel console to clipboard); DEBUG (open debug log folder in file manager).
+- **Media Organizer**: Optional target directory to organize into a different folder; extensions override (comma-separated; blank uses Photos/Videos); summary stats (Moved X | Skipped Y | Duplicates Z) after each run; ffprobe `creation_time` fallback for video metadata before mtime.
+- **Mass AV1 Encoder**: Queue preview populated by Scan (items removable before Start); output format choice (.mkv, .webm, .mp4); CRF hints per preset with suggested CQ ranges.
+- **AI Media Scanner**: Keep (subjects) and Move (others) result lists; Move Files to move others to `Archived_Others/`; Keep Animals checkbox and confidence threshold (10–90%); Export CSV for Keep/Move paths.
+
+### Changed
+- Nav bar panel labels: "AI Encoder" → "Mass AV1 Encoder", "AI Scanner" → "AI Media Scanner".
+
 ## [2.0.7] - 2026-03-21
 ### Fixed
 - Updater button stuck on "CHECKING...": switched from Qt Signal to queue + main-thread QTimer polling for reliable cross-thread delivery.

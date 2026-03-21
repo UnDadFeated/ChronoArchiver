@@ -1,6 +1,6 @@
 # Maintainer: UnDadFeated <jscheema@gmail.com>
 pkgname=chronoarchiver
-pkgver=2.0.7
+pkgver=2.0.8
 pkgrel=1
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
@@ -17,7 +17,7 @@ depends=(
     'ffmpeg'
 )
 makedepends=('git' 'python-setuptools')
-optdepends=('python-opencv: for AI Scanner features (Face/Animal detection)')
+optdepends=('python-opencv: for AI Media Scanner (Face/Animal detection)')
 source=("git+https://github.com/UnDadFeated/ChronoArchiver.git#tag=v${pkgver}")
 sha256sums=('SKIP')
 install=chronoarchiver.install

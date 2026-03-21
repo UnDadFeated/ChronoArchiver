@@ -24,6 +24,7 @@ class _Signals(QObject):
     progress = Signal(float)
     status   = Signal(str)
     finished = Signal()
+    stats    = Signal(int, int, int)  # moved, skipped, duplicates
 
 
 class MediaOrganizerPanel(QWidget):
@@ -36,9 +37,11 @@ class MediaOrganizerPanel(QWidget):
         self._sig.progress.connect(self._on_progress)
         self._sig.status.connect(self._on_status)
         self._sig.finished.connect(self._on_finished)
+        self._sig.stats.connect(self._on_stats)
 
         self._engine = None  # Initialized in _run_job
         self._is_running = False
+        self._last_stats = (0, 0, 0)
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
 
@@ -56,7 +59,7 @@ class MediaOrganizerPanel(QWidget):
         v_dir.setContentsMargins(8, 2, 8, 2); v_dir.setSpacing(1)
 
         self._edit_path = QLineEdit()
-        self._edit_path.setPlaceholderText("SELECT FOLDER TO ORGANIZE...")
+        self._edit_path.setPlaceholderText("SOURCE — folder containing media...")
         self._edit_path.setStyleSheet(
             "color:#fff; font-size:12px; font-weight:500; "
             "background:#121212; border:1px solid #1a1a1a;")
@@ -69,8 +72,25 @@ class MediaOrganizerPanel(QWidget):
         h_src.addWidget(btn_br)
 
         v_dir.addLayout(h_src)
-        v_dir.addWidget(QLabel("Folder containing media to sort by date (EXIF/Metadata)",
+        v_dir.addWidget(QLabel("Source folder to organize (EXIF/metadata/ffprobe)",
                                styleSheet=_shint))
+
+        self._edit_target = QLineEdit()
+        self._edit_target.setPlaceholderText("TARGET (optional) — organize into this folder...")
+        self._edit_target.setStyleSheet(
+            "color:#fff; font-size:12px; font-weight:500; "
+            "background:#121212; border:1px solid #1a1a1a;")
+
+        h_tgt = QHBoxLayout(); h_tgt.setSpacing(4)
+        h_tgt.addWidget(self._edit_target, 1)
+        btn_tgt = QPushButton("Browse"); btn_tgt.setFixedWidth(52)
+        btn_tgt.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        btn_tgt.clicked.connect(self._browse_target)
+        h_tgt.addWidget(btn_tgt)
+
+        v_dir.addLayout(h_tgt)
+        v_dir.addWidget(QLabel("Leave blank for in-place organization", styleSheet=_shint))
+
         grp_dir.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         h_strip.addWidget(grp_dir, 11)
 
@@ -81,10 +101,16 @@ class MediaOrganizerPanel(QWidget):
 
         self._chk_photos = QCheckBox("Photos"); self._chk_photos.setChecked(True)
         self._chk_videos = QCheckBox("Videos"); self._chk_videos.setChecked(True)
-        
+
         for cb in [self._chk_photos, self._chk_videos]:
             cb.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; spacing:4px;")
             v_opts.addWidget(cb)
+
+        self._edit_exts = QLineEdit()
+        self._edit_exts.setPlaceholderText("Extensions override (e.g. .jpg,.png,.mp4)")
+        self._edit_exts.setStyleSheet("font-size:8px; color:#888; background:#121212; border:1px solid #1a1a1a; padding:2px;")
+        v_opts.addWidget(self._edit_exts)
+        v_opts.addWidget(QLabel("Leave blank to use Photos/Videos above", styleSheet=_shint))
 
         grp_opts.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         h_strip.addWidget(grp_opts, 3)
@@ -151,40 +177,69 @@ class MediaOrganizerPanel(QWidget):
         root.addWidget(grp_log, 1)  # Stretch: console takes all remaining vertical space
 
     def _browse(self):
-        f = QFileDialog.getExistingDirectory(self, "Select Folder to Organize")
+        f = QFileDialog.getExistingDirectory(self, "Select Source Folder")
         if f:
             self._edit_path.setText(f)
 
+    def _browse_target(self):
+        f = QFileDialog.getExistingDirectory(self, "Select Target Folder (optional)")
+        if f:
+            self._edit_target.setText(f)
+
     def _run_job(self):
         path = self._edit_path.text().strip()
-        if not path or not os.path.isdir(path): 
-            self._add_log("ERROR: Invalid directory."); return
+        if not path or not os.path.isdir(path):
+            self._add_log("ERROR: Invalid source directory.")
+            return
 
-        exts = set()
-        if self._chk_photos.isChecked():
-            exts.update({'.jpg','.jpeg','.png','.gif','.bmp','.tiff','.webp'})
-        if self._chk_videos.isChecked():
-            exts.update({'.mp4','.mov','.avi','.webm','.mkv','.m4v','.wmv'})
+        exts_override = self._edit_exts.text().strip()
+        if exts_override:
+            exts = set()
+            for p in exts_override.replace(" ", "").split(","):
+                ext = p.strip().lower()
+                if ext and not ext.startswith("."):
+                    ext = "." + ext
+                if ext:
+                    exts.add(ext)
+        else:
+            exts = set()
+            if self._chk_photos.isChecked():
+                exts.update({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'})
+            if self._chk_videos.isChecked():
+                exts.update({'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'})
         if not exts:
-            self._add_log("ERROR: Select at least one media type."); return
+            self._add_log("ERROR: Select at least one media type or specify extensions.")
+            return
+
+        target = self._edit_target.text().strip() or None
+        if target and not os.path.isdir(target):
+            self._add_log("ERROR: Target directory does not exist.")
+            return
 
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
 
-        def _log(msg): self._sig.log_msg.emit(msg)
+        def _log(msg):
+            self._sig.log_msg.emit(msg)
+
         self._engine = OrganizerEngine(logger_callback=_log)
 
-        def _prog(current, total, filename):   # 3 args, not 2
+        def _prog(current, total, filename):
             pct = int(current / total * 100) if total > 0 else 0
             self._sig.progress.emit(pct / 100.0)
             self._sig.status.emit(f"{current}/{total}  {filename}")
+
+        def _stats(moved, skipped, duplicates):
+            self._sig.stats.emit(moved, skipped, duplicates)
 
         def _run():
             self._engine.organize(path,
                 dry_run=self._chk_dry.isChecked(),
                 use_flat_folders=self._chk_flat.isChecked(),
                 valid_exts=exts,
-                progress_callback=_prog)
+                target_dir=target,
+                progress_callback=_prog,
+                stats_callback=_stats)
             self._sig.finished.emit()
 
         threading.Thread(target=_run, daemon=True).start()
@@ -199,12 +254,17 @@ class MediaOrganizerPanel(QWidget):
     def _on_status(self, msg):
         self._lbl_status.setText(msg)
 
+    def _on_stats(self, moved, skipped, duplicates):
+        self._last_stats = (moved, skipped, duplicates)
+
     def _on_finished(self):
         self._is_running = False
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
         self._bar.setFormat("Complete")
-        self._lbl_status.setText("Organization Complete")
+        stats = getattr(self, "_last_stats", (0, 0, 0))
+        moved, skipped, duplicates = stats
+        self._lbl_status.setText(f"Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}")
         self._add_log("Batch organization complete.")
 
     def _add_log(self, msg):

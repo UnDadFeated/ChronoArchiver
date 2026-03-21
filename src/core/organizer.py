@@ -2,10 +2,18 @@ import os
 import shutil
 import hashlib
 import re
+import subprocess
 import pathlib
 from datetime import datetime
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Tuple
 import piexif
+
+try:
+    from .debug_logger import debug, UTILITY_MEDIA_ORGANIZER
+except ImportError:
+    from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
+
+VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.mpg', '.mpeg', '.ts'}
 
 class OrganizerEngine:
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None):
@@ -50,7 +58,25 @@ class OrganizerEngine:
             except ValueError:
                 return None
 
-        # 3. Fallback to file creation/modification (Standard for videos/webms if no other lib)
+        # 3. For videos: try ffprobe creation_time
+        ext = pathlib.Path(file_path).suffix.lower()
+        if ext in VIDEO_EXTS:
+            try:
+                cmd = [
+                    "ffprobe", "-v", "error", "-show_entries", "format_tags=creation_time",
+                    "-of", "default=noprint_wrappers=1:nokey=1", file_path
+                ]
+                out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+                if out:
+                    dt = datetime.fromisoformat(out.replace("Z", "+00:00"))
+                    if dt.tzinfo:
+                        dt = dt.replace(tzinfo=None)
+                    if dt.year >= 1980:
+                        return dt
+            except (subprocess.SubprocessError, ValueError, OSError):
+                pass
+
+        # 4. Fallback to file modification time
         try:
             timestamp = pathlib.Path(file_path).stat().st_mtime
             dt = datetime.fromtimestamp(timestamp)
@@ -81,27 +107,37 @@ class OrganizerEngine:
                     count += 1
         return count
 
-    def organize(self, source_dir: str, dry_run: bool = True, use_flat_folders: bool = False, valid_exts: Optional[set] = None, progress_callback=None):
+    def organize(self, source_dir: str, dry_run: bool = True, use_flat_folders: bool = False,
+                 valid_exts: Optional[set] = None, target_dir: Optional[str] = None,
+                 progress_callback=None, stats_callback=None):
+        debug(UTILITY_MEDIA_ORGANIZER, f"organize start: source={source_dir}, dry_run={dry_run}, flat={use_flat_folders}, target={target_dir or 'in-place'}")
         if not os.path.exists(source_dir):
             self.logger("Source directory does not exist.")
+            debug(UTILITY_MEDIA_ORGANIZER, "ERROR: Source directory does not exist")
             return
 
         self.cancel_flag = False
         if valid_exts is None:
             valid_exts = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.avi', '.webm', '.mkv', '.gif', '.bmp', '.tiff'}
-        
+
+        base_dir = target_dir.rstrip(os.sep) if target_dir else source_dir
+
         self.logger("Counting files...")
-        if progress_callback: progress_callback(0, 0, "Counting files...")
-        
+        if progress_callback:
+            progress_callback(0, 0, "Counting files...")
+
         total_files = self.count_files(source_dir, valid_exts)
         self.logger(f"Found {total_files} media files.")
-        
+        debug(UTILITY_MEDIA_ORGANIZER, f"Found {total_files} files to process")
+
         folder_style = "Flat (YYYY-MM)" if use_flat_folders else "Nested (YYYY/YYYY-MM)"
-        self.logger(f"Starting Organization (Dry Run: {dry_run}, Style: {folder_style})...")
-        
+        dest_note = f" -> {base_dir}" if target_dir else " (in-place)"
+        self.logger(f"Starting Organization (Dry Run: {dry_run}, Style: {folder_style}{dest_note})...")
+
         files_moved = 0
         files_processed = 0
         duplicates_found = 0
+        skipped = 0
         
         for root, _, files in os.walk(source_dir):
             if self.cancel_flag:
@@ -124,21 +160,21 @@ class OrganizerEngine:
                 
                 if not date_obj:
                     self.logger(f"Skipping {file}: Could not determine date.")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"Skip (no date): {file}")
+                    skipped += 1
                     continue
-                
+
                 # Format Data
                 year = str(date_obj.year)
                 month_name = f"{date_obj.year}-{date_obj.month:02d}"
                 date_prefix = f"{date_obj.year}-{date_obj.month:02d}-{date_obj.day:02d}"
 
-                # Target Structure
+                # Target Structure (base_dir = target or source for in-place)
                 if use_flat_folders:
-                    # Flat: Source/YYYY-MM/
-                    target_dir = os.path.join(source_dir, month_name)
+                    target_subdir = os.path.join(base_dir, month_name)
                     rel_base = month_name
                 else:
-                    # Nested: Source/YYYY/YYYY-MM/
-                    target_dir = os.path.join(source_dir, year, month_name)
+                    target_subdir = os.path.join(base_dir, year, month_name)
                     rel_base = os.path.join(year, month_name)
                 
                 # Logic: Check if file already has a YYYY-MM-DD prefix
@@ -161,7 +197,7 @@ class OrganizerEngine:
                     # No prefix, add it.
                     new_filename = f"{date_prefix}_{file}"
 
-                target_path = os.path.join(target_dir, new_filename)
+                target_path = os.path.join(target_subdir, new_filename)
                 
                 # Check if it's already there (path match)
                 if full_path == target_path:
@@ -173,6 +209,7 @@ class OrganizerEngine:
                     if os.path.getsize(full_path) == os.path.getsize(target_path) and \
                        self._quick_hash(full_path) == self._quick_hash(target_path):
                         self.logger(f"[DUPLICATE] {file} exists in {rel_base}. Skipping.")
+                        debug(UTILITY_MEDIA_ORGANIZER, f"Duplicate: {file}")
                         duplicates_found += 1
                         continue
                     else:
@@ -180,22 +217,26 @@ class OrganizerEngine:
                         p_new = pathlib.Path(new_filename)
                         base, extension = p_new.stem, p_new.suffix
                         new_name_collision = f"{base}_{int(datetime.now().timestamp())}{extension}"
-                        target_path = os.path.join(target_dir, new_name_collision)
+                        target_path = os.path.join(target_subdir, new_name_collision)
                         new_filename = new_name_collision
 
                 rel_target_path = os.path.join(rel_base, new_filename)
                 
                 if not dry_run:
-                    os.makedirs(target_dir, exist_ok=True)
+                    os.makedirs(target_subdir, exist_ok=True)
                     try:
                         shutil.move(full_path, target_path)
                         files_moved += 1
                         self.logger(f"[MOVE] \"{file}\" -> \"{rel_target_path}\"")
                     except Exception as e:
                         self.logger(f"Error moving {file}: {e}")
+                        debug(UTILITY_MEDIA_ORGANIZER, f"Error moving {file}: {e}")
                 else:
                     files_moved += 1
                     self.logger(f"[DRY RUN] \"{file}\" -> \"{rel_target_path}\"")
 
-        self.logger(f"Done. Moved: {files_moved}. Duplicates: {duplicates_found}.")
+        self.logger(f"Done. Moved: {files_moved}, Skipped: {skipped}, Duplicates: {duplicates_found}.")
+        debug(UTILITY_MEDIA_ORGANIZER, f"Done: moved={files_moved}, skipped={skipped}, duplicates={duplicates_found}")
+        if stats_callback:
+            stats_callback(files_moved, skipped, duplicates_found)
 

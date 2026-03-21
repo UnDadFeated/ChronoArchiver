@@ -2,7 +2,7 @@
 
 **ChronoArchiver** is a unified, high-performance media management suite designed for long-term data preservation and optimization. It combines intelligent data archival with professional-grade video transcoding, providing a seamless workflow for modern digital libraries. *Time to Archive!*
 
-[![Version](https://img.shields.io/badge/version-2.0.7-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-2.0.8-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey.svg)](#system-requirements)
 
@@ -27,7 +27,7 @@ Sorts photos and videos into a date-based folder hierarchy using the most reliab
 - Handles photos and videos independently — select either or both before running
 - Cancellable mid-run with a single click
 
-### AI Scanner
+### AI Media Scanner
 
 Classifies images into two buckets — photos containing people or animals, and everything else — so you can review and move the latter in bulk.
 
@@ -40,7 +40,7 @@ Classifies images into two buckets — photos containing people or animals, and 
 - Progress bar shows current file, count, and estimated time remaining
 - Cancellable at any point
 
-### Mass AI Encoder
+### Mass AV1 Encoder
 
 Batch-encodes video files to AV1, preserving folder structure and file metadata.
 
@@ -58,11 +58,15 @@ Batch-encodes video files to AV1, preserving folder structure and file metadata.
 
 ### Arch Linux (AUR)
 
+[![AUR](https://img.shields.io/aur/version/chronoarchiver)](https://aur.archlinux.org/packages/chronoarchiver)
+
 ```bash
+paru -S chronoarchiver
+# or
 yay -S chronoarchiver
 ```
 
-### From Source
+### From Source (Git)
 
 **Requirements:** Python 3.10 or later, FFmpeg (must be on `PATH`)
 
@@ -73,7 +77,7 @@ pip install -r requirements.txt
 python src/ui/app.py
 ```
 
-**Optional:** An NVIDIA GPU with NVENC AV1 support (Ada Lovelace / RTX 40-series or later) enables hardware-accelerated encoding in the Transcoding Dashboard. The application works fully without it.
+**Optional:** An NVIDIA GPU with NVENC AV1 support (Ada Lovelace / RTX 40-series or later) enables hardware-accelerated encoding in the Mass AV1 Encoder. The application works fully without it.
 
 ---
 
