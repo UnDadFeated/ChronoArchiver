@@ -1,6 +1,6 @@
 # Maintainer: UnDadFeated <jscheema@gmail.com>
 pkgname=chronoarchiver
-pkgver=1.0.26
+pkgver=2.0.0
 pkgrel=1
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
@@ -8,7 +8,7 @@ url="https://github.com/UnDadFeated/ChronoArchiver"
 license=('MIT')
 depends=(
     'python'
-    'python-customtkinter'
+    'pyside6'
     'python-pillow'
     'python-piexif'
     'python-psutil'
