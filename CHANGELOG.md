@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [1.0.13] - 2026-03-21
+### Added
+- **Brand Catchline**: Integrated the official catchline "Time to Archive!" across the UI (title bar and log header), `README.md`, and packaging metadata.
+
+
 ## [1.0.12] - 2026-03-21
 ### Added
 - **Premium Icon Design**: Generated and integrated a high-fidelity application icon suite (`src/assets/icon.png` and `src/assets/icon.ico`) to give ChronoArchiver a professional, branded identity.

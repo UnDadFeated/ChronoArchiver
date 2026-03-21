@@ -5,6 +5,6 @@ Icon=chronoarchiver
 Type=Application
 Categories=AudioVideo;Video;Graphics;
 Terminal=false
-Comment=Unified Media Archive Organizer and AV1 Encoder
+Comment=Unified Media Archive Organizer and AV1 Encoder - Time to Archive!
 Keywords=media;archive;organizer;av1;encoder;
 StartupNotify=true

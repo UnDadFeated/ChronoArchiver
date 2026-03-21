@@ -1,8 +1,8 @@
 # Maintainer: UnDadFeated <jscheema@gmail.com>
 pkgname=chronoarchiver
-pkgver=1.0.12
+pkgver=1.0.13
 pkgrel=1
-pkgdesc="Unified Media Archive Organizer and AV1 Encoder"
+pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
 url="https://github.com/UnDadFeated/ChronoArchiver"
 license=('MIT')

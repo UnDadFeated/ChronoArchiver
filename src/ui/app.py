@@ -41,7 +41,7 @@ class App(ctk.CTk):
         
         self.updater = UpdaterEngine(self, self.log)
 
-        self.title(f"{APP_NAME} {__version__}")
+        self.title(f"{APP_NAME} - Time to Archive! ({__version__})")
         self.geometry("1100x750") # Slightly larger for the new tab
         self.resizable(False, False)
 
@@ -104,6 +104,10 @@ class App(ctk.CTk):
         self.console_header.pack(fill="x", padx=0, pady=(0, 2))
         
         ctk.CTkLabel(self.console_header, text="LOG CONSOLE", font=FONT_HEADER, text_color=TEXT_MUTED, anchor="w").pack(side="left")
+        
+        # Branding Catchline
+        ctk.CTkLabel(self.console_header, text="Time to Archive!", 
+                     font=(FONT_MAIN[0], FONT_MAIN[1], 'italic'), text_color=ACCENT).pack(side="left", padx=20)
         
         self.btn_update = ctk.CTkButton(self.console_header, text="Check for Updates", width=120, height=24, 
                                         font=FONT_MAIN, corner_radius=6, fg_color=ACCENT, hover_color="#5a8ff0",
