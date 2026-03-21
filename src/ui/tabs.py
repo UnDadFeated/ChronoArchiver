@@ -513,8 +513,8 @@ class AIScannerTab(ctk.CTkFrame):
             btn.pack(fill="x", pady=1)
 
             # Update labels
-            self.list_keep.configure(label_text=f"Files ({len(self.exclude_files)})")
-            self.list_exclude.configure(label_text=f"Files ({len(self.keep_files)})")
+            self.list_keep.configure(label_text=f"Files ({len(self.keep_files)})")
+            self.list_exclude.configure(label_text=f"Files ({len(self.exclude_files)})")
 
         self.selected_item = None
 

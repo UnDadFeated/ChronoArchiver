@@ -44,11 +44,11 @@ class OrganizerEngine:
         match = re.search(pattern, filename)
         if match:
             y, m, d = match.groups()
-            for fmt in ["%Y%m%d", "%Y-%m-%d", "%Y_%m_%d"]:
-                try:
-                    return datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
-                except ValueError:
-                    continue
+            try:
+                # Validates against a standard calendar (raises ValueError for things like Feb 31)
+                return datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
+            except ValueError:
+                return None
 
         # 3. Fallback to file creation/modification (Standard for videos/webms if no other lib)
         try:

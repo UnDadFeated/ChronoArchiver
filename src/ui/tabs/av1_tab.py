@@ -164,6 +164,7 @@ class AV1EncoderTab(ctk.CTkFrame):
         for file_path, size in files:
             if not self.is_encoding: break
             
+            filename = os.path.basename(file_path)
             # Create target path (Check maintain_structure)
             if self.settings.get("maintain_structure"):
                 rel_path = os.path.relpath(file_path, src)

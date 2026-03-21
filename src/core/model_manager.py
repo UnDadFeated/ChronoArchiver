@@ -11,18 +11,18 @@ class ModelManager:
         "face_detection": {
             "filename": "face_detection_yunet_2023mar.onnx",
             "url": "https://github.com/opencv/opencv_zoo/raw/master/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
-            "sha256": "7b98a0d4c987820173f4e8574d6c442468697690f3174296839611f78e1f57e0" # Example hash
+            "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
         },
         "animal_detection": {
             "filename": "efficientdet_lite0.tflite",
             "url": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
-            "sha256": "4f36a5a544c8f8b8098c4d2847c23f798e1f5de0e0e0e0e0e0e0e0e0e0e0e0e0" # Example hash
+            "sha256": "4f36a5a544c8f8b8098c4d2847c23f798e1f5de0e0e0e0e0e0e0e0e0e0e0e0e0" # Placeholder - update with sha256sum
         }
     }
     
     def __init__(self, model_dir: str):
         self.model_dir = pathlib.Path(model_dir)
-        self.logger = logging.getLogger("ChronoArchiver") # Updated logger name
+        self.logger = logging.getLogger("ChronoArchiver")
         self.stop_event = threading.Event()
 
     def verify_hash(self, file_path: pathlib.Path, expected_sha: str) -> bool:
@@ -33,8 +33,13 @@ class ModelManager:
             with open(file_path, "rb") as f:
                 for byte_block in iter(lambda: f.read(4096), b""):
                     sha256_hash.update(byte_block)
-            return sha256_hash.hexdigest() == expected_sha
-        except Exception:
+            actual_sha = sha256_hash.hexdigest()
+            if actual_sha != expected_sha:
+                self.logger.warning(f"Hash mismatch for {file_path.name}! Expected: {expected_sha}, Actual: {actual_sha}")
+                return False
+            return True
+        except Exception as e:
+            self.logger.error(f"Error during hash verification: {e}")
             return False
 
     def get_missing_models(self):
@@ -103,8 +108,6 @@ class ModelManager:
                 self.logger.error(f"Failed to download {info['filename']}: {e}")
                 if dest.exists(): dest.unlink()
                 return False
-
-        return self.is_up_to_date()
 
         return self.is_up_to_date()
 
