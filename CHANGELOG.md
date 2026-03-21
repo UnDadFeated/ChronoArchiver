@@ -1,6 +1,11 @@
 # CHANGELOG
 
-## [1.0.14] - 2026-03-21
+## [1.0.15] - 2026-03-21
+### Added
+- **Pixel-Perfect Icon Scaling**: Re-processed the premium icon to fit exactly top-to-bottom within the 256px frame, maximizing visual impact and ensuring absolute alpha transparency.
+### Fixed
+- **AUR Dependency Fix**: Corrected `PKGBUILD` to depend on `python-opencv` instead of `opencv`, resolving the `ModuleNotFoundError: No module named 'cv2'` on Arch Linux.
+
 ### Added
 - **Transparent Premium Icon**: Re-generated the application icon with a pure transparent background and tighter framing for a more professional look.
 ### Fixed
