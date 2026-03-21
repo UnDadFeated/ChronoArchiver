@@ -1,0 +1,10 @@
+customtkinter
+mediapipe
+opencv-python
+piexif
+Pillow
+platformdirs
+psutil
+PySide6
+send2trash
+requests
