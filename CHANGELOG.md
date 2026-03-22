@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.30] - 2026-03-22
+### Changed
+- **Mass AV1 Encoder**: Auto-scan now opens a separate `ScanProgressDialog` window showing file count and total size during source scan; main progress bar is used only for encoding (4 thread bars + total encoding progress) once the user clicks Start.
+
 ## [2.0.29] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: Directories group — increased top padding to align source input with Options; Configuration box bottom aligned with Options via row stretch; progress bar no longer shows indeterminate animation during auto-scan — remains static at "0/0 Files" until scan completes.

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox,
     QProgressBar, QFileDialog, QComboBox, QSlider,
-    QListWidget, QSizePolicy,
+    QListWidget, QSizePolicy, QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
@@ -33,6 +33,42 @@ class _Signals(QObject):
     details   = Signal(int, str, str) # job_id, vid, aud
     finished  = Signal(int, bool, str, str)
     log_msg   = Signal(str)
+
+
+class ScanProgressDialog(QDialog):
+    """Separate window showing file count and total size during source scan."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Scanning Source")
+        self.setModal(False)
+        self.setFixedSize(320, 120)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(12, 12, 12, 12)
+        self._lbl_files = QLabel("Files: 0")
+        self._lbl_files.setStyleSheet("font-size:12px; font-weight:600; color:#10b981;")
+        v.addWidget(self._lbl_files)
+        self._lbl_size = QLabel("Total size: 0 B")
+        self._lbl_size.setStyleSheet("font-size:11px; color:#aaa;")
+        v.addWidget(self._lbl_size)
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 0)
+        self._bar.setFixedHeight(12)
+        v.addWidget(self._bar)
+        self.setStyleSheet("QDialog { background: #0d0d0d; }")
+
+    def update_progress(self, count: int, total_bytes: int):
+        self._lbl_files.setText(f"Files: {count}")
+        if total_bytes >= 1024 ** 3:
+            sz = f"{total_bytes / (1024**3):.2f} GB"
+        elif total_bytes >= 1024 ** 2:
+            sz = f"{total_bytes / (1024**2):.1f} MB"
+        elif total_bytes >= 1024:
+            sz = f"{total_bytes / 1024:.1f} KB"
+        else:
+            sz = f"{total_bytes} B"
+        self._lbl_size.setText(f"Total size: {sz}")
 
 
 class AV1EncoderPanel(QWidget):
@@ -547,43 +583,47 @@ class AV1EncoderPanel(QWidget):
         if not src or not os.path.isdir(src):
             self._source_scanned = False
             self._is_scanning = False
-            self._bar_master.setRange(0, 1)
-            self._bar_master.setValue(0)
-            self._bar_master.setFormat("0/0 Files")
-            self._lbl_eta.setText("--:--:--")
             return
         self._source_scanned = False
         self._is_scanning = True
-        self._bar_master.setRange(0, 1)
-        self._bar_master.setValue(0)
-        self._bar_master.setFormat("0/0 Files")
-        self._lbl_eta.setText("--:--:--")
         self._add_log("Scanning source folder...")
         self._update_start_enabled()
 
+        scan_dialog = ScanProgressDialog(self)
+        scan_dialog.show()
+
         def _scan():
-            items = list(AV1EncoderEngine().scan_files(src))
-            QTimer.singleShot(0, lambda: self._apply_scan_result(items, src))
+            count = 0
+            total_bytes = 0
+            items = []
+            last_update = [0]
+            for path, size in AV1EncoderEngine().scan_files(src):
+                items.append((path, size))
+                count += 1
+                total_bytes += size
+                now = time.time()
+                if now - last_update[0] >= 0.1 or count == 1:
+                    last_update[0] = now
+                    QTimer.singleShot(0, lambda c=count, b=total_bytes: scan_dialog.update_progress(c, b))
+
+            def _done():
+                scan_dialog.update_progress(count, total_bytes)
+                scan_dialog.close()
+                self._apply_scan_result(items, src)
+
+            QTimer.singleShot(0, _done)
 
         threading.Thread(target=_scan, daemon=True).start()
 
     def _apply_scan_result(self, items, scanned_src):
         self._is_scanning = False
         if self._edit_src.text().strip() != scanned_src:
-            self._bar_master.setRange(0, 1)
-            self._bar_master.setValue(0)
-            self._bar_master.setFormat("0/0 Files")
-            self._lbl_eta.setText("--:--:--")
             return
         self._source_scanned = True
         self._queue.clear()
         self._queue.extend(items)
         n = len(items)
         src = self._edit_src.text().strip()
-        self._bar_master.setRange(0, max(1, n))
-        self._bar_master.setValue(0)
-        self._bar_master.setFormat(f"0/{n} Files")
-        self._lbl_eta.setText("--:--:--")
         self._add_log(f"Scanned: {n} file{'s' if n != 1 else ''} ready.")
         debug(UTILITY_MASS_AV1_ENCODER, f"Scan complete: {n} files from {src}")
         if self._log_cb and n > 0:
@@ -619,7 +659,37 @@ class AV1EncoderPanel(QWidget):
 
         if not self._queue:
             self._add_log("Scanning source...")
-            self._queue = list(AV1EncoderEngine().scan_files(src))
+            scan_dialog = ScanProgressDialog(self)
+            scan_dialog.show()
+
+            def _scan_then_start():
+                count = 0
+                total_bytes = 0
+                items = []
+                last_update = [0]
+                for path, size in AV1EncoderEngine().scan_files(src):
+                    items.append((path, size))
+                    count += 1
+                    total_bytes += size
+                    now = time.time()
+                    if now - last_update[0] >= 0.1 or count == 1:
+                        last_update[0] = now
+                        QTimer.singleShot(0, lambda c=count, b=total_bytes: scan_dialog.update_progress(c, b))
+
+                def _continue():
+                    scan_dialog.update_progress(count, total_bytes)
+                    scan_dialog.close()
+                    self._queue = items
+                    self._continue_start_encoding(src, dst)
+
+                QTimer.singleShot(0, _continue)
+
+            threading.Thread(target=_scan_then_start, daemon=True).start()
+            return
+
+        self._continue_start_encoding(src, dst)
+
+    def _continue_start_encoding(self, src, dst):
         if not self._queue:
             self._add_log("No compatible files found.")
             debug(UTILITY_MASS_AV1_ENCODER, f"No compatible files in {src}")
@@ -653,6 +723,7 @@ class AV1EncoderPanel(QWidget):
         self._is_paused       = False
         self._batch_start     = time.time()
 
+        self._bar_master.setRange(0, 100)
         self._bar_master.setValue(0)
         self._bar_master.setFormat(f"0/{self._total_count} Files")
         self._lbl_eta.setText("--:--:--")
@@ -847,6 +918,10 @@ class AV1EncoderPanel(QWidget):
 
         if self._done_count >= self._total_count and self._is_encoding:
             self._is_encoding = False
+            self._bar_master.setRange(0, 1)
+            self._bar_master.setValue(0)
+            self._bar_master.setFormat("0/0 Files")
+            self._lbl_eta.setText("--:--:--")
             self._btn_start.setText("ENCODING COMPLETE")
             self._btn_start.setEnabled(False)
             self._btn_pause.setEnabled(False)
