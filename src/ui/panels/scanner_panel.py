@@ -11,7 +11,7 @@ import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
-    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog,
+    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QShowEvent
@@ -279,13 +279,35 @@ class AIScannerPanel(QWidget):
         h_res.addWidget(frm_preview, 1)
         v_res.addLayout(h_res)
         h_btns = QHBoxLayout()
-        self._btn_move_files = QPushButton("Move Files")
-        self._btn_move_files.setStyleSheet("font-size:8px; font-weight:700;")
-        self._btn_move_files.clicked.connect(self._move_others)
+        h_btns.addWidget(QLabel("Target:", styleSheet="font-size:8px; color:#888;"))
+        self._edit_target = QLineEdit()
+        self._edit_target.setPlaceholderText("Select target folder...")
+        self._edit_target.setStyleSheet(
+            "color:#fff; font-size:10px; min-height:20px; "
+            "background:#121212; border:1px solid #1a1a1a;")
+        self._edit_target.textChanged.connect(self._update_move_start)
+        h_btns.addWidget(self._edit_target, 1)
+        self._btn_browse_target = QPushButton("Browse")
+        self._btn_browse_target.setFixedWidth(52)
+        self._btn_browse_target.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
+        self._btn_browse_target.clicked.connect(self._browse_target)
+        h_btns.addWidget(self._btn_browse_target)
+        self._combo_action = QComboBox()
+        self._combo_action.addItems(["Move", "Copy"])
+        self._combo_action.setStyleSheet("font-size:8px; min-width:72px;")
+        self._combo_action.setCurrentIndex(0)
+        h_btns.addWidget(self._combo_action)
+        self._btn_start_move = QPushButton("START")
+        self._btn_start_move.setObjectName("btnStartMove")
+        self._btn_start_move.setStyleSheet(
+            "font-size:8px; font-weight:700; min-height:20px; "
+            "background:#1a1a1a; color:#6b7280; border:1px solid #262626;")
+        self._btn_start_move.clicked.connect(self._apply_move_copy)
+        self._btn_start_move.setEnabled(False)
+        h_btns.addWidget(self._btn_start_move)
         self._btn_export = QPushButton("Export CSV")
         self._btn_export.setStyleSheet("font-size:8px; font-weight:700;")
         self._btn_export.clicked.connect(self._export_csv)
-        h_btns.addWidget(self._btn_move_files)
         h_btns.addWidget(self._btn_export)
         h_btns.addStretch()
         v_res.addLayout(h_btns)
@@ -293,12 +315,14 @@ class AIScannerPanel(QWidget):
 
         # ── CONSOLE ───────────────────────────────────────────────────────────
         grp_log = QGroupBox("Console")
+        grp_log.setMaximumHeight(140)
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 4, 6, 4)
         v_log.setSpacing(0)
         self._log_list = QListWidget()
+        self._log_list.setMaximumHeight(100)
         v_log.addWidget(self._log_list)
-        root.addWidget(grp_log, 1)
+        root.addWidget(grp_log, 0)
 
         self._model_update_available = False
         self._version_check_started = False
@@ -359,6 +383,12 @@ class AIScannerPanel(QWidget):
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
             return self._btn_browse
+        has_others = self._engine and self._engine.others_list
+        if has_others:
+            target = self._edit_target.text().strip()
+            if not target or not os.path.isdir(target):
+                return self._btn_browse_target
+            return self._btn_start_move
         return self._btn_start
 
     def _update_start_enabled(self):
@@ -375,8 +405,15 @@ class AIScannerPanel(QWidget):
             return
         if w == self._btn_start:
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:10px; font-weight:900;")
+        elif w == self._btn_start_move:
+            if self._btn_start_move.isEnabled():
+                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:9px; font-weight:900; min-height:20px;")
+            else:
+                w.setStyleSheet("font-size:8px; font-weight:700; min-height:20px; background:#1a1a1a; color:#6b7280; border:1px solid #262626;")
         elif w == self._btn_browse:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
+        elif w == self._btn_browse_target:
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
         elif w == self._btn_setup:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
 
@@ -394,10 +431,12 @@ class AIScannerPanel(QWidget):
         if self._guide_glow_phase:
             if target == self._btn_start:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
+            elif target == self._btn_start_move:
+                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:9px; font-weight:900; min-height:20px;")
             else:
                 style = "font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;"
-                if target == self._btn_browse:
-                    style += " min-height:22px;"
+                if target == self._btn_browse or target == self._btn_browse_target:
+                    style += " min-height:22px;" if target == self._btn_browse else " min-height:20px;"
                 elif target == self._btn_setup:
                     style += " min-height:20px;"
                 target.setStyleSheet(style)
@@ -448,6 +487,11 @@ class AIScannerPanel(QWidget):
         f = QFileDialog.getExistingDirectory(self, "Select Library to Scan")
         if f:
             self._edit_path.setText(f)
+
+    def _browse_target(self):
+        f = QFileDialog.getExistingDirectory(self, "Select Target Folder")
+        if f:
+            self._edit_target.setText(f)
 
     def _run_job(self):
         path = self._edit_path.text().strip()
@@ -511,6 +555,7 @@ class AIScannerPanel(QWidget):
         if self._engine:
             debug(UTILITY_AI_MEDIA_SCANNER, f"Scan finished: keep={len(self._engine.keep_list)}, move={len(self._engine.others_list)}")
         self._populate_results()
+        self._update_move_start()
 
     def _populate_results(self):
         self._list_keep.clear()
@@ -547,31 +592,57 @@ class AIScannerPanel(QWidget):
         self._lbl_preview.clear()
         self._lbl_preview.setText("Select an item to preview")
 
-    def _move_others(self):
+    def _update_move_start(self):
+        target = self._edit_target.text().strip()
+        target_ok = bool(target and os.path.isdir(target))
+        has_files = self._engine and self._engine.others_list
+        can = target_ok and bool(has_files)
+        self._btn_start_move.setEnabled(can)
+        if can:
+            self._btn_start_move.setStyleSheet(
+                "background-color:#10b981; color:#064e3b; border:2px solid transparent; "
+                "font-size:9px; font-weight:900; min-height:20px;")
+        else:
+            self._btn_start_move.setStyleSheet(
+                "font-size:8px; font-weight:700; min-height:20px; "
+                "background:#1a1a1a; color:#6b7280; border:1px solid #262626;")
+        self._guide_glow_phase = 0
+        self._guide_pulse_timer.start()
+
+    def _apply_move_copy(self):
         if not self._engine or not self._engine.others_list:
-            self._add_log("No files to move. Run a scan first.")
-            debug(UTILITY_AI_MEDIA_SCANNER, "Move Files: no files to move")
+            if self._engine:
+                self._add_log("No files to process. Run a scan first.")
             return
-        base = self._edit_path.text().strip()
-        if not base or not os.path.isdir(base):
-            self._add_log("ERROR: Invalid source path.")
-            debug(UTILITY_AI_MEDIA_SCANNER, f"Move Files ERROR: invalid base path {base}")
+        dest_dir = self._edit_target.text().strip()
+        if not dest_dir or not os.path.isdir(dest_dir):
+            self._add_log("ERROR: Select a valid target folder.")
+            debug(UTILITY_AI_MEDIA_SCANNER, f"Apply ERROR: invalid target {dest_dir}")
             return
-        dest_dir = os.path.join(base, "Archived_Others")
-        os.makedirs(dest_dir, exist_ok=True)
-        moved = 0
+        action = self._combo_action.currentText().lower()
+        fn = shutil.move if action == "move" else shutil.copy2
+        count = 0
         for p in self._engine.others_list:
             if os.path.isfile(p):
                 try:
-                    shutil.move(p, os.path.join(dest_dir, os.path.basename(p)))
-                    moved += 1
+                    dest_path = os.path.join(dest_dir, os.path.basename(p))
+                    if os.path.exists(dest_path):
+                        base, ext = os.path.splitext(os.path.basename(p))
+                        for n in range(1, 1000):
+                            dest_path = os.path.join(dest_dir, f"{base}_{n}{ext}")
+                            if not os.path.exists(dest_path):
+                                break
+                    fn(p, dest_path)
+                    count += 1
                 except Exception as e:
-                    self._add_log(f"Move failed: {p} — {e}")
-                    debug(UTILITY_AI_MEDIA_SCANNER, f"Move failed: {p} — {e}")
-        self._add_log(f"Moved {moved} files to {dest_dir}.")
-        debug(UTILITY_AI_MEDIA_SCANNER, f"Move Files: moved {moved} to {dest_dir}")
-        self._list_move.clear()
-        self._engine.others_list.clear()
+                    self._add_log(f"{action.title()} failed: {p} — {e}")
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"{action} failed: {p} — {e}")
+        self._add_log(f"{action.title()}ed {count} files to {dest_dir}.")
+        debug(UTILITY_AI_MEDIA_SCANNER, f"Apply: {action}ed {count} to {dest_dir}")
+        if action == "move":
+            self._list_move.clear()
+            self._engine.others_list.clear()
+        self._update_move_start()
 
     def _export_csv(self):
         if not self._engine:

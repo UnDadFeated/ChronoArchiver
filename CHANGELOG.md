@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.56] - 2026-03-22
+### Changed
+- **AI Media Scanner**: Results row — Target folder input, Move/Copy dropdown, START button (green when target set); smaller console; guide flow includes Browse Target and START move/copy.
+
 ## [2.0.55] - 2026-03-22
 ### Changed
 - **Footer pre-reqs**: OpenCV shows green ✓ when cv2 imports OR when AI models are ready (same check as scanner).
