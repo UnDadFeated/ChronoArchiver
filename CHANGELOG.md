@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.15] - 2026-03-21
+### Changed
+- **Mass AV1 Encoder**: Shrunk Configuration dropdowns (Preset, Threads) vertically (16px height) so Directories + Configuration align with Options box; horizontal sizing reverted.
+
 ## [2.0.14] - 2026-03-21
 ### Fixed
 - **AI Media Scanner**: Model path resolution corrected for AUR installations (parent-of-core logic now works for both source and packaged layouts).
