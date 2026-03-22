@@ -1,7 +1,7 @@
 """
 updater.py — Headless updater for ChronoArchiver.
-Checks GitHub releases, detects install method (git/AUR), and performs
-update-and-restart: close app → run update → restart app.
+Checks GitHub tags API for latest version, detects install method (git/AUR), and
+performs update-and-restart: close app → run update → restart app.
 """
 
 import json
@@ -150,7 +150,8 @@ class ApplicationUpdater:
                     headers={"User-Agent": "ChronoArchiver-Updater"}
                 )
                 with urllib.request.urlopen(req, timeout=10) as resp:
-                    tags = json.loads(resp.read().decode())
+                    data = json.loads(resp.read().decode())
+                tags = data if isinstance(data, list) else []
                 if not tags:
                     _put_result(None, None)
                     return
@@ -164,7 +165,11 @@ class ApplicationUpdater:
                 self._changelog = f"Changelog: see CHANGELOG.md on GitHub for v{best_version}."
                 _put_result(self._latest_version, self._changelog)
             except Exception as e:
-                print(f"Update check failed: {e}")
+                try:
+                    from core.debug_logger import debug, UTILITY_APP
+                    debug(UTILITY_APP, f"Update check failed: {e}")
+                except Exception:
+                    pass
                 _put_result(None, None)
 
         _done = threading.Event()

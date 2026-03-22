@@ -784,7 +784,13 @@ class AV1EncoderPanel(QWidget):
         structure_root = None
         if self._settings.get("maintain_structure") and self._queue:
             all_dirs = [os.path.dirname(p) for p, _ in self._queue]
-            structure_root = os.path.commonpath(all_dirs) if all_dirs else src
+            if all_dirs:
+                try:
+                    structure_root = os.path.commonpath(all_dirs)
+                except ValueError:
+                    structure_root = src  # fallback if mixed drives (Windows) or inconsistent paths
+            else:
+                structure_root = src
             debug(UTILITY_MASS_AV1_ENCODER, f"Structure root (mirror): {structure_root}")
 
         num_workers = self._settings.get("concurrent_jobs")

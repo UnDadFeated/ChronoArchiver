@@ -406,6 +406,9 @@ class ChronoArchiverApp(QMainWindow):
         if self.updater.is_update_available():
             self.btn_update.setText(f"UPDATE v{latest} AVAILABLE")
             self.btn_update.setStyleSheet("font-size: 8px; color: #10b981; font-weight:bold;")
+        elif latest is None:
+            self.btn_update.setText("UPDATE CHECK UNAVAILABLE")
+            self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563;")
         else:
             self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
             self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563;")

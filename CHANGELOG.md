@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.46] - 2026-03-22
+### Fixed
+- **Update check**: When API returns error or non-list JSON, handle gracefully; show "UPDATE CHECK UNAVAILABLE" instead of "up to date" when check fails; log failures via debug logger instead of print.
+- **Encoder**: Guard `os.path.commonpath` with try/except for `ValueError` (e.g. Windows mixed-drive paths).
+
 ## [2.0.45] - 2026-03-22
 ### Fixed
 - **Update check**: In-app update checker now uses GitHub tags API instead of releases/latest — the latter returns 404 when no GitHub Releases exist (only tags are pushed), causing AUR users to see "up to date" despite newer versions; tags API correctly detects latest version from pushed tags.
