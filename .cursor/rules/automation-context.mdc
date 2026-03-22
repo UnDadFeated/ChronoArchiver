@@ -1,0 +1,31 @@
+---
+description: User automation context and identities for ChronoArchiver and encoding projects
+alwaysApply: true
+---
+
+# Automation Context
+
+This workspace is used for encoding workflows. Apply full automation where possible.
+
+## Identities (Public)
+
+- **GitHub**: UnDadFeated
+- **AUR**: UnDadFeated
+- **System user**: jc
+
+## Project Conventions
+
+- Follow global user rules: `IMPLEMENTATION_PLAN.md`, `TASKS.md`, `CONVERSATION_LOG.md` as sources of truth.
+- Prepend updates to master `.md` files; no duplicate tabs or temp fragments.
+- Apply SemVer and log changes in `CHANGELOG.md`, `CONVERSATION_LOG.md`, `TASKS.md`.
+- Use conventional commit format for git; avoid AI-specific language in commits/changelog.
+
+## Push AUR Workflow
+
+When the user says "push aur" (or equivalent): (1) Update `TASKS.md` with the current release if not already done; (2) Commit and push to git (main + tag); (3) Update and push the AUR package. Do all steps automatically.
+
+## Automation Scope
+
+- Git operations: Prefer SSH or credential helper; never store passwords in repo files.
+- AUR updates: Use standard tooling (paru/yay) with user authentication when needed.
+- Sudo: Never hardcode or store sudo credentials in project files or rules.
