@@ -339,14 +339,19 @@ class MediaOrganizerPanel(QWidget):
             self._sig.stats.emit(moved, skipped, duplicates)
 
         def _run():
-            self._engine.organize(path,
-                dry_run=self._chk_dry.isChecked(),
-                use_flat_folders=self._chk_flat.isChecked(),
-                valid_exts=exts,
-                target_dir=target,
-                progress_callback=_prog,
-                stats_callback=_stats)
-            self._sig.finished.emit()
+            try:
+                self._engine.organize(path,
+                    dry_run=self._chk_dry.isChecked(),
+                    use_flat_folders=self._chk_flat.isChecked(),
+                    valid_exts=exts,
+                    target_dir=target,
+                    progress_callback=_prog,
+                    stats_callback=_stats)
+            except Exception as e:
+                self._sig.log_msg.emit(f"ERROR: {e}")
+                debug(UTILITY_MEDIA_ORGANIZER, f"Organizer thread exception: {e}")
+            finally:
+                self._sig.finished.emit()
 
         threading.Thread(target=_run, daemon=True).start()
 

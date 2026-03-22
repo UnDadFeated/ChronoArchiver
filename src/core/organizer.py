@@ -122,6 +122,24 @@ class OrganizerEngine:
 
         base_dir = target_dir.rstrip(os.sep) if target_dir else source_dir
 
+        # Fail-safes: source/target overlap, writable, disk space
+        if target_dir:
+            src_real = os.path.realpath(source_dir)
+            tgt_real = os.path.realpath(target_dir)
+            if src_real == tgt_real:
+                self.logger("ERROR: Source and target are the same directory.")
+                debug(UTILITY_MEDIA_ORGANIZER, "ERROR: source == target")
+                return
+            if src_real.startswith(tgt_real + os.sep) or tgt_real.startswith(src_real + os.sep):
+                self.logger("ERROR: Target cannot be inside source or vice versa.")
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: overlap src={src_real} tgt={tgt_real}")
+                return
+            if not dry_run:
+                if not os.access(target_dir, os.W_OK):
+                    self.logger("ERROR: Target directory is not writable.")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
+                    return
+
         self.logger("Building file queue...")
         if progress_callback:
             progress_callback(0, 1, 0, 0, "Scanning...")
@@ -147,6 +165,18 @@ class OrganizerEngine:
         total_bytes = sum(s for _, s, _ in queue_list)
         self.logger(f"Found {total_files} media files ({total_bytes / (1024*1024):.1f} MB).")
         debug(UTILITY_MEDIA_ORGANIZER, f"Found {total_files} files, {total_bytes} bytes")
+
+        # Disk space check (when moving to different target)
+        if target_dir and not dry_run and total_bytes > 0:
+            try:
+                usage = shutil.disk_usage(base_dir)
+                free_mb = usage.free / (1024 * 1024)
+                need_mb = total_bytes / (1024 * 1024)
+                if usage.free < total_bytes * 1.1:  # 10% headroom
+                    self.logger(f"WARNING: Low disk space on target. Free: {free_mb:.1f} MB, Need: ~{need_mb:.1f} MB.")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"Low disk: free={usage.free} need={total_bytes}")
+            except OSError:
+                pass
 
         folder_style = "Flat (YYYY-MM)" if use_flat_folders else "Nested (YYYY/YYYY-MM)"
         dest_note = f" -> {base_dir}" if target_dir else " (in-place)"
@@ -206,6 +236,11 @@ class OrganizerEngine:
 
             target_path = os.path.join(target_subdir, new_filename)
 
+            # Long path check (filesystem limit ~255 per component, 4096 total on Linux)
+            if len(target_path) > 400:
+                self.logger(f"WARNING: Long path may fail: {target_path[:80]}...")
+                debug(UTILITY_MEDIA_ORGANIZER, f"Long path: {len(target_path)} chars")
+
             if full_path == target_path:
                 continue
 
@@ -227,14 +262,22 @@ class OrganizerEngine:
             rel_target_path = os.path.join(rel_base, new_filename)
 
             if not dry_run:
-                os.makedirs(target_subdir, exist_ok=True)
+                try:
+                    os.makedirs(target_subdir, exist_ok=True)
+                except (PermissionError, OSError) as e:
+                    self.logger(f"Error creating directory for {file}: {e}")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"Mkdir failed: {target_subdir} — {e}")
+                    continue
                 try:
                     shutil.move(full_path, target_path)
                     files_moved += 1
                     self.logger(f"[MOVE] \"{file}\" -> \"{rel_target_path}\"")
-                except Exception as e:
+                except PermissionError as e:
+                    self.logger(f"Permission denied moving {file}: {e}")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"PermissionError: {file} — {e}")
+                except OSError as e:
                     self.logger(f"Error moving {file}: {e}")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"Error moving {file}: {e}")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"OSError moving {file}: {e}")
             else:
                 files_moved += 1
                 self.logger(f"[DRY RUN] \"{file}\" -> \"{rel_target_path}\"")

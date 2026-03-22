@@ -101,16 +101,28 @@ class ScannerEngine:
         # Pipeline
         img_queue = queue.Queue(maxsize=20)
 
+        MAX_IMAGE_BYTES = 100 * 1024 * 1024  # Skip very large images to avoid OOM
         def producer():
             for f_path, size in all_files:
                 if self.stop_event.is_set():
                     break
+                if size > MAX_IMAGE_BYTES:
+                    self.logger(f"[SKIP] Too large ({size / (1024*1024):.0f} MB): {os.path.basename(f_path)}")
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"Skipped large image: {f_path}")
+                    continue
                 try:
                     img = cv2.imread(f_path)
                     if img is not None:
                         img_queue.put((f_path, size, img))
-                except Exception:
-                    pass
+                    else:
+                        self.logger(f"[SKIP] Corrupt/unreadable: {os.path.basename(f_path)}")
+                        debug(UTILITY_AI_MEDIA_SCANNER, f"Corrupt image: {f_path}")
+                except PermissionError:
+                    self.logger(f"[SKIP] Permission denied: {os.path.basename(f_path)}")
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"Permission denied: {f_path}")
+                except Exception as e:
+                    self.logger(f"[SKIP] {os.path.basename(f_path)}: {e}")
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"Read error {f_path}: {e}")
             img_queue.put(None)  # Sentinel
 
         # Start Producer

@@ -339,11 +339,16 @@ class AIScannerPanel(QWidget):
         self._engine.progress_callback = lambda c, t, eta, f: self._sig.progress.emit(c / max(t,1))
 
         def _run():
-            self._engine.run_scan(path,
-                include_subfolders=self._chk_recursive.isChecked(),
-                keep_animals=self._chk_animals.isChecked(),
-                animal_threshold=self._spin_thresh.value() / 100.0)
-            self._sig.finished.emit()
+            try:
+                self._engine.run_scan(path,
+                    include_subfolders=self._chk_recursive.isChecked(),
+                    keep_animals=self._chk_animals.isChecked(),
+                    animal_threshold=self._spin_thresh.value() / 100.0)
+            except Exception as e:
+                self._sig.log_msg.emit(f"ERROR: {e}")
+                debug(UTILITY_AI_MEDIA_SCANNER, f"Scanner thread exception: {e}")
+            finally:
+                self._sig.finished.emit()
 
         threading.Thread(target=_run, daemon=True).start()
 

@@ -6,6 +6,7 @@ Uses src/core/av1_engine.py and src/core/av1_settings.py unchanged.
 
 import os
 import platform
+import shutil
 import threading
 import time
 import subprocess
@@ -230,6 +231,22 @@ class AV1EncoderPanel(QWidget):
         self._chk_struct.setChecked(self._settings.get("maintain_structure"))
         self._chk_struct.stateChanged.connect(lambda v: self._settings.set("maintain_structure", bool(v)))
         v_opts.addWidget(_mk_opt(self._chk_struct, "Mirror source folder tree in target"))
+
+        # Existing output policy
+        w_exist = QWidget(); v_exist = QVBoxLayout(w_exist)
+        v_exist.setContentsMargins(0, 0, 0, 0); v_exist.setSpacing(0)
+        lbl_exist = QLabel("If output exists:", styleSheet=_check_s)
+        v_exist.addWidget(lbl_exist)
+        self._combo_exist = QComboBox()
+        self._combo_exist.addItems(["Overwrite", "Skip", "Rename"])
+        self._combo_exist.setCurrentText(
+            {"overwrite": "Overwrite", "skip": "Skip", "rename": "Rename"}.get(
+                self._settings.get("existing_output"), "Overwrite"))
+        self._combo_exist.setStyleSheet("font-size:8px; color:#aaa; min-height:18px;")
+        self._combo_exist.currentTextChanged.connect(
+            lambda t: self._settings.set("existing_output", t.lower()))
+        v_exist.addWidget(self._combo_exist)
+        v_opts.addWidget(w_exist)
 
         self._chk_shutdown = QCheckBox("Shutdown When Done")
         self._chk_shutdown.setChecked(self._settings.get("shutdown_on_finish"))
@@ -592,6 +609,12 @@ class AV1EncoderPanel(QWidget):
             self._add_log("ERROR: Please select source and target directories.")
             return
 
+        # FFmpeg check at startup
+        if not shutil.which("ffmpeg"):
+            self._add_log("ERROR: FFmpeg not found. Install ffmpeg and ensure it is in PATH.")
+            debug(UTILITY_MASS_AV1_ENCODER, "Start aborted: FFmpeg not found")
+            return
+
         if not self._queue:
             self._add_log("Scanning source...")
             self._queue = list(AV1EncoderEngine().scan_files(src))
@@ -599,6 +622,19 @@ class AV1EncoderPanel(QWidget):
             self._add_log("No compatible files found.")
             debug(UTILITY_MASS_AV1_ENCODER, f"No compatible files in {src}")
             return
+
+        # Disk space check before starting
+        total_bytes = sum(s for _, s in self._queue)
+        try:
+            usage = shutil.disk_usage(dst)
+            required = total_bytes * 1.1  # 10% buffer
+            if usage.free < required:
+                self._add_log(
+                    f"WARNING: Low disk space on target. Free: {usage.free/(1024**3):.1f} GB, "
+                    f"need ~{required/(1024**3):.1f} GB. Proceeding anyway.")
+                debug(UTILITY_MASS_AV1_ENCODER, f"Low disk: free={usage.free}, need~{required}")
+        except OSError as e:
+            self._add_log(f"WARNING: Could not check disk space: {e}. Proceeding anyway.")
 
         self._queue_sizes = {p: s for p, s in self._queue}
         self._total_q_bytes   = sum(s for _, s in self._queue)
@@ -662,59 +698,79 @@ class AV1EncoderPanel(QWidget):
             self._active_jobs += 1
         q_lock = self._queue_lock
 
-        while self._is_encoding:
-            input_path = None
-            with q_lock:
-                if self._queue:
-                    input_path, size = self._queue.pop(0)
-                    self._current_files[engine.job_id] = input_path
+        try:
+            while self._is_encoding:
+                input_path = None
+                with q_lock:
+                    if self._queue:
+                        input_path, size = self._queue.pop(0)
+                        self._current_files[engine.job_id] = input_path
 
-            if not input_path:
-                break
+                if not input_path:
+                    break
 
-            # Skip threshold
-            if self._settings.get("rejects_enabled"):
-                dur = engine._get_video_duration(input_path)
-                thr = (self._settings.get("rejects_h") * 3600 +
-                       self._settings.get("rejects_m") * 60 +
-                       self._settings.get("rejects_s"))
-                if dur <= thr:
-                    self._add_log(f"REJECTED: {os.path.basename(input_path)} ({dur:.1f}s)")
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {input_path} ({dur:.1f}s)")
-                    self._sig.finished.emit(engine.job_id, True, input_path, "")
-                    continue
+                # Skip threshold
+                if self._settings.get("rejects_enabled"):
+                    dur = engine._get_video_duration(input_path)
+                    thr = (self._settings.get("rejects_h") * 3600 +
+                           self._settings.get("rejects_m") * 60 +
+                           self._settings.get("rejects_s"))
+                    if dur <= thr:
+                        self._add_log(f"REJECTED: {os.path.basename(input_path)} ({dur:.1f}s)")
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {input_path} ({dur:.1f}s)")
+                        self._sig.finished.emit(engine.job_id, True, input_path, "")
+                        continue
 
-            # Build output path: stem_av1.mp4 always
-            fname = os.path.basename(input_path)
-            stem = os.path.splitext(fname)[0]
-            out_name = stem + "_av1.mp4"
-            if self._settings.get("maintain_structure") and src:
-                rel = os.path.relpath(input_path, src)
-                rel_stem = os.path.splitext(rel)[0]
-                tpath = os.path.join(dst, rel_stem + "_av1.mp4")
-                os.makedirs(os.path.dirname(tpath), exist_ok=True)
-            else:
-                tpath = os.path.join(dst, out_name)
-
-            ok, in_p, out_p = engine.encode_file(
-                input_path, tpath,
-                self._settings.get("quality"),
-                self._settings.get("preset"),
-                self._settings.get("reencode_audio"),
-                hw_accel=self._settings.get("hw_accel_decode"),
-            )
-            self._sig.finished.emit(engine.job_id, ok, in_p, out_p)
-
-        with self._active_lock:
-            self._active_jobs -= 1
-        if self._active_jobs == 0 and not self._queue:
-            self._sig.log_msg.emit("Encoding batch complete.")
-            debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
-            if self._settings.get("shutdown_on_finish") and self._is_encoding:
-                if platform.system() == "Windows":
-                    os.system("shutdown /s /t 0")
+                # Build output path: stem_av1.mp4 always
+                fname = os.path.basename(input_path)
+                stem = os.path.splitext(fname)[0]
+                out_name = stem + "_av1.mp4"
+                if self._settings.get("maintain_structure") and src:
+                    rel = os.path.relpath(input_path, src)
+                    rel_stem = os.path.splitext(rel)[0]
+                    tpath = os.path.join(dst, rel_stem + "_av1.mp4")
+                    os.makedirs(os.path.dirname(tpath), exist_ok=True)
                 else:
-                    os.system("shutdown -h now")
+                    tpath = os.path.join(dst, out_name)
+
+                # Existing output policy
+                policy = self._settings.get("existing_output")
+                if os.path.exists(tpath):
+                    if policy == "skip":
+                        self._add_log(f"SKIP (exists): {os.path.basename(tpath)}")
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing: {tpath}")
+                        self._sig.finished.emit(engine.job_id, True, input_path, tpath)
+                        continue
+                    if policy == "rename":
+                        base, ext = os.path.splitext(tpath)
+                        n = 1
+                        while os.path.exists(base + f"_{n}" + ext):
+                            n += 1
+                        tpath = base + f"_{n}" + ext
+
+                ok, in_p, out_p = engine.encode_file(
+                    input_path, tpath,
+                    self._settings.get("quality"),
+                    self._settings.get("preset"),
+                    self._settings.get("reencode_audio"),
+                    hw_accel=self._settings.get("hw_accel_decode"),
+                )
+                self._sig.finished.emit(engine.job_id, ok, in_p, out_p)
+
+        except Exception as e:
+            self._sig.log_msg.emit(f"ERROR: {e}")
+            debug(UTILITY_MASS_AV1_ENCODER, f"Encoder worker exception: {e}")
+        finally:
+            with self._active_lock:
+                self._active_jobs -= 1
+            if self._active_jobs == 0 and not self._queue:
+                self._sig.log_msg.emit("Encoding batch complete.")
+                debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
+                if self._settings.get("shutdown_on_finish") and self._is_encoding:
+                    if platform.system() == "Windows":
+                        os.system("shutdown /s /t 0")
+                    else:
+                        os.system("shutdown -h now")
 
     # ── signal handlers ───────────────────────────────────────────────────────
 

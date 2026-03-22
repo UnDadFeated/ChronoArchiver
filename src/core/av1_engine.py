@@ -264,12 +264,25 @@ class AV1EncoderEngine:
             if not success:
                 self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
                 debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={self._current_process.returncode if self._current_process else '?'})")
+                # Remove partial output on failure
+                if output_path and os.path.exists(output_path):
+                    try:
+                        os.remove(output_path)
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Removed partial: {output_path}")
+                    except OSError:
+                        pass
             else:
                 debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
             return success, input_path, output_path
         except Exception as e:
             self.logger.error(f"Error encoding {input_path}: {e}")
             debug(UTILITY_MASS_AV1_ENCODER, f"Encode exception: {input_path} — {e}")
+            if output_path and os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                    debug(UTILITY_MASS_AV1_ENCODER, f"Removed partial: {output_path}")
+                except OSError:
+                    pass
             return False, input_path, output_path
         finally:
             _watchdog_stop.set()

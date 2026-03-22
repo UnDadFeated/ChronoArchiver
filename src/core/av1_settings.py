@@ -25,7 +25,8 @@ class AV1Settings:
             "delete_on_success": False,
             "delete_on_success_confirm": False,
             "hw_accel_decode": False,
-            "shutdown_on_finish": False
+            "shutdown_on_finish": False,
+            "existing_output": "overwrite"  # overwrite | skip | rename
         }
         self.data = self.load()
 

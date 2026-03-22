@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.28] - 2026-03-21
+### Added
+- **Media Organizer**: Disk space check before moving; destination writable check; source/target overlap validation; permission error handling (log and continue); long path (>400 chars) warning.
+- **AI Media Scanner**: Log corrupt/unreadable images (`cv2.imread` returns None); handle PermissionError when reading files; skip very large images (>100 MB) to avoid OOM.
+- **Mass AV1 Encoder**: FFmpeg presence check at startup; target disk space check before encoding; existing output policy (Overwrite / Skip / Rename); remove partial output on encode failure or cancel.
+
+### Changed
+- **Cross-cutting**: Worker threads wrapped in try/except; exceptions logged and propagated to UI.
+
 ## [2.0.27] - 2026-03-21
 ### Changed
 - **Media Organizer, AI Media Scanner, Mass AV1 Encoder**: Unified queue strategy — all three apps now build a pre-scan queue of (path, size) tuples and use byte-weighted progress for the master bar during processing. Organizer and Scanner log total size (MB) when building the queue.
