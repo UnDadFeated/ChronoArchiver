@@ -8,6 +8,7 @@ import sys
 import os
 import platform
 import queue
+import shutil
 import subprocess
 import webbrowser
 
@@ -195,15 +196,23 @@ class ChronoArchiverApp(QMainWindow):
         self.layout.addWidget(self.stack)
 
         # ── STATUS BAR ──
+        # Layout: [Left: app activity] [Center: pre-req / boot] [Right: buttons + metrics]
         self.status_bar = QFrame()
         self.status_bar.setFixedHeight(22)
         self.status_bar.setStyleSheet("background: #080808; border-top: 1px solid #141414;")
         self.status_layout = QHBoxLayout(self.status_bar)
         self.status_layout.setContentsMargins(10, 0, 10, 0)
-        
-        self.lbl_status = QLabel("System Ready")
-        self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase;")
+
+        self.lbl_status = QLabel("Idle")
+        self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 180px;")
+        self.lbl_status.setToolTip("Current activity: Encoding, Organizing, Scanning, etc.")
         self.status_layout.addWidget(self.lbl_status)
+        self.status_layout.addStretch()
+
+        self.lbl_prereq = QLabel("Checking…")
+        self.lbl_prereq.setStyleSheet("font-size: 7px; color: #6b7280;")
+        self.lbl_prereq.setAlignment(Qt.AlignCenter)
+        self.status_layout.addWidget(self.lbl_prereq)
         self.status_layout.addStretch()
 
         self.btn_copy_console = QPushButton("COPY CONSOLE")
@@ -227,6 +236,7 @@ class ChronoArchiverApp(QMainWindow):
         # Init
         self._switch_panel(0)
         debug(UTILITY_APP, f"Application started v{__version__}")
+        QTimer.singleShot(100, self._check_prereqs)
         QTimer.singleShot(2000, self._run_updater)
 
     def _create_nav_btn(self, text, index):
@@ -251,6 +261,22 @@ class ChronoArchiverApp(QMainWindow):
     def _log(self, msg):
         self.logger.info(msg)
         self.lbl_status.setText(msg[:100].upper())
+
+    def _check_prereqs(self):
+        """Run pre-req checks and update center footer status."""
+        parts = []
+        ffmpeg_ok = bool(shutil.which("ffmpeg"))
+        parts.append("FFmpeg ✓" if ffmpeg_ok else "FFmpeg ✗")
+        try:
+            import cv2
+            parts.append("OpenCV ✓")
+        except ImportError:
+            parts.append("OpenCV —")
+        parts.append("PySide6 ✓")
+        status = "  ·  ".join(parts)
+        if ffmpeg_ok:
+            status += "  ·  Ready"
+        self.lbl_prereq.setText(status)
 
     def _copy_console(self):
         panel = self.stack.currentWidget()

@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.19] - 2026-03-21
+### Changed
+- **Footer**: Restructured — left shows app activity (Encoding, Organizing, Idle); center shows pre-req status (FFmpeg, OpenCV, PySide6); right unchanged (COPY CONSOLE, DEBUG, metrics).
+
 ## [2.0.18] - 2026-03-21
 ### Changed
 - **Mass AV1 Encoder**: Preset and Threads dropdowns reduced by 4px vertically (16px) to prevent overlay on Optimize Audio.
