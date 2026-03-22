@@ -77,7 +77,7 @@ class AIScannerPanel(QWidget):
         h_src.addWidget(self._edit_path, 1)
         self._btn_browse = QPushButton("Browse")
         self._btn_browse.setFixedWidth(48)
-        self._btn_browse.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; min-height:22px;")
+        self._btn_browse.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
         self._btn_browse.clicked.connect(self._browse)
         h_src.addWidget(self._btn_browse)
         v_dir.addLayout(h_src)
@@ -124,7 +124,7 @@ class AIScannerPanel(QWidget):
         self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
         v_mod.addWidget(self._lbl_model)
         self._btn_setup = QPushButton("Setup Models")
-        self._btn_setup.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._btn_setup.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
         self._btn_setup.clicked.connect(self._setup_models)
         v_mod.addWidget(self._btn_setup)
         h_strip.addWidget(grp_mod, 2)
@@ -267,9 +267,9 @@ class AIScannerPanel(QWidget):
         if not w:
             return
         if w == self._btn_browse:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; min-height:22px;")
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
         elif w == self._btn_setup:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
 
     def _pulse_guide(self):
         if self._btn_start.isEnabled():
@@ -287,6 +287,8 @@ class AIScannerPanel(QWidget):
             style = "font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;"
             if target == self._btn_browse:
                 style += " min-height:22px;"
+            elif target == self._btn_setup:
+                style += " min-height:20px;"
             target.setStyleSheet(style)
         else:
             self._clear_guide_glow(target)

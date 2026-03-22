@@ -71,7 +71,7 @@ class MediaOrganizerPanel(QWidget):
         h_src.addWidget(self._edit_path, 1)
         self._btn_browse_src = QPushButton("Browse")
         self._btn_browse_src.setFixedWidth(48)
-        self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_src.clicked.connect(self._browse)
         h_src.addWidget(self._btn_browse_src)
         v_dir.addLayout(h_src)
@@ -86,7 +86,7 @@ class MediaOrganizerPanel(QWidget):
         h_tgt.addWidget(self._edit_target, 1)
         self._btn_browse_target = QPushButton("Browse")
         self._btn_browse_target.setFixedWidth(48)
-        self._btn_browse_target.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._btn_browse_target.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_target.clicked.connect(self._browse_target)
         h_tgt.addWidget(self._btn_browse_target)
         v_dir.addLayout(h_tgt)
@@ -256,7 +256,7 @@ class MediaOrganizerPanel(QWidget):
         if not w:
             return
         if w == self._btn_browse_src or w == self._btn_browse_target:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         elif w == self._chk_photos:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
 

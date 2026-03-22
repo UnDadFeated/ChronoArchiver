@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.25] - 2026-03-21
+### Fixed
+- **Mass AV1 Encoder**: Source and target input boxes now match in width (same min/max constraints).
+- **AI Media Scanner**: Setup Models glow no longer causes "AI Models Missing" text to jump; guide buttons use transparent border when idle so size stays constant.
+
 ## [2.0.24] - 2026-03-21
 ### Changed
 - **Guide glow**: Pulsing red glow now targets the *buttons* the user clicks (Browse, Setup Models, Photos checkbox) instead of the input fields.

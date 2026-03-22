@@ -100,9 +100,11 @@ class AV1EncoderPanel(QWidget):
         self._edit_src.setText(self._settings.get("source_folder") or "")
 
         h_src = QHBoxLayout(); h_src.setSpacing(4)
+        self._edit_src.setMinimumWidth(150)
+        self._edit_src.setMaximumWidth(600)
         h_src.addWidget(self._edit_src, 1)
         self._btn_browse_src = QPushButton("Browse"); self._btn_browse_src.setFixedWidth(52)
-        self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_src.clicked.connect(self._browse_src)
         h_src.addWidget(self._btn_browse_src)
         v_dir.addLayout(h_src)
@@ -116,6 +118,8 @@ class AV1EncoderPanel(QWidget):
 
         self._edit_dst = QLineEdit()
         self._edit_dst.setPlaceholderText("TARGET PATH (local or smb://)")
+        self._edit_dst.setMinimumWidth(150)
+        self._edit_dst.setMaximumWidth(600)
         self._edit_dst.setStyleSheet(
             "color:#fff; font-size:12px; font-weight:500; "
             "background:#121212; border:1px solid #1a1a1a;")
@@ -124,7 +128,7 @@ class AV1EncoderPanel(QWidget):
         h_dst = QHBoxLayout()
         h_dst.addWidget(self._edit_dst, 1)
         self._btn_browse_dst = QPushButton("Browse"); self._btn_browse_dst.setFixedWidth(52)
-        self._btn_browse_dst.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._btn_browse_dst.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_dst.clicked.connect(self._browse_dst)
         h_dst.addWidget(self._btn_browse_dst)
         self._edit_dst.textChanged.connect(self._update_start_enabled)
@@ -480,7 +484,7 @@ class AV1EncoderPanel(QWidget):
     def _clear_guide_glow(self, w):
         if not w:
             return
-        w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
 
     def _update_start_enabled(self):
         if self._btn_start.text() == "ENCODING COMPLETE":
