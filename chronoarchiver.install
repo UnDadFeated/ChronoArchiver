@@ -2,8 +2,8 @@
 # Updates icon cache so the application icon appears correctly in GNOME/KDE/etc.
 # post_remove deletes all ChronoArchiver user data for a clean uninstall:
 #   - AI models (~/.local/share/ChronoArchiver/models)
+#   - App-private venv (~/.local/share/ChronoArchiver/venv)
 #   - Config, logs, state
-# Note: OpenCV (python-opencv or opencv-python) is not removed; it may be used by other apps.
 
 post_install() {
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
