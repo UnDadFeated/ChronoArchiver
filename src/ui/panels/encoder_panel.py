@@ -67,6 +67,8 @@ class AV1EncoderPanel(QWidget):
         self._batch_start    = 0.0
         self._gpu_cache      = "0%"
         self._gpu_counter    = 0
+        self._source_scanned = False
+        self._is_scanning    = False
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
         _slbl  = "font-size: 8px; font-weight: 700; color: #aaa;"
@@ -460,6 +462,7 @@ class AV1EncoderPanel(QWidget):
             self._auto_scan()
 
     def _on_src_changed(self):
+        self._source_scanned = False
         self._scan_debounce.stop()
         self._scan_debounce.start(400)
 
@@ -475,6 +478,8 @@ class AV1EncoderPanel(QWidget):
             return None
         src = self._edit_src.text().strip()
         if not src or not os.path.isdir(src):
+            return self._btn_browse_src
+        if not self._source_scanned:
             return self._btn_browse_src
         dst = self._edit_dst.text().strip()
         if not dst or not os.path.isdir(dst):
@@ -522,17 +527,44 @@ class AV1EncoderPanel(QWidget):
         src = self._edit_src.text().strip()
         self._queue.clear()
         if not src or not os.path.isdir(src):
+            self._source_scanned = False
+            self._is_scanning = False
+            self._bar_master.setRange(0, 1)
+            self._bar_master.setValue(0)
+            self._bar_master.setFormat("0/0 Files")
+            self._lbl_eta.setText("--:--:--")
             return
+        self._source_scanned = False
+        self._is_scanning = True
+        self._bar_master.setRange(0, 0)
+        self._bar_master.setFormat("Scanning source...")
+        self._lbl_eta.setText("Scanning...")
+        self._add_log("Scanning source folder...")
+        self._update_start_enabled()
+
         def _scan():
             items = list(AV1EncoderEngine().scan_files(src))
-            QTimer.singleShot(0, lambda: self._apply_scan_result(items))
+            QTimer.singleShot(0, lambda: self._apply_scan_result(items, src))
+
         threading.Thread(target=_scan, daemon=True).start()
 
-    def _apply_scan_result(self, items):
+    def _apply_scan_result(self, items, scanned_src):
+        self._is_scanning = False
+        if self._edit_src.text().strip() != scanned_src:
+            self._bar_master.setRange(0, 1)
+            self._bar_master.setValue(0)
+            self._bar_master.setFormat("0/0 Files")
+            self._lbl_eta.setText("--:--:--")
+            return
+        self._source_scanned = True
         self._queue.clear()
         self._queue.extend(items)
         n = len(items)
         src = self._edit_src.text().strip()
+        self._bar_master.setRange(0, max(1, n))
+        self._bar_master.setValue(0)
+        self._bar_master.setFormat(f"0/{n} Files")
+        self._lbl_eta.setText("--:--:--")
         self._add_log(f"Scanned: {n} file{'s' if n != 1 else ''} ready.")
         debug(UTILITY_MASS_AV1_ENCODER, f"Scan complete: {n} files from {src}")
         if self._log_cb and n > 0:

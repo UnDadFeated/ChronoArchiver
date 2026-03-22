@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.26] - 2026-03-21
+### Fixed
+- **Mass AV1 Encoder**: Guide glow now stays on source Browse until scan completes; Work Progress shows "Scanning source..." and indeterminate bar during scan; guide moves to target Browse only after queue is populated.
+
 ## [2.0.25] - 2026-03-21
 ### Fixed
 - **Mass AV1 Encoder**: Source and target input boxes now match in width (same min/max constraints).
