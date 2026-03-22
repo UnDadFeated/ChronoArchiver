@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox,
     QProgressBar, QFileDialog, QComboBox, QSlider,
-    QListWidget, QSizePolicy, QDialog, QApplication,
+    QListWidget, QSizePolicy, QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
@@ -70,9 +70,6 @@ class ScanProgressDialog(QDialog):
         else:
             sz = f"{total_bytes} B"
         self._lbl_size.setText(f"Total size: {sz}")
-        app = QApplication.instance()
-        if app:
-            app.processEvents()
 
 
 class AV1EncoderPanel(QWidget):
@@ -600,23 +597,33 @@ class AV1EncoderPanel(QWidget):
             count = 0
             total_bytes = 0
             items = []
-            last_update = [0]
+            last_emit = [0]
             try:
                 for path, size in AV1EncoderEngine().scan_files(src):
                     items.append((path, size))
                     count += 1
                     total_bytes += size
                     now = time.time()
-                    if count <= 10 or now - last_update[0] >= 0.05:
-                        last_update[0] = now
+                    if count <= 25 or now - last_emit[0] >= 0.1:
+                        last_emit[0] = now
                         self._sig.scan_progress.emit(count, total_bytes)
             except Exception as e:
+                self._sig.log_msg.emit(f"Scan error: {e}")
                 debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
 
             def _done():
-                self._sig.scan_progress.emit(count, total_bytes)
-                self._sig.scan_progress.disconnect(scan_dialog.update_progress)
-                scan_dialog.close()
+                try:
+                    self._sig.scan_progress.emit(count, total_bytes)
+                except Exception:
+                    pass
+                try:
+                    self._sig.scan_progress.disconnect(scan_dialog.update_progress)
+                except Exception:
+                    pass
+                try:
+                    scan_dialog.close()
+                except Exception:
+                    pass
                 self._apply_scan_result(items, src)
 
             QTimer.singleShot(0, _done)
@@ -676,23 +683,27 @@ class AV1EncoderPanel(QWidget):
                 count = 0
                 total_bytes = 0
                 items = []
-                last_update = [0]
+                last_emit = [0]
                 try:
                     for path, size in AV1EncoderEngine().scan_files(src):
                         items.append((path, size))
                         count += 1
                         total_bytes += size
                         now = time.time()
-                        if count <= 10 or now - last_update[0] >= 0.05:
-                            last_update[0] = now
+                        if count <= 25 or now - last_emit[0] >= 0.1:
+                            last_emit[0] = now
                             self._sig.scan_progress.emit(count, total_bytes)
                 except Exception as e:
+                    self._sig.log_msg.emit(f"Scan error: {e}")
                     debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
 
                 def _continue():
-                    self._sig.scan_progress.emit(count, total_bytes)
-                    self._sig.scan_progress.disconnect(scan_dialog.update_progress)
-                    scan_dialog.close()
+                    try:
+                        self._sig.scan_progress.emit(count, total_bytes)
+                        self._sig.scan_progress.disconnect(scan_dialog.update_progress)
+                        scan_dialog.close()
+                    except Exception:
+                        pass
                     self._queue = items
                     self._continue_start_encoding(src, dst)
 

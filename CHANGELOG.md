@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.34] - 2026-03-22
+### Fixed
+- **Mass AV1 Encoder**: Source scanner — broaden emit threshold (first 25 files, then every 100ms) to fix freeze after 10 files; remove processEvents (re-entrancy); engine: catch all exceptions in getsize, add os.walk onerror to skip permission-denied dirs; ensure _done always runs with try/except guards; surface scan errors in console.
+
 ## [2.0.33] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: Scan dialog — restore indeterminate progress bar (unknown total); more frequent updates (emit for first 10 files, then every 50ms); processEvents in update to prevent UI freeze.
