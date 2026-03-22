@@ -35,7 +35,7 @@ class ModelManager:
     
     def __init__(self, model_dir: str):
         self.model_dir = pathlib.Path(model_dir)
-        self.logger = logging.getLogger("ChronoArchiver")
+        self.logger = logging.getLogger("ChronoArchiver.Scanner")
         self.stop_event = threading.Event()
 
     def verify_hash(self, file_path: pathlib.Path, expected_sha: str) -> bool:

@@ -35,7 +35,7 @@ class AV1EncoderEngine:
         self._current_process: Optional[subprocess.Popen] = None
         self._is_paused = False
         self._lock = threading.Lock()
-        self.logger = logging.getLogger("MediaOrganizer")
+        self.logger = logging.getLogger("ChronoArchiver.Encoder")
 
     def _check_cuda_support(self) -> bool:
         """Checks for NVIDIA AV1 NVENC support via ffmpeg."""

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.38] - 2026-03-22
+### Fixed
+- **Logging**: Single debug log file per session; prune runs after file creation to cap at 3 total instances in log folder.
+- **Logging**: All entries now identify originating internal app (Media Organizer, Mass AV1 Encoder, AI Media Scanner); av1_engine and model_manager use correct logger names (ChronoArchiver.Encoder, ChronoArchiver.Scanner).
+
 ## [2.0.37] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: Scan completion now correctly closes dialog and applies results — replaced QTimer.singleShot (which does not run in worker threads) with thread-safe scan_done / scan_done_then_start signals.

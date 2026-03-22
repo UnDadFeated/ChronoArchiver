@@ -30,14 +30,14 @@ def _ensure_init():
         return
     _log_dir = platformdirs.user_log_dir(APP_NAME, "UnDadFeated")
     os.makedirs(_log_dir, exist_ok=True)
-    _prune_old_logs()
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     _log_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}{LOG_SUFFIX}")
     _file = open(_log_path, "a", encoding="utf-8")
+    _prune_old_logs()
 
 
 def _prune_old_logs():
-    """Keep only the last MAX_LOG_FILES instances (by mtime)."""
+    """Keep only the last MAX_LOG_FILES instances (by mtime), including current file."""
     pattern = os.path.join(_log_dir, f"{LOG_PREFIX}_*{LOG_SUFFIX}")
     files = glob.glob(pattern)
     if len(files) <= MAX_LOG_FILES:
@@ -45,7 +45,8 @@ def _prune_old_logs():
     files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     for p in files[MAX_LOG_FILES:]:
         try:
-            os.remove(p)
+            if p != _log_path:
+                os.remove(p)
         except OSError:
             pass
 
