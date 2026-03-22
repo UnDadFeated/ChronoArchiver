@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.60] - 2026-03-22
+### Changed
+- **AI Media Scanner**: Guide now targets Setup Models when OpenCV is missing (even if models are installed); clicking it installs OpenCV via pip.
+
 ## [2.0.59] - 2026-03-22
 ### Added
 - **AI Media Scanner – Engine Status**: Remove Models button (always visible) to delete all model files and uninstall OpenCV; Update! button appears next to "All Models Ready!" only when OpenCV or AI Models update is detected during pre-check.

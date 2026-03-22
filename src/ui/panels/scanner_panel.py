@@ -414,9 +414,9 @@ class AIScannerPanel(QWidget):
         threading.Thread(target=_task, daemon=True).start()
 
     def _get_guide_target(self):
-        if self._is_running or self._setup_in_progress or not OPENCV_AVAILABLE:
+        if self._is_running or self._setup_in_progress:
             return None
-        if not self._model_mgr.is_up_to_date():
+        if not OPENCV_AVAILABLE or not self._model_mgr.is_up_to_date():
             return self._btn_setup
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
