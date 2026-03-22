@@ -88,8 +88,8 @@ class ModelSetupDialog(QDialog):
 
     def update_progress(self, url: str, label: str, filename: str, downloaded: int, total: int, overall: float):
         self._lbl_url.setText(f"From: {url[:70]}..." if len(url) > 70 else f"From: {url}")
-        if filename.startswith("Extracting"):
-            self._lbl_model.setText(f"Extracting: {label}")
+        if filename.startswith("Extracting") or "Installing models" in filename:
+            self._lbl_model.setText("Installing models... please wait...")
             self._lbl_detail.setText("")
         else:
             self._lbl_model.setText(f"Downloading: {label} ({filename})")
@@ -106,7 +106,6 @@ class ModelSetupDialog(QDialog):
                 self._lbl_detail.setText(f"{kb_d:.1f} / {kb_t:.1f} KB")
         else:
             self._lbl_detail.setText(f"{downloaded:,} bytes")
-        self._bar.setValue(min(100, int(overall * 100)))
 
 
 class AIScannerPanel(QWidget):
@@ -414,16 +413,11 @@ class AIScannerPanel(QWidget):
             self._check_models()
             return
         self._setup_in_progress = True
-        self._bar.setFormat("Downloading models...")
-        self._lbl_status.setText("Downloading...")
-        self._bar.setRange(0, 100)
-        self._bar.setValue(0)
         self._update_start_enabled()
         dlg = ModelSetupDialog(self._model_mgr, self)
 
         def _progress(downloaded, total_size, filename, overall, label, url):
             dlg.progress_update.emit(url, label, filename, downloaded, total_size, overall)
-            self._sig.progress.emit(overall)
             self._sig.log_msg.emit(f"Downloading: {label} ({int(overall * 100)}%)")
 
         def _on_setup_complete(ok):
@@ -432,7 +426,6 @@ class AIScannerPanel(QWidget):
             self._bar.setFormat("Ready")
             self._lbl_status.setText("Ready")
             self._bar.setValue(0)
-            self._bar.setRange(0, 100)
             self._check_models()
             self._update_start_enabled()
             self._add_log("Model setup complete." if ok else "Model setup failed or cancelled.")

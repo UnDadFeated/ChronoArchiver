@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import pathlib
 import threading
@@ -162,7 +163,8 @@ class ModelManager:
                     if progress_callback:
                         overall = (done_bytes + total_size) / max(total_bytes, 1)
                         overall = min(1.0, overall)
-                        progress_callback(total_size, total_size, f"Extracting {info['filename']}...", overall, label, url)
+                        progress_callback(total_size, total_size, "Installing models... please wait...", overall, label, url)
+                        time.sleep(0.25)
                     with tarfile.open(dl_dest, "r:gz") as tar:
                         try:
                             member = tar.getmember(info["tar_extract"])
@@ -175,6 +177,9 @@ class ModelManager:
                             tar.extract(member, path=dest.parent)
                     dl_dest.unlink()
 
+                if progress_callback:
+                    progress_callback(0, 0, "Installing models... please wait...", 1.0, "Verifying", url)
+                    time.sleep(0.25)
                 if not self.verify_hash(dest, info["sha256"]):
                     self.logger.error(f"Integrity check failed for {info['filename']}")
                     debug(UTILITY_AI_MEDIA_SCANNER, f"Model hash mismatch: {info['filename']}")

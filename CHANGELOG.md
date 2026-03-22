@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.52] - 2026-03-22
+### Fixed
+- **Model setup**: Progress updates only in the setup popup dialog, not the main panel's scanning bar.
+- **Model setup**: Show "Installing models... please wait..." during tar extraction and hash verification to avoid appearing frozen.
+
 ## [2.0.51] - 2026-03-22
 ### Changed
 - **Startup footer**: Left status shows pre-check steps (Checking FFmpeg…, Checking OpenCV…, Checking PySide6…) before Idle; displays "Pre-check complete" for 3 seconds, then switches to Idle.
