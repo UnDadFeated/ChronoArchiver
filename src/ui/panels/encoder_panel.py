@@ -77,10 +77,11 @@ class ScanProgressDialog(QDialog):
 
 class AV1EncoderPanel(QWidget):
 
-    def __init__(self, log_callback=None, metrics_callback=None, parent=None):
+    def __init__(self, log_callback=None, metrics_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb  = log_callback
         self._metrics_cb = metrics_callback
+        self._status_cb = status_callback
         self._sig     = _Signals()
         self._sig.progress.connect(self._on_progress)
         self._sig.details.connect(self._on_details)
@@ -108,6 +109,7 @@ class AV1EncoderPanel(QWidget):
         self._current_files  = {}
         self._total_saved    = 0
         self._batch_start    = 0.0
+        self._io_bytes       = 0.0
         self._gpu_cache      = "0%"
         self._gpu_counter    = 0
         self._source_scanned = False
@@ -427,7 +429,7 @@ class AV1EncoderPanel(QWidget):
         self._bar_master.setFormat("0/0 Files")
         v_work.addWidget(self._bar_master)
 
-        self._lbl_eta = QLabel("--:--:--")
+        self._lbl_eta = QLabel("ESTIMATED TIME REMAINING: --:--:--")
         self._lbl_eta.setAlignment(Qt.AlignCenter)
         self._lbl_eta.setStyleSheet("color:#10b981; font-size:10px; font-weight:800; margin-top:-2px;")
         v_work.addWidget(self._lbl_eta)
@@ -745,6 +747,7 @@ class AV1EncoderPanel(QWidget):
         self._queue_sizes = {p: s for p, s in self._queue}
         self._total_q_bytes   = sum(s for _, s in self._queue)
         self._done_bytes      = 0.0
+        self._io_bytes        = 0.0
         self._total_count     = len(self._queue)
         self._done_count     = 0
         self._active_jobs    = 0
@@ -756,11 +759,14 @@ class AV1EncoderPanel(QWidget):
         self._is_encoding    = True
         self._is_paused       = False
         self._batch_start     = time.time()
+        if self._status_cb:
+            self._status_cb("encoding")
 
         self._bar_master.setRange(0, 100)
         self._bar_master.setValue(0)
         self._bar_master.setFormat(f"0/{self._total_count} Files")
-        self._lbl_eta.setText("--:--:--")
+        self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
+        self._lbl_io.setText("I/O: 0.0 MB/s")
 
         self._btn_start.setText("STOP ENCODING")
         self._btn_start.setObjectName("btnStop")
@@ -779,8 +785,13 @@ class AV1EncoderPanel(QWidget):
             eng.on_details  = lambda j, v, a: self._sig.details.emit(j, v, a)
             threading.Thread(target=self._job_worker, args=(eng, src, dst), daemon=True).start()
 
+    def get_activity(self):
+        return "encoding" if self._is_encoding else "idle"
+
     def _stop_encoding(self):
         self._is_encoding = False
+        if self._status_cb:
+            self._status_cb("idle")
         for eng in self._engine_pool:
             eng.cancel()
         self._btn_start.setText("START ENCODING")
@@ -892,18 +903,35 @@ class AV1EncoderPanel(QWidget):
         self._job_speeds[job_id].setText(f"{p.fps:.1f} fps / {p.speed:.2f}x")
         self._job_progress[job_id] = p.percent
 
-        # Master
+        # I/O throughput
+        active_bytes = 0.0
+        for jid, pct in self._job_progress.items():
+            if jid in self._current_files:
+                fsize = self._queue_sizes.get(self._current_files[jid], 0.0)
+                active_bytes += (pct / 100) * fsize
+        total_written = self._done_bytes + active_bytes
+        elapsed = time.time() - self._batch_start
+        if elapsed > 0.5:
+            rate_mbs = (total_written / (1024 * 1024)) / elapsed
+            self._lbl_io.setText(f"I/O: {rate_mbs:.1f} MB/s")
+
+        # Master bar + ETA
         if self._total_q_bytes > 0:
-            active_bytes = 0.0
-            for jid, pct in self._job_progress.items():
-                if jid in self._current_files:
-                    active_bytes += (pct / 100) * self._queue_sizes.get(
-                        self._current_files[jid], 0.0)
             done = self._done_bytes + active_bytes
             pct_total = min(100.0, done / self._total_q_bytes * 100)
             self._bar_master.setValue(int(pct_total))
             self._bar_master.setFormat(
                 f"{self._done_count}/{self._total_count} Files — {pct_total:.1f}%")
+            remaining_bytes = self._total_q_bytes - done
+            if remaining_bytes > 0 and elapsed > 2 and total_written > 0:
+                rate = total_written / elapsed
+                eta_sec = remaining_bytes / rate
+                eh = int(eta_sec // 3600)
+                em = int((eta_sec % 3600) // 60)
+                es = int(eta_sec % 60)
+                self._lbl_eta.setText(f"ESTIMATED TIME REMAINING: {eh:02}:{em:02}:{es:02}")
+            elif pct_total >= 99.9:
+                self._lbl_eta.setText("ESTIMATED TIME REMAINING: 00:00:00")
 
     def _on_details(self, job_id, vid, aud):
         if job_id < len(self._job_vid):
@@ -952,10 +980,12 @@ class AV1EncoderPanel(QWidget):
 
         if self._done_count >= self._total_count and self._is_encoding:
             self._is_encoding = False
+            if self._status_cb:
+                self._status_cb("idle")
             self._bar_master.setRange(0, 1)
             self._bar_master.setValue(0)
             self._bar_master.setFormat("0/0 Files")
-            self._lbl_eta.setText("--:--:--")
+            self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
             self._btn_start.setText("ENCODING COMPLETE")
             self._btn_start.setEnabled(False)
             self._btn_pause.setEnabled(False)

@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.41] - 2026-03-22
+### Added
+- **Mass AV1 Encoder**: AMD hardware encoding — av1_vaapi (Linux) and av1_amf (Windows) when NVIDIA CUDA is not available.
+- **Footer**: Activity status with animated dots (Encoding..., Organizing..., Scanning...) instead of log-style output.
+### Fixed
+- **Mass AV1 Encoder**: NVIDIA full GPU pipeline — added -hwaccel_output_format cuda for decode→encode without CPU copy.
+- **Mass AV1 Encoder**: FFmpeg progress parsing — support carriage-return output, out_time= format, -stats_period 0.5.
+- **Mass AV1 Encoder**: Work Progress — I/O throughput (MB/s), master bar updates, ESTIMATED TIME REMAINING label with ETA, fps/speed on thread 3rd line.
+
 ## [2.0.40] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: START button now responds when target was selected via Browse — `_browse_dst` was blocking `textChanged`, so `_update_start_enabled` never ran and the button stayed disabled.

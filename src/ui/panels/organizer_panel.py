@@ -30,9 +30,10 @@ class _Signals(QObject):
 
 class MediaOrganizerPanel(QWidget):
 
-    def __init__(self, log_callback=None, parent=None):
+    def __init__(self, log_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb = log_callback
+        self._status_cb = status_callback
         self._sig    = _Signals()
         self._sig.log_msg.connect(self._add_log)
         self._sig.progress.connect(self._on_progress)
@@ -321,6 +322,8 @@ class MediaOrganizerPanel(QWidget):
 
         debug(UTILITY_MEDIA_ORGANIZER, f"Organization start: path={path}, dry_run={self._chk_dry.isChecked()}, flat={self._chk_flat.isChecked()}, target={target or 'in-place'}")
         self._is_running = True
+        if self._status_cb:
+            self._status_cb("organizing")
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
 
@@ -370,8 +373,13 @@ class MediaOrganizerPanel(QWidget):
     def _on_stats(self, moved, skipped, duplicates):
         self._last_stats = (moved, skipped, duplicates)
 
+    def get_activity(self):
+        return "organizing" if self._is_running else "idle"
+
     def _on_finished(self):
         self._is_running = False
+        if self._status_cb:
+            self._status_cb("idle")
         self._update_start_enabled()
         self._btn_stop.setEnabled(False)
         self._bar.setFormat("Complete")

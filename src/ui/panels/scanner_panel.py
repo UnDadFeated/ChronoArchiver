@@ -34,9 +34,10 @@ class _Signals(QObject):
 
 class AIScannerPanel(QWidget):
 
-    def __init__(self, log_callback=None, parent=None):
+    def __init__(self, log_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb = log_callback
+        self._status_cb = status_callback
         self._sig    = _Signals()
         self._sig.log_msg.connect(self._add_log)
         self._sig.progress.connect(self._on_progress)
@@ -329,6 +330,8 @@ class AIScannerPanel(QWidget):
 
         debug(UTILITY_AI_MEDIA_SCANNER, f"Scan start: path={path}, recursive={self._chk_recursive.isChecked()}, keep_animals={self._chk_animals.isChecked()}")
         self._is_running = True
+        if self._status_cb:
+            self._status_cb("scanning")
         self._update_start_enabled()
         self._btn_stop.setEnabled(True)
 
@@ -351,11 +354,16 @@ class AIScannerPanel(QWidget):
 
         threading.Thread(target=_run, daemon=True).start()
 
+    def get_activity(self):
+        return "scanning" if self._is_running else "idle"
+
     def _stop_job(self):
         if self._engine:
             self._engine.cancel()
             debug(UTILITY_AI_MEDIA_SCANNER, "Scan stopped by user")
         self._is_running = False
+        if self._status_cb:
+            self._status_cb("idle")
         self._update_start_enabled()
         self._btn_stop.setEnabled(False)
 
@@ -364,6 +372,8 @@ class AIScannerPanel(QWidget):
 
     def _on_finished(self):
         self._is_running = False
+        if self._status_cb:
+            self._status_cb("idle")
         self._update_start_enabled()
         self._btn_stop.setEnabled(False)
         self._bar.setFormat("Complete")

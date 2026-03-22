@@ -1,4 +1,6 @@
+import glob
 import os
+import platform
 import threading
 import subprocess
 import re
@@ -31,21 +33,25 @@ class AV1EncoderEngine:
         self.job_id = job_id
         self.on_progress: Optional[Callable[[int, EncodingProgress], None]] = None
         self.on_details: Optional[Callable[[int, str, str], None]] = None
-        self.has_cuda = self._check_cuda_support()
+        self._encoders_output = self._get_encoders_output()
+        self.has_cuda = "av1_nvenc" in self._encoders_output
+        self.has_amd_vaapi = "av1_vaapi" in self._encoders_output and platform.system() == "Linux"
+        self.has_amd_amf = "av1_amf" in self._encoders_output and platform.system() == "Windows"
+        self._hw_encoder = "nvenc" if self.has_cuda else ("vaapi" if self.has_amd_vaapi else ("amf" if self.has_amd_amf else None))
         self._current_process: Optional[subprocess.Popen] = None
         self._is_paused = False
         self._lock = threading.Lock()
         self.logger = logging.getLogger("ChronoArchiver.Encoder")
+        if self._hw_encoder:
+            self.logger.info(f"HW encoder: {self._hw_encoder}")
+        else:
+            self.logger.info("HW encoder: none, using libsvtav1")
 
-    def _check_cuda_support(self) -> bool:
-        """Checks for NVIDIA AV1 NVENC support via ffmpeg."""
+    def _get_encoders_output(self) -> str:
         try:
-            output = subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.STDOUT, text=True)
-            has_cuda = "av1_nvenc" in output
-            self.logger.info(f"CUDA AV1 Support (av1_nvenc): {has_cuda}")
-            return has_cuda
+            return subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.STDOUT, text=True)
         except Exception:
-            return False
+            return ""
 
     def scan_files(self, directory: str, stop_event: Optional[threading.Event] = None) -> Generator[tuple, None, None]:
         """Scans a directory for supported video files, yielding results for real-time feedback."""
@@ -162,31 +168,45 @@ class AV1EncoderEngine:
     def encode_file(self, input_path: str, output_path: str, quality: int, preset: str, reencode_audio: bool, hw_accel: bool = False) -> tuple:
         """Encodes a single file and emits progress."""
         duration = self._get_video_duration(input_path)
-        encoder = "av1_nvenc" if self.has_cuda else "libsvtav1"
-        
-        # Preset mapping
-        modern_preset = preset
-        if self.has_cuda:
+        hdr_info = self._detect_hdr(input_path)
+
+        hw_flags = []
+        v_args = []
+        vf_before = []
+
+        if self._hw_encoder == "nvenc" and hw_accel:
+            hw_flags = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+            pix_fmt = ("p010le" if hdr_info else "yuv420p")
+            modern_preset = preset
             try:
                 if not modern_preset.startswith("p") or int(modern_preset[1:]) > 7:
                     modern_preset = "p4"
-            except ValueError: modern_preset = "p4"
+            except ValueError:
+                modern_preset = "p4"
+            v_args = ["-c:v", "av1_nvenc", "-pix_fmt", pix_fmt, "-rc", "vbr", "-cq", str(quality), "-preset", modern_preset]
+        elif self._hw_encoder == "vaapi" and hw_accel:
+            dri = glob.glob("/dev/dri/renderD*")
+            vaapi_dev = dri[0] if dri else None
+            if vaapi_dev:
+                hw_flags = ["-vaapi_device", vaapi_dev, "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
+            else:
+                hw_flags = ["-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
+            qp_vaapi = max(50, min(200, 40 + quality * 4))
+            v_args = ["-c:v", "av1_vaapi", "-qp", str(qp_vaapi)]
+        elif self._hw_encoder == "amf" and hw_accel:
+            hw_flags = []
+            qp_amf = max(8, min(52, 10 + quality))
+            v_args = ["-c:v", "av1_amf", "-qp_i", str(qp_amf), "-qp_p", str(qp_amf)]
         else:
             p_map = {"p1":"12", "p2":"10", "p3":"8", "p4":"6", "p5":"4", "p6":"2", "p7":"0"}
-            modern_preset = p_map.get(modern_preset, "6")
+            modern_preset = p_map.get(preset, "6")
+            pix_fmt = "yuv420p10le" if hdr_info else "yuv420p"
+            v_args = ["-c:v", "libsvtav1", "-pix_fmt", pix_fmt, "-preset", modern_preset, "-crf", str(quality)]
 
-        hdr_info = self._detect_hdr(input_path)
-        pix_fmt = ("p010le" if self.has_cuda else "yuv420p10le") if hdr_info else "yuv420p"
-
-        v_args = ["-c:v", encoder, "-pix_fmt", pix_fmt]
-        if self.has_cuda:
-            v_args += ["-rc", "vbr", "-cq", str(quality), "-preset", modern_preset]
-        else:
-            v_args += ["-preset", modern_preset, "-crf", str(quality)]
-
-        if hdr_info:
-            color_space = hdr_info.get("color_space", "bt2020nc")
-            if not color_space or color_space in ("unknown", ""): color_space = "bt2020nc"
+        if hdr_info and self._hw_encoder != "vaapi":
+            color_space = hdr_info.get("color_space", "bt2020nc") or "bt2020nc"
+            if color_space in ("unknown", ""):
+                color_space = "bt2020nc"
             v_args += [
                 "-color_primaries", hdr_info.get("color_primaries", "bt2020"),
                 "-color_trc", hdr_info.get("color_transfer", "smpte2084"),
@@ -197,13 +217,10 @@ class AV1EncoderEngine:
         if reencode_audio:
             a_args = ["-c:a", "libopus", "-b:a", "128k", "-af", "aresample=async=1"]
 
-        hw_flags = ["-hwaccel", "cuda" if self.has_cuda else "auto"] if hw_accel else []
-        
-        cmd = [
-            "ffmpeg", "-y",
-        ] + hw_flags + [
-            "-i", input_path, "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-fps_mode", "passthrough"
-        ] + v_args + a_args + [output_path]
+        cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
+        if vf_before:
+            cmd += ["-vf", ",".join(vf_before)]
+        cmd += ["-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-fps_mode", "passthrough"] + v_args + a_args + [output_path]
 
         self.logger.info(f"Engine State [Job {self.job_id}]: Starting encode for {os.path.basename(input_path)}")
         debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode start: {input_path} -> {output_path}")
@@ -232,36 +249,37 @@ class AV1EncoderEngine:
             video_info, audio_info = "Unknown", "Unknown"
             error_log = deque(maxlen=50)
 
-            for line in self._current_process.stderr:
+            for raw in self._current_process.stderr:
                 _last_output[0] = time.time()
-                if not line: continue
-                error_log.append(line)
-                
-                if not details_detected:
-                    v_match = re.search(r"Stream #.*Video: ([^,]+), [^,]+, (\d+x\d+).*, ([\d.]+) fps", line)
-                    if v_match: video_info = f"{v_match.group(1)} | {v_match.group(2)} | {v_match.group(3)} fps"
-                    a_match = re.search(r"Stream #.*Audio: ([^,]+), \d+ Hz, ([^,]+)", line)
-                    if a_match: audio_info = f"{a_match.group(1)} | {a_match.group(2)}"
-                    if video_info != "Unknown" and audio_info != "Unknown" and self.on_details:
-                        self.on_details(self.job_id, video_info, audio_info)
-                        details_detected = True
+                for line in raw.replace("\r", "\n").split("\n"):
+                    if not line.strip(): continue
+                    error_log.append(line)
+                    
+                    if not details_detected:
+                        v_match = re.search(r"Stream #.*Video: ([^,]+), [^,]+, (\d+x\d+).*, ([\d.]+) fps", line)
+                        if v_match: video_info = f"{v_match.group(1)} | {v_match.group(2)} | {v_match.group(3)} fps"
+                        a_match = re.search(r"Stream #.*Audio: ([^,]+), \d+ Hz, ([^,]+)", line)
+                        if a_match: audio_info = f"{a_match.group(1)} | {a_match.group(2)}"
+                        if video_info != "Unknown" and audio_info != "Unknown" and self.on_details:
+                            self.on_details(self.job_id, video_info, audio_info)
+                            details_detected = True
 
-                time_match = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
-                if time_match and duration > 0:
-                    h, m, s = map(float, time_match.groups())
-                    curr_time = (h * 3600) + (m * 60) + s
-                    percent = min((curr_time / duration) * 100, 100.0)
-                    fps_match = re.search(r"fps=\s*([\d.]+)", line)
-                    speed_match = re.search(r"speed=\s*([\d.]+)x", line)
-                    size_match = re.search(r"size=\s*(\d+)kB", line)
-                    if self.on_progress:
-                        self.on_progress(self.job_id, EncodingProgress(
-                            file_name=os.path.basename(input_path), percent=percent,
-                            time_elapsed=f"{int(h):02}:{int(m):02}:{int(s):02}",
-                            fps=float(fps_match.group(1)) if fps_match else 0.0,
-                            speed=float(speed_match.group(1)) if speed_match else 0.0,
-                            bytes_processed=int(size_match.group(1)) * 1024 if size_match else 0
-                        ))
+                    time_match = re.search(r"time=(\d+):(\d+):(\d+\.?\d*)", line) or re.search(r"out_time=(\d+):(\d+):(\d+\.?\d*)", line)
+                    if time_match and duration > 0:
+                        h, m, s = map(float, time_match.groups())
+                        curr_time = (h * 3600) + (m * 60) + s
+                        percent = min((curr_time / duration) * 100, 100.0)
+                        fps_match = re.search(r"fps=\s*([\d.]+)", line)
+                        speed_match = re.search(r"speed=\s*([\d.]+)x", line)
+                        size_match = re.search(r"size=\s*(\d+)kB", line)
+                        if self.on_progress:
+                            self.on_progress(self.job_id, EncodingProgress(
+                                file_name=os.path.basename(input_path), percent=percent,
+                                time_elapsed=f"{int(h):02}:{int(m):02}:{int(s):02}",
+                                fps=float(fps_match.group(1)) if fps_match else 0.0,
+                                speed=float(speed_match.group(1)) if speed_match else 0.0,
+                                bytes_processed=int(size_match.group(1)) * 1024 if size_match else 0
+                            ))
 
             success = False
             if self._current_process:

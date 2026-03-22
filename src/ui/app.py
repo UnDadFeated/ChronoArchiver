@@ -200,9 +200,9 @@ class ChronoArchiverApp(QMainWindow):
 
         # ── STACKED PANELS ──
         self.stack = QStackedWidget()
-        self.panel_org = MediaOrganizerPanel(log_callback=self._log)
-        self.panel_enc = AV1EncoderPanel(log_callback=self._log, metrics_callback=self._on_encoder_metrics)
-        self.panel_scn = AIScannerPanel(log_callback=self._log)
+        self.panel_org = MediaOrganizerPanel(log_callback=self._log, status_callback=self._set_activity)
+        self.panel_enc = AV1EncoderPanel(log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity)
+        self.panel_scn = AIScannerPanel(log_callback=self._log, status_callback=self._set_activity)
         
         self.stack.addWidget(self.panel_org)
         self.stack.addWidget(self.panel_enc)
@@ -219,8 +219,13 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout.setContentsMargins(10, 0, 10, 0)
 
         self.lbl_status = QLabel("Idle")
-        self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 180px;")
+        self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
         self.lbl_status.setToolTip("Current activity: Encoding, Organizing, Scanning, etc.")
+        self._activity = "idle"
+        self._activity_dot = 0
+        self._activity_timer = QTimer(self)
+        self._activity_timer.setInterval(400)
+        self._activity_timer.timeout.connect(self._animate_activity)
         self.status_layout.addWidget(self.lbl_status)
         self.status_layout.addStretch()
 
@@ -274,10 +279,33 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_metrics.setVisible(True)
         panels = ["Media Organizer", "Mass AV1 Encoder", "AI Media Scanner"]
         debug(UTILITY_APP, f"Panel switch: {panels[index]}")
+        panel = self.stack.currentWidget()
+        if hasattr(panel, "get_activity"):
+            self._set_activity(panel.get_activity())
+
+    def _set_activity(self, activity: str):
+        """Activity: 'idle' | 'encoding' | 'organizing' | 'scanning'. Footer left reflects app state."""
+        self._activity = activity or "idle"
+        if self._activity in ("encoding", "organizing", "scanning"):
+            self._activity_dot = 0
+            self._activity_timer.start()
+            self._animate_activity()
+        else:
+            self._activity_timer.stop()
+            self.lbl_status.setText("Idle")
+
+    def _animate_activity(self):
+        if self._activity == "idle":
+            self._activity_timer.stop()
+            self.lbl_status.setText("Idle")
+            return
+        base = {"encoding": "Encoding", "organizing": "Organizing", "scanning": "Scanning"}.get(self._activity, "Idle")
+        dots = "." * (self._activity_dot % 3 + 1)
+        self.lbl_status.setText(f"{base}{dots}")
+        self._activity_dot += 1
 
     def _log(self, msg):
         self.logger.info(msg)
-        self.lbl_status.setText(msg[:100].upper())
 
     def _check_prereqs(self):
         """Run pre-req checks and update center footer status. Green ✓ success, red ✗ failed, yellow — optional."""
