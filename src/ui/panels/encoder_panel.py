@@ -598,16 +598,12 @@ class AV1EncoderPanel(QWidget):
             count = 0
             total_bytes = 0
             items = []
-            last_emit = [0]
             try:
                 for path, size in AV1EncoderEngine().scan_files(src):
                     items.append((path, size))
                     count += 1
                     total_bytes += size
-                    now = time.time()
-                    if count <= 25 or now - last_emit[0] >= 0.1:
-                        last_emit[0] = now
-                        self._sig.scan_progress.emit(count, total_bytes)
+                    self._sig.scan_progress.emit(count, total_bytes)
             except Exception as e:
                 self._sig.log_msg.emit(f"Scan error: {e}")
                 debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
@@ -687,16 +683,12 @@ class AV1EncoderPanel(QWidget):
                 count = 0
                 total_bytes = 0
                 items = []
-                last_emit = [0]
                 try:
                     for path, size in AV1EncoderEngine().scan_files(src):
                         items.append((path, size))
                         count += 1
                         total_bytes += size
-                        now = time.time()
-                        if count <= 25 or now - last_emit[0] >= 0.1:
-                            last_emit[0] = now
-                            self._sig.scan_progress.emit(count, total_bytes)
+                        self._sig.scan_progress.emit(count, total_bytes)
                 except Exception as e:
                     self._sig.log_msg.emit(f"Scan error: {e}")
                     debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")

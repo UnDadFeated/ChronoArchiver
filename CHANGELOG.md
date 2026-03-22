@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.36] - 2026-03-22
+### Changed
+- **Mass AV1 Encoder**: Scan dialog emits for every file found; count increments per file (no throttling).
+
 ## [2.0.35] - 2026-03-22
 ### Changed
 - **Logging**: Single log file per session — `chronoarchiver_YYYY-MM-DD_HH-MM-SS.log` created at startup; standard logging and debug() both write to it; no separate chronoarchiver.log; log level DEBUG; added verbose logging for scan, encode, panel switches, pre-reqs.
