@@ -27,7 +27,6 @@ from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
 from ui.panels.encoder_panel import AV1EncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
-from core.scanner import OPENCV_AVAILABLE
 from core.updater import ApplicationUpdater
 from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP
 from core.logger import setup_logger
@@ -317,7 +316,7 @@ class ChronoArchiverApp(QMainWindow):
 
         def step2():
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
-            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if OPENCV_AVAILABLE else 'optional'}, PySide6=ok")
+            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}")
             self.lbl_status.setText("Checking OpenCV…")
             QTimer.singleShot(400, step3)
 
@@ -337,8 +336,14 @@ class ChronoArchiverApp(QMainWindow):
             parts = []
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
             parts.append(f"FFmpeg {ok if ffmpeg_ok else fail}")
-            parts.append(f"OpenCV {ok if OPENCV_AVAILABLE else skip}")
+            try:
+                import cv2
+                opencv_ok = cv2.__version__
+            except Exception:
+                opencv_ok = None
+            parts.append(f"OpenCV {ok if opencv_ok else skip}")
             parts.append(f"PySide6 {ok}")
+            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'optional'}, PySide6=ok")
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
                 status += f"  ·  <span style=\"color:#10b981\">Ready</span>"

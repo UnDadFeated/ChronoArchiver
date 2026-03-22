@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.54] - 2026-03-22
+### Fixed
+- **Footer pre-reqs**: OpenCV check uses direct `import cv2` at display time with broad exception handling; green ✓ when import succeeds.
+
 ## [2.0.53] - 2026-03-22
 ### Fixed
 - **Footer pre-reqs**: OpenCV now shows green ✓ when installed; uses scanner's OPENCV_AVAILABLE flag for consistent detection.
