@@ -218,7 +218,7 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout = QHBoxLayout(self.status_bar)
         self.status_layout.setContentsMargins(10, 0, 10, 0)
 
-        self.lbl_status = QLabel("Idle")
+        self.lbl_status = QLabel("Checking…")
         self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
         self.lbl_status.setToolTip("Current activity: Encoding, Organizing, Scanning, etc.")
         self._activity = "idle"
@@ -226,6 +226,7 @@ class ChronoArchiverApp(QMainWindow):
         self._activity_timer = QTimer(self)
         self._activity_timer.setInterval(400)
         self._activity_timer.timeout.connect(self._animate_activity)
+        self._precheck_done = False
         self.status_layout.addWidget(self.lbl_status)
         self.status_layout.addStretch()
 
@@ -290,7 +291,7 @@ class ChronoArchiverApp(QMainWindow):
             self._activity_dot = 0
             self._activity_timer.start()
             self._animate_activity()
-        else:
+        elif self._precheck_done:
             self._activity_timer.stop()
             self.lbl_status.setText("Idle")
 
@@ -308,25 +309,54 @@ class ChronoArchiverApp(QMainWindow):
         self.logger.info(msg)
 
     def _check_prereqs(self):
-        """Run pre-req checks and update center footer status. Green ✓ success, red ✗ failed, yellow — optional."""
-        ok = '<span style="color:#10b981">✓</span>'
-        fail = '<span style="color:#ef4444">✗</span>'
-        skip = '<span style="color:#eab308">—</span>'
-        parts = []
-        ffmpeg_ok = bool(shutil.which("ffmpeg"))
-        debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV=check, PySide6=ok")
-        parts.append(f"FFmpeg {ok if ffmpeg_ok else fail}")
-        try:
-            import cv2
-            parts.append(f"OpenCV {ok}")
-        except ImportError:
-            parts.append(f"OpenCV {skip}")
-        parts.append(f"PySide6 {ok}")
-        status = "  ·  ".join(parts)
-        if ffmpeg_ok:
-            status += f"  ·  <span style=\"color:#10b981\">Ready</span>"
-        self.lbl_prereq.setTextFormat(Qt.RichText)
-        self.lbl_prereq.setText(status)
+        """Run pre-req checks, show updates on left footer, then Pre-check complete for 3s, then Idle."""
+        def step1():
+            self.lbl_status.setText("Checking FFmpeg…")
+            QTimer.singleShot(400, step2)
+
+        def step2():
+            ffmpeg_ok = bool(shutil.which("ffmpeg"))
+            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV=check, PySide6=ok")
+            self.lbl_status.setText("Checking OpenCV…")
+            QTimer.singleShot(400, step3)
+
+        def step3():
+            try:
+                import cv2
+                _ = cv2
+            except ImportError:
+                pass
+            self.lbl_status.setText("Checking PySide6…")
+            QTimer.singleShot(400, step4)
+
+        def step4():
+            ok = '<span style="color:#10b981">✓</span>'
+            fail = '<span style="color:#ef4444">✗</span>'
+            skip = '<span style="color:#eab308">—</span>'
+            parts = []
+            ffmpeg_ok = bool(shutil.which("ffmpeg"))
+            parts.append(f"FFmpeg {ok if ffmpeg_ok else fail}")
+            try:
+                import cv2
+                parts.append(f"OpenCV {ok}")
+            except ImportError:
+                parts.append(f"OpenCV {skip}")
+            parts.append(f"PySide6 {ok}")
+            status = "  ·  ".join(parts)
+            if ffmpeg_ok:
+                status += f"  ·  <span style=\"color:#10b981\">Ready</span>"
+            self.lbl_prereq.setTextFormat(Qt.RichText)
+            self.lbl_prereq.setText(status)
+            self.lbl_status.setText("Pre-check complete")
+            self._precheck_done = True
+            QTimer.singleShot(3000, _go_idle)
+
+        def _go_idle():
+            if self._activity == "idle":
+                self.lbl_status.setText("Idle")
+            self._activity_timer.stop()
+
+        step1()
 
     def _copy_console(self):
         panel = self.stack.currentWidget()

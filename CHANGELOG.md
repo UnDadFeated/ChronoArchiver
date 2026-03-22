@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.51] - 2026-03-22
+### Changed
+- **Startup footer**: Left status shows pre-check steps (Checking FFmpeg…, Checking OpenCV…, Checking PySide6…) before Idle; displays "Pre-check complete" for 3 seconds, then switches to Idle.
+
 ## [2.0.50] - 2026-03-22
 ### Fixed
 - **AI Media Scanner models**: Face model URL switched from GitHub (404, Git LFS) to Hugging Face; animal model URL switched from download.tensorflow.org (SSL cert issue) to storage.googleapis.com mirror. All model URLs verified.
