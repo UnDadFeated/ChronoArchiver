@@ -18,7 +18,7 @@ ChronoArchiver addresses three core workflows for managing large media libraries
 | **AI Media Scanner** | Classifies images by subject presence (faces, animals) for bulk triage and archival. |
 | **Mass AV1 Encoder** | Batch-transcodes video to AV1 with optional hardware acceleration. |
 
-Settings persist to the platform config directory; no manual configuration is required.
+Settings persist to the platform config directory; no manual configuration is required. Each panel disables its Start button until all required inputs (paths, media types, AI models) are set.
 
 ---
 
@@ -50,7 +50,7 @@ Dual-list workflow: **Keep** (subjects detected) and **Move** (no subjects). Det
 - **Face** — OpenCV YuNet (`face_detection_yunet_2023mar.onnx`), OpenCL when available
 - **Animals** — OpenCV DNN SSD MobileNet V1 (optional, configurable confidence threshold)
 
-Models are verified on launch; Start AI Scan is disabled until models exist (use Setup Models if missing).
+Models are verified on launch and stored in the platform user-data directory (`~/.local/share/ChronoArchiver/models` on Linux). Start AI Scan is disabled until models exist and a valid folder is selected (use Setup Models if missing).
 
 Features:
 
