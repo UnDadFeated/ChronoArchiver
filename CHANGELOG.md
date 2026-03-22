@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.49] - 2026-03-22
+### Fixed
+- **AI Media Scanner – Setup Models**: Setup now opens a dedicated popup dialog showing download URL, current model, and fixed progress bar (pre-calculated from known sizes). Fixes issue where clicking Setup Models showed "Downloading" but nothing happened.
+- **AI Media Scanner**: All models (Face YuNet, Animals & Objects SSD, Config) download in one batch; models detected on next app launch.
+### Added
+- **AI Media Scanner**: Model version check — Engine Status shows "Updated models available" in yellow when newer models exist (optional).
+- **AI Media Scanner**: Refresh model check when panel becomes visible.
+- **docs/models_version.txt**: Version manifest for model update detection.
+- **Uninstall**: AUR package `post_remove` hook deletes all user data (models, config, logs) for a clean uninstall; README documents paths for source-install removal.
+
 ## [2.0.48] - 2026-03-22
 ### Fixed
 - **Organizer**: EXIF handling — piexif load/decode wrapped; support both `YYYY:MM:DD` and `YYYY-MM-DD`; handle ValueError, TypeError, MemoryError; use debug() instead of print.

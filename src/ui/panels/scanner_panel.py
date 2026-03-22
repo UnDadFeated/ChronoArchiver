@@ -11,9 +11,10 @@ import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
-    QProgressBar, QFileDialog, QSpinBox, QFrame,
+    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
+from PySide6.QtGui import QShowEvent
 from PySide6.QtGui import QPixmap
 
 import pathlib
@@ -30,6 +31,82 @@ class _Signals(QObject):
     log_msg  = Signal(str)
     progress = Signal(float)
     finished = Signal()
+    setup_complete = Signal(bool)
+    version_check_done = Signal(bool)
+
+
+class ModelSetupDialog(QDialog):
+    """Popup showing model download progress: URL, model name, fixed progress bar."""
+    progress_update = Signal(str, str, str, int, int, float)
+
+    def __init__(self, model_mgr, parent=None):
+        super().__init__(parent)
+        self._model_mgr = model_mgr
+        self.setWindowTitle("AI Model Setup")
+        self.setModal(False)
+        self.setFixedSize(420, 220)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(12, 12, 12, 12)
+
+        self._lbl_url = QLabel("Connecting...")
+        self._lbl_url.setStyleSheet("font-size: 9px; color: #6b7280;")
+        self._lbl_url.setWordWrap(True)
+        v.addWidget(self._lbl_url)
+
+        self._lbl_model = QLabel("")
+        self._lbl_model.setStyleSheet("font-size: 10px; font-weight: 600; color: #10b981;")
+        v.addWidget(self._lbl_model)
+
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
+        self._bar.setFixedHeight(14)
+        self._bar.setFormat("%p%")
+        v.addWidget(self._bar)
+
+        self._lbl_detail = QLabel("")
+        self._lbl_detail.setStyleSheet("font-size: 8px; color: #6b7280;")
+        v.addWidget(self._lbl_detail)
+
+        v.addStretch()
+        h = QHBoxLayout()
+        h.addStretch()
+        self._btn_cancel = QPushButton("Cancel")
+        self._btn_cancel.setStyleSheet("font-size: 9px;")
+        self._btn_cancel.clicked.connect(self._on_cancel)
+        h.addWidget(self._btn_cancel)
+        v.addLayout(h)
+
+        self.setStyleSheet("QDialog { background: #0d0d0d; }")
+        self.progress_update.connect(self.update_progress)
+
+    def _on_cancel(self):
+        self._model_mgr.cancel()
+        self._btn_cancel.setEnabled(False)
+        self._lbl_model.setText("Cancelling...")
+
+    def update_progress(self, url: str, label: str, filename: str, downloaded: int, total: int, overall: float):
+        self._lbl_url.setText(f"From: {url[:70]}..." if len(url) > 70 else f"From: {url}")
+        if filename.startswith("Extracting"):
+            self._lbl_model.setText(f"Extracting: {label}")
+            self._lbl_detail.setText("")
+        else:
+            self._lbl_model.setText(f"Downloading: {label} ({filename})")
+        pct = int(overall * 100)
+        self._bar.setValue(min(100, pct))
+        if total > 0:
+            mb_d = downloaded / (1024 * 1024)
+            mb_t = total / (1024 * 1024)
+            if mb_t >= 0.01:
+                self._lbl_detail.setText(f"{mb_d:.2f} / {mb_t:.2f} MB")
+            else:
+                kb_d = downloaded / 1024
+                kb_t = total / 1024
+                self._lbl_detail.setText(f"{kb_d:.1f} / {kb_t:.1f} KB")
+        else:
+            self._lbl_detail.setText(f"{downloaded:,} bytes")
+        self._bar.setValue(min(100, int(overall * 100)))
 
 
 class AIScannerPanel(QWidget):
@@ -42,6 +119,7 @@ class AIScannerPanel(QWidget):
         self._sig.log_msg.connect(self._add_log)
         self._sig.progress.connect(self._on_progress)
         self._sig.finished.connect(self._on_finished)
+        self._sig.version_check_done.connect(self._on_version_check)
 
         _model_dir = pathlib.Path(platformdirs.user_data_dir("ChronoArchiver", "UnDadFeated")) / "models"
         _model_dir.mkdir(parents=True, exist_ok=True)
@@ -223,16 +301,31 @@ class AIScannerPanel(QWidget):
         v_log.addWidget(self._log_list)
         root.addWidget(grp_log, 1)
 
-        # Check models on init
+        self._model_update_available = False
+        self._version_check_started = False
+        self._setup_in_progress = False
+        # Check models and version on init
         QTimer.singleShot(500, self._check_models)
+
+    def showEvent(self, event: QShowEvent):
+        super().showEvent(event)
+        if not self._setup_in_progress:
+            self._check_models()
 
     def _check_models(self):
         ready = self._model_mgr.is_up_to_date()
         if ready:
-            self._lbl_model.setText("Models Ready")
-            self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
-            self._btn_setup.hide()
-            debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready")
+            if self._model_update_available:
+                self._lbl_model.setText("Updated models available")
+                self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#eab308;")
+                self._btn_setup.hide()
+                debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready, update available (optional)")
+            else:
+                self._lbl_model.setText("Models Ready")
+                self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
+                self._btn_setup.hide()
+                debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready")
+            self._start_version_check()
         else:
             self._lbl_model.setText("AI Models Missing!")
             self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
@@ -240,8 +333,27 @@ class AIScannerPanel(QWidget):
             debug(UTILITY_AI_MEDIA_SCANNER, f"Models check: missing {self._model_mgr.get_missing_models()}")
         self._update_start_enabled()
 
+    def _on_version_check(self, available: bool):
+        self._model_update_available = bool(available)
+        if self._model_mgr.is_up_to_date():
+            self._check_models()
+
+    def _start_version_check(self):
+        if self._version_check_started:
+            return
+        self._version_check_started = True
+
+        def _task():
+            try:
+                available = self._model_mgr.check_model_update_available()
+                self._sig.version_check_done.emit(available)
+            except Exception:
+                self._sig.version_check_done.emit(False)
+
+        threading.Thread(target=_task, daemon=True).start()
+
     def _get_guide_target(self):
-        if self._is_running:
+        if self._is_running or self._setup_in_progress:
             return None
         if not self._model_mgr.is_up_to_date():
             return self._btn_setup
@@ -296,24 +408,47 @@ class AIScannerPanel(QWidget):
     def _setup_models(self):
         self._add_log("Starting model setup...")
         debug(UTILITY_AI_MEDIA_SCANNER, "Model setup started")
+        missing = self._model_mgr.get_missing_models()
+        if not missing:
+            self._add_log("All models already present.")
+            self._check_models()
+            return
+        self._setup_in_progress = True
         self._bar.setFormat("Downloading models...")
         self._lbl_status.setText("Downloading...")
-        def _progress(downloaded, total_size, filename):
-            if total_size > 0:
-                pct = downloaded / total_size
-                self._sig.progress.emit(pct)
-                self._sig.log_msg.emit(f"Downloading: {filename} ({int(pct * 100)}%)")
-            else:
-                self._sig.log_msg.emit(f"Downloading: {filename}...")
-        def _task():
-            ok = self._model_mgr.download_models(_progress)
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
+        self._update_start_enabled()
+        dlg = ModelSetupDialog(self._model_mgr, self)
+
+        def _progress(downloaded, total_size, filename, overall, label, url):
+            dlg.progress_update.emit(url, label, filename, downloaded, total_size, overall)
+            self._sig.progress.emit(overall)
+            self._sig.log_msg.emit(f"Downloading: {label} ({int(overall * 100)}%)")
+
+        def _on_setup_complete(ok):
+            self._setup_in_progress = False
+            dlg.close()
+            self._bar.setFormat("Ready")
+            self._lbl_status.setText("Ready")
+            self._bar.setValue(0)
+            self._bar.setRange(0, 100)
+            self._check_models()
+            self._update_start_enabled()
+            self._add_log("Model setup complete." if ok else "Model setup failed or cancelled.")
             debug(UTILITY_AI_MEDIA_SCANNER, f"Model setup complete: ok={ok}")
-            def _done():
-                self._bar.setFormat("Ready")
-                self._lbl_status.setText("Ready")
-                self._bar.setValue(0)
-                self._check_models()
-            QTimer.singleShot(0, _done)
+
+        self._sig.setup_complete.connect(_on_setup_complete, Qt.ConnectionType.SingleShotConnection)
+
+        def _task():
+            try:
+                ok = self._model_mgr.download_models(_progress)
+                self._sig.setup_complete.emit(ok)
+            except Exception as e:
+                debug(UTILITY_AI_MEDIA_SCANNER, f"Model setup exception: {e}")
+                self._sig.setup_complete.emit(False)
+
+        dlg.show()
         threading.Thread(target=_task, daemon=True).start()
 
     def _browse(self):

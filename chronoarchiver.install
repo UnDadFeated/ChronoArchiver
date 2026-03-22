@@ -1,5 +1,6 @@
 # ChronoArchiver pacman install hooks
 # Updates icon cache so the application icon appears correctly in GNOME/KDE/etc.
+# post_remove deletes all user data (models, config, logs) for a clean uninstall.
 
 post_install() {
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
@@ -9,4 +10,15 @@ post_install() {
 
 post_upgrade() {
     post_install
+}
+
+post_remove() {
+    # Remove all ChronoArchiver user data: models, config, logs.
+    # Paths match platformdirs: ~/.local/share/ChronoArchiver, ~/.config/ChronoArchiver, ~/.local/state/ChronoArchiver
+    for home in /root /home/*; do
+        [ -d "$home" ] || continue
+        rm -rf "$home/.local/share/ChronoArchiver"
+        rm -rf "$home/.config/ChronoArchiver"
+        rm -rf "$home/.local/state/ChronoArchiver"
+    done
 }
