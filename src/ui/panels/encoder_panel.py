@@ -33,10 +33,10 @@ class _Signals(QObject):
     details   = Signal(int, str, str) # job_id, vid, aud
     finished  = Signal(int, bool, str, str)
     log_msg   = Signal(str)
+    batch_complete = Signal()         # emitted when all workers finish, queue empty — auto-stop UI
     scan_progress = Signal(int, int)  # count, total_bytes (thread-safe for scan updates)
     scan_done = Signal(list, str)     # items, src — emitted from worker, handled in main thread
     scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
-    scan_done = Signal(list, str)     # items, src — emitted from worker, handled in main thread
 
 
 class ScanProgressDialog(QDialog):
@@ -87,6 +87,7 @@ class AV1EncoderPanel(QWidget):
         self._sig.details.connect(self._on_details)
         self._sig.finished.connect(self._on_encode_finished)
         self._sig.log_msg.connect(self._add_log)
+        self._sig.batch_complete.connect(self._on_batch_complete)
         self._sig.scan_done.connect(self._on_scan_done)
         self._sig.scan_done_then_start.connect(self._on_scan_done_then_start)
 
@@ -858,7 +859,9 @@ class AV1EncoderPanel(QWidget):
                     rel = os.path.relpath(input_path, base)
                     rel_stem = os.path.splitext(rel)[0]
                     tpath = os.path.join(dst, rel_stem + "_av1.mp4")
-                    os.makedirs(os.path.dirname(tpath), exist_ok=True)
+                    out_dir = os.path.dirname(tpath)
+                    if out_dir:
+                        os.makedirs(out_dir, exist_ok=True)
                 else:
                     tpath = os.path.join(dst, out_name)
 
@@ -894,6 +897,7 @@ class AV1EncoderPanel(QWidget):
                 self._active_jobs -= 1
             if self._active_jobs == 0 and not self._queue:
                 self._sig.log_msg.emit("Encoding batch complete.")
+                self._sig.batch_complete.emit()
                 debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
                 if self._settings.get("shutdown_on_finish") and self._is_encoding:
                     if platform.system() == "Windows":
@@ -1008,17 +1012,29 @@ class AV1EncoderPanel(QWidget):
             self._job_aud[job_id].setText("-")
 
         if self._done_count >= self._total_count and self._is_encoding:
-            self._is_encoding = False
-            if self._status_cb:
-                self._status_cb("idle")
-            self._bar_master.setRange(0, 1)
-            self._bar_master.setValue(0)
-            self._bar_master.setFormat("0/0 Files")
-            self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
-            self._btn_start.setText("ENCODING COMPLETE")
-            self._btn_start.setEnabled(False)
-            self._btn_pause.setEnabled(False)
-            debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
+            self._finalize_batch_complete()
+
+    def _on_batch_complete(self):
+        """Called when last worker exits and queue is empty; ensures UI transitions even if finished-signal order lags."""
+        if self._is_encoding:
+            self._finalize_batch_complete()
+
+    def _finalize_batch_complete(self):
+        """Transition UI to encoding-complete state (idempotent)."""
+        if not self._is_encoding:
+            return
+        self._is_encoding = False
+        if self._status_cb:
+            self._status_cb("idle")
+        self._bar_master.setRange(0, 1)
+        self._bar_master.setValue(0)
+        self._bar_master.setFormat("0/0 Files")
+        self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
+        self._lbl_io.setText("I/O: 0.0 MB/s")
+        self._btn_start.setText("ENCODING COMPLETE")
+        self._btn_start.setEnabled(False)
+        self._btn_pause.setEnabled(False)
+        debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 

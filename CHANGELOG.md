@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.44] - 2026-03-22
+### Fixed
+- **Mass AV1 Encoder**: Encoding now automatically transitions to "ENCODING COMPLETE" when the batch finishes — no manual STOP required to see final state; added `batch_complete` signal from worker so UI resets even when finished-signal ordering lags.
+
 ## [2.0.43] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: Mirror-folder output no longer recreates redundant top-level folders (e.g. `Source`) in the target; structure root is now the common parent of all queued files, so only meaningful subdirs (e.g. date folders) are mirrored.
