@@ -34,6 +34,9 @@ class _Signals(QObject):
     finished  = Signal(int, bool, str, str)
     log_msg   = Signal(str)
     scan_progress = Signal(int, int)  # count, total_bytes (thread-safe for scan updates)
+    scan_done = Signal(list, str)     # items, src — emitted from worker, handled in main thread
+    scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
+    scan_done = Signal(list, str)     # items, src — emitted from worker, handled in main thread
 
 
 class ScanProgressDialog(QDialog):
@@ -83,6 +86,8 @@ class AV1EncoderPanel(QWidget):
         self._sig.details.connect(self._on_details)
         self._sig.finished.connect(self._on_encode_finished)
         self._sig.log_msg.connect(self._add_log)
+        self._sig.scan_done.connect(self._on_scan_done)
+        self._sig.scan_done_then_start.connect(self._on_scan_done_then_start)
 
         self._settings = AV1Settings()
 
@@ -591,6 +596,7 @@ class AV1EncoderPanel(QWidget):
         debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan start: src={src}")
 
         scan_dialog = ScanProgressDialog(self)
+        self._scan_dialog = scan_dialog
         self._sig.scan_progress.connect(scan_dialog.update_progress)
         scan_dialog.show()
 
@@ -608,25 +614,40 @@ class AV1EncoderPanel(QWidget):
                 self._sig.log_msg.emit(f"Scan error: {e}")
                 debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
             debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan complete: count={count}, total_bytes={total_bytes}")
-
-            def _done():
-                try:
-                    self._sig.scan_progress.emit(count, total_bytes)
-                except Exception:
-                    pass
-                try:
-                    self._sig.scan_progress.disconnect(scan_dialog.update_progress)
-                except Exception:
-                    pass
-                try:
-                    scan_dialog.close()
-                except Exception:
-                    pass
-                self._apply_scan_result(items, src)
-
-            QTimer.singleShot(0, _done)
+            self._sig.scan_done.emit(items, src)
 
         threading.Thread(target=_scan, daemon=True).start()
+
+    def _on_scan_done(self, items, scanned_src):
+        """Called in main thread when scan completes."""
+        dlg = getattr(self, "_scan_dialog", None)
+        if dlg:
+            try:
+                self._sig.scan_progress.disconnect(dlg.update_progress)
+            except Exception:
+                pass
+            try:
+                dlg.close()
+            except Exception:
+                pass
+        self._scan_dialog = None
+        self._apply_scan_result(items, scanned_src)
+
+    def _on_scan_done_then_start(self, items, src, dst):
+        """Called in main thread when scan completes (Start+empty queue path)."""
+        dlg = getattr(self, "_scan_dialog", None)
+        if dlg:
+            try:
+                self._sig.scan_progress.disconnect(dlg.update_progress)
+            except Exception:
+                pass
+            try:
+                dlg.close()
+            except Exception:
+                pass
+        self._scan_dialog = None
+        self._queue = items
+        self._continue_start_encoding(src, dst)
 
     def _apply_scan_result(self, items, scanned_src):
         self._is_scanning = False
@@ -676,6 +697,7 @@ class AV1EncoderPanel(QWidget):
             self._add_log("Scanning source...")
             debug(UTILITY_MASS_AV1_ENCODER, f"Start encoding: queue empty, scanning src={src}")
             scan_dialog = ScanProgressDialog(self)
+            self._scan_dialog = scan_dialog
             self._sig.scan_progress.connect(scan_dialog.update_progress)
             scan_dialog.show()
 
@@ -692,18 +714,7 @@ class AV1EncoderPanel(QWidget):
                 except Exception as e:
                     self._sig.log_msg.emit(f"Scan error: {e}")
                     debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
-
-                def _continue():
-                    try:
-                        self._sig.scan_progress.emit(count, total_bytes)
-                        self._sig.scan_progress.disconnect(scan_dialog.update_progress)
-                        scan_dialog.close()
-                    except Exception:
-                        pass
-                    self._queue = items
-                    self._continue_start_encoding(src, dst)
-
-                QTimer.singleShot(0, _continue)
+                self._sig.scan_done_then_start.emit(items, src, dst)
 
             threading.Thread(target=_scan_then_start, daemon=True).start()
             return

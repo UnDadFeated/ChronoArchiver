@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.37] - 2026-03-22
+### Fixed
+- **Mass AV1 Encoder**: Scan completion now correctly closes dialog and applies results — replaced QTimer.singleShot (which does not run in worker threads) with thread-safe scan_done / scan_done_then_start signals.
+
 ## [2.0.36] - 2026-03-22
 ### Changed
 - **Mass AV1 Encoder**: Scan dialog emits for every file found; count increments per file (no throttling).
