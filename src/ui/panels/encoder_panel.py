@@ -472,8 +472,6 @@ class AV1EncoderPanel(QWidget):
         self._guide_glow_phase = 0
         self._guide_target = None
         self._update_start_enabled()
-        # Auto-scan if source path already set (e.g. from settings)
-        QTimer.singleShot(300, self._auto_scan)
 
     # ── settings helpers ──────────────────────────────────────────────────────
 

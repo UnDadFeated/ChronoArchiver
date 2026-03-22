@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.31] - 2026-03-22
+### Fixed
+- **Mass AV1 Encoder**: Scan dialog no longer opens on app startup; only opens when user selects source (Browse or typing/pasting path).
+
 ## [2.0.30] - 2026-03-22
 ### Changed
 - **Mass AV1 Encoder**: Auto-scan now opens a separate `ScanProgressDialog` window showing file count and total size during source scan; main progress bar is used only for encoding (4 thread bars + total encoding progress) once the user clicks Start.
