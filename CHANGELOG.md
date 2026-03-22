@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.53] - 2026-03-22
+### Fixed
+- **Footer pre-reqs**: OpenCV now shows green ✓ when installed; uses scanner's OPENCV_AVAILABLE flag for consistent detection.
+
 ## [2.0.52] - 2026-03-22
 ### Fixed
 - **Model setup**: Progress updates only in the setup popup dialog, not the main panel's scanning bar.
