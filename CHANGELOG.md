@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.61] - 2026-03-22
+### Fixed
+- **Setup Models – OpenCV install**: Show pip output live in the setup dialog (indeterminate bar + line-by-line progress); on `externally-managed-environment` (Arch etc.), show "On Arch Linux run: sudo pacman -S python-opencv"; 3s pause so user can read the error before dialog closes.
+
 ## [2.0.60] - 2026-03-22
 ### Changed
 - **AI Media Scanner**: Guide now targets Setup Models when OpenCV is missing (even if models are installed); clicking it installs OpenCV via pip.

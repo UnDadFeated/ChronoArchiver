@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
@@ -90,6 +91,8 @@ class ModelSetupDialog(QDialog):
         self._lbl_model.setText("Cancelling...")
 
     def update_progress(self, url: str, label: str, filename: str, downloaded: int, total: int, overall: float):
+        if self._bar.minimum() == 0 and self._bar.maximum() == 0:
+            self._bar.setRange(0, 100)
         self._lbl_url.setText(f"From: {url[:70]}..." if len(url) > 70 else f"From: {url}")
         if filename.startswith("Extracting") or "Installing models" in filename:
             self._lbl_model.setText("Installing models... please wait...")
@@ -501,6 +504,10 @@ class AIScannerPanel(QWidget):
             dlg._lbl_model.setText(phase)
             dlg._lbl_detail.setText(detail)
             dlg._lbl_url.setText("")
+            if phase.startswith("Installing OpenCV") and "failed" not in phase.lower():
+                dlg._bar.setRange(0, 0)  # indeterminate during pip install
+            else:
+                dlg._bar.setRange(0, 100)
 
         def _on_setup_complete(ok):
             self._setup_in_progress = False
@@ -524,20 +531,39 @@ class AIScannerPanel(QWidget):
             try:
                 opencv_just_installed = False
                 if not OPENCV_AVAILABLE:
-                    self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", "Running pip...")
+                    self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", "Starting pip...")
                     self._sig.log_msg.emit("Installing OpenCV (opencv-python)...")
-                    r = subprocess.run(
+                    proc = subprocess.Popen(
                         [sys.executable, "-m", "pip", "install", "--user", "opencv-python"],
-                        capture_output=True, text=True, timeout=300
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
                     )
-                    if r.returncode == 0:
+                    output_lines = []
+                    for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+                        line = (line or "").strip()
+                        if line:
+                            output_lines.append(line)
+                            self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", line[:100])
+                    proc.wait(timeout=300)
+                    full_err = " ".join(output_lines) if output_lines else ""
+                    if proc.returncode == 0:
                         opencv_just_installed = True
+                        self._sig.setup_phase.emit("OpenCV installed.", "Restart ChronoArchiver to use AI Scanner.")
                         self._sig.log_msg.emit("OpenCV installed. Restart ChronoArchiver to use AI Scanner.")
                         debug(UTILITY_AI_MEDIA_SCANNER, "OpenCV installed via pip; restart required")
                     else:
-                        err = (r.stderr or r.stdout or "")[:200]
-                        self._sig.log_msg.emit(f"OpenCV install failed: {err}")
-                        debug(UTILITY_AI_MEDIA_SCANNER, f"OpenCV pip install failed: {r.returncode} {err}")
+                        err = full_err or "pip failed"
+                        if "externally-managed-environment" in err or "externally managed" in err.lower():
+                            self._sig.setup_phase.emit(
+                                "OpenCV install failed",
+                                "On Arch Linux run: sudo pacman -S python-opencv"
+                            )
+                            self._sig.log_msg.emit("OpenCV: On Arch run: sudo pacman -S python-opencv")
+                        else:
+                            self._sig.setup_phase.emit("OpenCV install failed", (err[:80] + "…") if len(err) > 80 else err or "Unknown error")
+                            self._sig.log_msg.emit(f"OpenCV install failed: {err}")
+                        debug(UTILITY_AI_MEDIA_SCANNER, f"OpenCV pip install failed: {proc.returncode} {err}")
+                        if not opencv_just_installed:
+                            time.sleep(3)  # Let user read the error before dialog closes
 
                 missing = self._model_mgr.get_missing_models()
                 if not missing:
