@@ -376,8 +376,11 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_metrics.setText(f"  CPU {cpu}  ·  GPU {gpu}  ·  RAM {ram}")
 
     def _open_donate(self):
-        url = "https://www.paypal.com/donate?business=jscheema%40gmail.com&amount=5&currency_code=USD&locale.x=en_US"
-        webbrowser.open(url)
+        try:
+            url = "https://www.paypal.com/donate?business=jscheema%40gmail.com&amount=5&currency_code=USD&locale.x=en_US"
+            webbrowser.open(url)
+        except Exception:
+            pass
 
     def _run_updater(self):
         # If update available and user clicks, perform update

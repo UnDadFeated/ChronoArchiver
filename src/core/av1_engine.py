@@ -126,7 +126,9 @@ class AV1EncoderEngine:
                 "-of", "default=noprint_wrappers=1:nokey=1", input_path
             ]
             output = subprocess.check_output(cmd, text=True).strip()
-            return float(output) if output else 0.0
+            if not output:
+                return 0.0
+            return float(output)
         except (subprocess.SubprocessError, ValueError, OSError):
             return 0.0
 

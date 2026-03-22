@@ -79,7 +79,7 @@ class AV1Settings:
     def load(self):
         if os.path.exists(self.config_path):
             try:
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, "r", encoding="utf-8") as f:
                     merged = {**self.defaults, **json.load(f)}
                 return _sanitize_encoder_config(merged, self.defaults)
             except (json.JSONDecodeError, OSError) as e:
@@ -90,7 +90,7 @@ class AV1Settings:
     def save(self):
         try:
             os.makedirs(self.config_dir, exist_ok=True)
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=4)
         except OSError as e:
             debug(UTILITY_APP, f"AV1 config save failed: {e}")

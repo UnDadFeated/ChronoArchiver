@@ -17,7 +17,7 @@ VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.mpg', '
 
 class OrganizerEngine:
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None):
-        self.logger = logger_callback or (lambda x: print(x))
+        self.logger = logger_callback or (lambda x: debug(UTILITY_MEDIA_ORGANIZER, x))
         self.cancel_flag = False
 
     def cancel(self):
@@ -27,21 +27,25 @@ class OrganizerEngine:
         """
         Extract date taken from EXIF or fallback to file modified time.
         """
-        # Try Piexif for images
+        # Try Piexif for images (can raise on corrupt EXIF: InvalidImageDataError, struct.error, MemoryError)
         try:
             exif_dict = piexif.load(file_path)
-            # DateTimeOriginal is 36867
-            if 36867 in exif_dict.get("Exif", {}):
-                date_str = exif_dict["Exif"][36867].decode("utf-8")
-                # Format is usually "YYYY:MM:DD HH:MM:SS"
-                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-            
-            # DateTimeDigitized is 36868
-            if 36868 in exif_dict.get("Exif", {}):
-                date_str = exif_dict["Exif"][36868].decode("utf-8")
-                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-
-        except Exception:
+            exif_section = exif_dict.get("Exif") or {}
+            for tag_id in (36867, 36868):
+                if tag_id not in exif_section:
+                    continue
+                raw = exif_section[tag_id]
+                date_str = raw.decode("utf-8", errors="replace").strip()
+                if len(date_str) < 19:
+                    continue
+                date_str = date_str[:19]
+                for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                    try:
+                        return datetime.strptime(date_str, fmt)
+                    except ValueError:
+                        continue
+                break
+        except (Exception, MemoryError):
             pass
             
         # 2. Try Filename Parsing (Smart Regex)

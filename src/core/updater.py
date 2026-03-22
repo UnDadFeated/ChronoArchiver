@@ -7,6 +7,7 @@ performs update-and-restart: close app → run update → restart app.
 import json
 import os
 import platform
+import time
 import queue
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import threading
 import urllib.request
+import urllib.error
 
 # Resolve path for version import (works from src/core/ and from package root)
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -152,8 +154,21 @@ class ApplicationUpdater:
                         "Accept": "application/vnd.github+json",
                     },
                 )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read().decode())
+                last_err = None
+                data = None
+                for attempt in range(3):
+                    try:
+                        with urllib.request.urlopen(req, timeout=10) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                        break
+                    except urllib.error.HTTPError as e:
+                        last_err = e
+                        if e.code in (429, 503) and attempt < 2:
+                            time.sleep(2 ** attempt)
+                        else:
+                            raise
+                if data is None and last_err:
+                    raise last_err
                 tags = data if isinstance(data, list) else []
                 if not tags:
                     _put_result(None, None)
@@ -237,8 +252,13 @@ start "" {" ".join('"%s"' % c for c in launch_cmd)}
 '''
             fd, path = tempfile.mkstemp(suffix=".bat")
             try:
-                os.write(fd, script.encode("utf-8"))
-                os.close(fd)
+                try:
+                    os.write(fd, script.encode("utf-8"))
+                finally:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
                 subprocess.Popen(
                     ["cmd", "/c", path],
                     creationflags=subprocess.CREATE_NEW_PROCESS | subprocess.DETACHED_PROCESS,
@@ -248,10 +268,7 @@ start "" {" ".join('"%s"' % c for c in launch_cmd)}
                     cwd=os.path.dirname(path),
                 )
             finally:
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
+                pass  # Leave script for child to exec; OS temp cleaned on reboot
         else:
             cmd_str = " ".join(repr(c) for c in launch_cmd)
             script = f'''#!/bin/sh
@@ -261,8 +278,13 @@ exec {cmd_str}
 '''
             fd, path = tempfile.mkstemp(suffix=".sh")
             try:
-                os.write(fd, script.encode("utf-8"))
-                os.close(fd)
+                try:
+                    os.write(fd, script.encode("utf-8"))
+                finally:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
                 os.chmod(path, 0o755)
                 subprocess.Popen(
                     [path],
@@ -272,10 +294,7 @@ exec {cmd_str}
                     start_new_session=True,
                 )
             finally:
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
+                pass  # Leave script for child to exec; OS temp cleaned on reboot
 
     def _spawn_aur_updater(self, helper: str | None, term: str | None, launch_cmd: list):
         """Spawn process that runs AUR update then restarts app."""
@@ -290,8 +309,13 @@ sleep 2
 """
         fd, script_path = tempfile.mkstemp(suffix=".sh")
         try:
-            os.write(fd, script_body.encode("utf-8"))
-            os.close(fd)
+            try:
+                os.write(fd, script_body.encode("utf-8"))
+            finally:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
             os.chmod(script_path, 0o755)
             if term:
                 if "gnome-terminal" in term:
@@ -311,6 +335,10 @@ sleep 2
             )
             # Script file left in temp; OS will clean on reboot
         except Exception:
+            try:
+                os.close(fd)
+            except (OSError, NameError):
+                pass
             try:
                 os.unlink(script_path)
             except Exception:

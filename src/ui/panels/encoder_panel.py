@@ -733,6 +733,14 @@ class AV1EncoderPanel(QWidget):
             debug(UTILITY_MASS_AV1_ENCODER, f"No compatible files in {src}")
             return
 
+        # Long path warning (Windows MAX_PATH ~260)
+        if platform.system() == "Windows":
+            for p, _ in list(self._queue)[:3]:
+                if len(os.path.abspath(p)) > 200 or len(os.path.abspath(dst)) > 200:
+                    self._add_log("WARNING: Paths exceed 200 chars; Windows may fail. Enable long paths in Registry.")
+                    debug(UTILITY_MASS_AV1_ENCODER, "Long path detected")
+                    break
+
         # Disk space check before starting
         total_bytes = sum(s for _, s in self._queue)
         try:

@@ -22,7 +22,7 @@ class ModelManager:
         },
         "animal_detection_pb": {
             "filename": "ssd_mobilenet_v1_coco.pb",
-            "url": "http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz",
+            "url": "https://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz",
             "tar_extract": "ssd_mobilenet_v1_coco_2017_11_17/frozen_inference_graph.pb",
             "sha256": "cb3ce31b95a54162c25d951780a740a8767e6f9987298ec53d3146f0a5506858"
         },
@@ -92,9 +92,12 @@ class ModelManager:
                 # Remove if exists (might be corrupt)
                 if dest.exists(): dest.unlink()
 
-                response = requests.get(url, stream=True, timeout=30)
+                response = requests.get(url, stream=True, timeout=(10, 60))
                 response.raise_for_status()
-                total_size = int(response.headers.get('content-length', 0))
+                try:
+                    total_size = int(response.headers.get("content-length", 0) or 0)
+                except (TypeError, ValueError):
+                    total_size = 0
                 
                 is_tar = "tar_extract" in info
                 dl_dest = dest if not is_tar else dest.with_suffix(".tar.gz")
@@ -121,7 +124,10 @@ class ModelManager:
                     if progress_callback:
                         progress_callback(total_size, total_size, f"Extracting {info['filename']}...")
                     with tarfile.open(dl_dest, "r:gz") as tar:
-                        member = tar.getmember(info["tar_extract"])
+                        try:
+                            member = tar.getmember(info["tar_extract"])
+                        except KeyError:
+                            raise ValueError(f"Archive missing expected member: {info['tar_extract']}")
                         member.name = dest.name
                         if hasattr(tarfile, 'data_filter'):
                             tar.extract(member, path=dest.parent, filter='data')

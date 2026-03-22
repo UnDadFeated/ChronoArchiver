@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.48] - 2026-03-22
+### Fixed
+- **Organizer**: EXIF handling — piexif load/decode wrapped; support both `YYYY:MM:DD` and `YYYY-MM-DD`; handle ValueError, TypeError, MemoryError; use debug() instead of print.
+- **Model manager**: HTTPS TensorFlow URL; requests timeout (10, 60); safe content-length parse; KeyError on tar.getmember.
+- **Updater**: No unlink before child exec (race fix); retry on GitHub 429/503 with backoff; close mkstemp fd in finally.
+- **AV1 settings**: UTF-8 encoding on config read/write.
+- **App**: webbrowser.open wrapped in try/except for missing browser.
+- **Encoder panel**: Windows long-path warning when source or target exceeds 200 chars.
+### Added
+- **docs/KNOWN_ISSUES_AND_MITIGATIONS.md**: Researched failure modes and mitigations.
+
 ## [2.0.47] - 2026-03-22
 ### Fixed
 - **AV1 settings**: Sanitize merged JSON — `concurrent_jobs` snapped to 1/2/4 (avoids 0 workers / hung batch), quality clamped 0–63, reject timers bounded, `existing_output` and `preset` validated; load/save errors logged via debug logger instead of print.
