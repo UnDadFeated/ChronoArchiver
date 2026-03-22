@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.21] - 2026-03-21
+### Changed
+- **Media Organizer, AI Media Scanner**: STOP buttons grey when disabled; START turns grey during processing; STOP turns red when active. Matches encoder behavior. Re-enable START on stop.
+
 ## [2.0.20] - 2026-03-21
 ### Changed
 - **Footer**: Metrics (CPU, GPU, RAM) now shown on all panels (Media Organizer, AI Media Scanner, Mass AV1 Encoder); app-level metrics poll.

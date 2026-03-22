@@ -250,6 +250,7 @@ class MediaOrganizerPanel(QWidget):
         if self._engine:
             self._engine.cancel()
             debug(UTILITY_MEDIA_ORGANIZER, "Organization stopped by user")
+        self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
 
     def _on_progress(self, val):

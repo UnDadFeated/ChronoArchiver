@@ -77,11 +77,21 @@ QPushButton#btnStart {
     font-weight: 900;
 }
 QPushButton#btnStart:hover { background-color: #34d399; }
+QPushButton#btnStart:disabled {
+    background-color: #1a1a1a;
+    color: #6b7280;
+    border: 1px solid #262626;
+}
 
 QPushButton#btnStop {
     background-color: #ef4444;
     color: #450a0a;
     border: none;
+}
+QPushButton#btnStop:disabled {
+    background-color: #1a1a1a;
+    color: #6b7280;
+    border: 1px solid #262626;
 }
 
 QProgressBar {

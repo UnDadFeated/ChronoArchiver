@@ -281,6 +281,7 @@ class AIScannerPanel(QWidget):
             self._engine.cancel()
             debug(UTILITY_AI_MEDIA_SCANNER, "Scan stopped by user")
         self._is_running = False
+        self._btn_start.setEnabled(self._model_mgr.is_up_to_date())
         self._btn_stop.setEnabled(False)
 
     def _on_progress(self, val):
