@@ -182,7 +182,7 @@ class ScannerEngine:
         h, w, _ = image.shape
         detector.setInputSize((w, h))
         _, faces = detector.detect(image)
-        return faces is not None
+        return faces is not None and len(faces) > 0
 
     def _init_animal_detector(self):
         """Initialize animal detector using OpenCV DNN with frozen graph (SSD MobileNet V1)."""

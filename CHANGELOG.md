@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.17] - 2026-03-21
+### Fixed
+- **AI Media Scanner**: Face detection now correctly treats empty result array as no faces (`len(faces) > 0` check).
+- **Media Organizer**: Corrected indentation in RENAME FIX log branch.
+
+## [2.0.16] - 2026-03-21
+### Fixed
+- **Mass AV1 Encoder**: Preset and Threads dropdown popups no longer render as oversized overlay; QAbstractItemView styled with sensible min/max height.
+### Changed
+- **Mass AV1 Encoder**: Options box now expands vertically to match combined height of Directories + Configuration; added bottom stretch for alignment.
+
 ## [2.0.15] - 2026-03-21
 ### Changed
 - **Mass AV1 Encoder**: Shrunk Configuration dropdowns (Preset, Threads) vertically (16px height) so Directories + Configuration align with Options box; horizontal sizing reverted.

@@ -193,7 +193,7 @@ class OrganizerEngine:
                         original_name = file[len(match.group(0)):]
                         new_filename = f"{date_prefix}_{original_name}"
                         if not dry_run:
-                             self.logger(f"[RENAME FIX] Found incorrect date {existing_date}, fixing to {date_prefix}")
+                            self.logger(f"[RENAME FIX] Found incorrect date {existing_date}, fixing to {date_prefix}")
                 else:
                     # No prefix, add it.
                     new_filename = f"{date_prefix}_{file}"
