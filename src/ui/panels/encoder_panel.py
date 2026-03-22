@@ -33,6 +33,7 @@ class _Signals(QObject):
     details   = Signal(int, str, str) # job_id, vid, aud
     finished  = Signal(int, bool, str, str)
     log_msg   = Signal(str)
+    scan_progress = Signal(int, int)  # count, total_bytes (thread-safe for scan updates)
 
 
 class ScanProgressDialog(QDialog):
@@ -53,7 +54,8 @@ class ScanProgressDialog(QDialog):
         self._lbl_size.setStyleSheet("font-size:11px; color:#aaa;")
         v.addWidget(self._lbl_size)
         self._bar = QProgressBar()
-        self._bar.setRange(0, 0)
+        self._bar.setRange(0, 1)
+        self._bar.setValue(0)
         self._bar.setFixedHeight(12)
         v.addWidget(self._bar)
         self.setStyleSheet("QDialog { background: #0d0d0d; }")
@@ -136,7 +138,7 @@ class AV1EncoderPanel(QWidget):
         self._edit_src.setStyleSheet(
             "color:#fff; font-size:12px; font-weight:500; "
             "background:#121212; border:1px solid #1a1a1a;")
-        self._edit_src.setText(self._settings.get("source_folder") or "")
+        self._edit_src.setText("")
 
         h_src = QHBoxLayout(); h_src.setSpacing(4)
         self._edit_src.setMinimumWidth(150)
@@ -162,7 +164,7 @@ class AV1EncoderPanel(QWidget):
         self._edit_dst.setStyleSheet(
             "color:#fff; font-size:12px; font-weight:500; "
             "background:#121212; border:1px solid #1a1a1a;")
-        self._edit_dst.setText(self._settings.get("target_folder") or "")
+        self._edit_dst.setText("")
 
         h_dst = QHBoxLayout()
         h_dst.addWidget(self._edit_dst, 1)
@@ -509,8 +511,9 @@ class AV1EncoderPanel(QWidget):
     def _browse_src(self):
         f = QFileDialog.getExistingDirectory(self, "Select Source Folder")
         if f:
+            self._edit_src.blockSignals(True)
             self._edit_src.setText(f)
-            self._settings.set("source_folder", f)
+            self._edit_src.blockSignals(False)
             self._auto_scan()
 
     def _on_src_changed(self):
@@ -588,6 +591,7 @@ class AV1EncoderPanel(QWidget):
         self._update_start_enabled()
 
         scan_dialog = ScanProgressDialog(self)
+        self._sig.scan_progress.connect(scan_dialog.update_progress)
         scan_dialog.show()
 
         def _scan():
@@ -595,17 +599,21 @@ class AV1EncoderPanel(QWidget):
             total_bytes = 0
             items = []
             last_update = [0]
-            for path, size in AV1EncoderEngine().scan_files(src):
-                items.append((path, size))
-                count += 1
-                total_bytes += size
-                now = time.time()
-                if now - last_update[0] >= 0.1 or count == 1:
-                    last_update[0] = now
-                    QTimer.singleShot(0, lambda c=count, b=total_bytes: scan_dialog.update_progress(c, b))
+            try:
+                for path, size in AV1EncoderEngine().scan_files(src):
+                    items.append((path, size))
+                    count += 1
+                    total_bytes += size
+                    now = time.time()
+                    if now - last_update[0] >= 0.1 or count == 1:
+                        last_update[0] = now
+                        self._sig.scan_progress.emit(count, total_bytes)
+            except Exception as e:
+                debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
 
             def _done():
-                scan_dialog.update_progress(count, total_bytes)
+                self._sig.scan_progress.emit(count, total_bytes)
+                self._sig.scan_progress.disconnect(scan_dialog.update_progress)
                 scan_dialog.close()
                 self._apply_scan_result(items, src)
 
@@ -631,8 +639,9 @@ class AV1EncoderPanel(QWidget):
     def _browse_dst(self):
         f = QFileDialog.getExistingDirectory(self, "Select Target Folder")
         if f:
+            self._edit_dst.blockSignals(True)
             self._edit_dst.setText(f)
-            self._settings.set("target_folder", f)
+            self._edit_dst.blockSignals(False)
 
     # ── encoding lifecycle ────────────────────────────────────────────────────
 
@@ -658,6 +667,7 @@ class AV1EncoderPanel(QWidget):
         if not self._queue:
             self._add_log("Scanning source...")
             scan_dialog = ScanProgressDialog(self)
+            self._sig.scan_progress.connect(scan_dialog.update_progress)
             scan_dialog.show()
 
             def _scan_then_start():
@@ -665,17 +675,21 @@ class AV1EncoderPanel(QWidget):
                 total_bytes = 0
                 items = []
                 last_update = [0]
-                for path, size in AV1EncoderEngine().scan_files(src):
-                    items.append((path, size))
-                    count += 1
-                    total_bytes += size
-                    now = time.time()
-                    if now - last_update[0] >= 0.1 or count == 1:
-                        last_update[0] = now
-                        QTimer.singleShot(0, lambda c=count, b=total_bytes: scan_dialog.update_progress(c, b))
+                try:
+                    for path, size in AV1EncoderEngine().scan_files(src):
+                        items.append((path, size))
+                        count += 1
+                        total_bytes += size
+                        now = time.time()
+                        if now - last_update[0] >= 0.1 or count == 1:
+                            last_update[0] = now
+                            self._sig.scan_progress.emit(count, total_bytes)
+                except Exception as e:
+                    debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
 
                 def _continue():
-                    scan_dialog.update_progress(count, total_bytes)
+                    self._sig.scan_progress.emit(count, total_bytes)
+                    self._sig.scan_progress.disconnect(scan_dialog.update_progress)
                     scan_dialog.close()
                     self._queue = items
                     self._continue_start_encoding(src, dst)

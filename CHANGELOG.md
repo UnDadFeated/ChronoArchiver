@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.32] - 2026-03-22
+### Fixed
+- **Mass AV1 Encoder**: Source and target folders no longer saved; cleared on each launch.
+- **Mass AV1 Encoder**: Scan dialog now updates file count and total size correctly via thread-safe signal; fixed double "Scanning source folder..." (block signals during Browse setText); replaced indeterminate bar with static bar.
+### Changed
+- **Mass AV1 Encoder**: Added .mov and .webm to supported scan extensions.
+
 ## [2.0.31] - 2026-03-22
 ### Fixed
 - **Mass AV1 Encoder**: Scan dialog no longer opens on app startup; only opens when user selects source (Browse or typing/pasting path).

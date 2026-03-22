@@ -49,7 +49,7 @@ class AV1EncoderEngine:
 
     def scan_files(self, directory: str, stop_event: Optional[threading.Event] = None) -> Generator[tuple, None, None]:
         """Scans a directory for supported video files, yielding results for real-time feedback."""
-        extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv")
+        extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm")
         
         try:
             for root, dirs, filenames in os.walk(directory):
