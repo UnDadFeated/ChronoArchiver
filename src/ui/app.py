@@ -326,10 +326,14 @@ class ChronoArchiverApp(QMainWindow):
                 _ = cv2
             except ImportError:
                 pass
-            self.lbl_status.setText("Checking PySide6…")
+            self.lbl_status.setText("Checking AI Models…")
             QTimer.singleShot(400, step4)
 
         def step4():
+            self.lbl_status.setText("Checking PySide6…")
+            QTimer.singleShot(400, step5)
+
+        def step5():
             ok = '<span style="color:#10b981">✓</span>'
             fail = '<span style="color:#ef4444">✗</span>'
             skip = '<span style="color:#eab308">—</span>'
@@ -338,14 +342,14 @@ class ChronoArchiverApp(QMainWindow):
             parts.append(f"FFmpeg {ok if ffmpeg_ok else fail}")
             try:
                 import cv2
-                opencv_ok = cv2.__version__
+                opencv_ok = bool(cv2.__version__)
             except Exception:
-                opencv_ok = None
-            models_ready = self.panel_scn._model_mgr.is_up_to_date()
-            opencv_ok = opencv_ok or models_ready
+                opencv_ok = False
             parts.append(f"OpenCV {ok if opencv_ok else skip}")
+            models_ready = self.panel_scn._model_mgr.is_up_to_date()
+            parts.append(f"AI Models {ok if models_ready else skip}")
             parts.append(f"PySide6 {ok}")
-            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'optional'}, PySide6=ok")
+            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'missing'}, AI Models={'ok' if models_ready else 'missing'}, PySide6=ok")
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
                 status += f"  ·  <span style=\"color:#10b981\">Ready</span>"

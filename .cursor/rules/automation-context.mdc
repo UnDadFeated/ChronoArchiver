@@ -13,12 +13,26 @@ This workspace is used for encoding workflows. Apply full automation where possi
 - **AUR**: UnDadFeated
 - **System user**: jc
 
-## Project Conventions
+## Global Rules (Project Conventions)
 
-- Follow global user rules: `IMPLEMENTATION_PLAN.md`, `TASKS.md`, `CONVERSATION_LOG.md` as sources of truth.
-- Prepend updates to master `.md` files; no duplicate tabs or temp fragments.
-- Apply SemVer and log changes in `CHANGELOG.md`, `CONVERSATION_LOG.md`, `TASKS.md`.
-- Use conventional commit format for git; avoid AI-specific language in commits/changelog.
+### Context & File Management
+
+- **Strict File Reuse:** Do not create new `.md` files for tracking if one exists. Search for `IMPLEMENTATION_PLAN.md`, `TASKS.md`, `WALKTHROUGH.md`, `TODO.md`, `NOTES.md`, `CONVERSATION_LOG.md`, or `CHANGELOG.md` first.
+- **Persistent Context:** Maintain a running transcript of decisions, architecture, and conversation in `CONVERSATION_LOG.md`. Track lists/thoughts in `TODO.md` and `NOTES.md`.
+- **Top-Down Prepending:** When updating master `.md` files, locate the document header/separator and insert new content immediately below it, shifting existing content downward.
+- **Tab Awareness:** Never open duplicate tabs. Use existing tabs; user arranges layout manually (`TASKS.md` furthest left).
+- **No Fragments:** No temporary task fragments. Prepend to the appropriate master `.md` file.
+- **Formatting Continuity:** Use `---` separators between dated updates (e.g., `## YYYY-MM-DD HH:MM AM/PM`).
+
+### Execution & Coding
+
+- **Pre-Execution Audit:** Before new features, review `IMPLEMENTATION_PLAN.md`, `TASKS.md`, and `CONVERSATION_LOG.md`. Align changes with documented architecture and decisions.
+- **Drafting in the Open:** For complex refactors, outline step-by-step logic and architecture changes in `CONVERSATION_LOG.md` first.
+- **Surgical Edits:** Use precise, targeted edits. Do not rewrite entire files unless explicitly instructed.
+- **Dependency Gatekeeping:** No new external libraries without explicit permission. Justify in `CONVERSATION_LOG.md` and await approval.
+- **3-Strike Debugging:** After 3 failed fix attempts, stop, document failure state in `CONVERSATION_LOG.md`, and await human intervention.
+- **SemVer:** On any code update, apply a version bump (`MAJOR.MINOR.PATCH`) and log in `CHANGELOG.md`, `CONVERSATION_LOG.md`, and project source/README.
+- **Professional Tone:** `CHANGELOG.md` and git commits: professional, technical. No AI mentions, no first-person AI. Conventional commits (`feat:`, `fix:`, `refactor:`).
 
 ## Push AUR Workflow
 

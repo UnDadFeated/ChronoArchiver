@@ -6,12 +6,14 @@ Visual style exactly matches Mass AV1 Encoder v12.
 import csv
 import os
 import shutil
+import subprocess
+import sys
 import threading
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
-    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox,
+    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QShowEvent
@@ -20,9 +22,8 @@ from PySide6.QtGui import QPixmap
 import pathlib
 import platformdirs
 
-import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from core.scanner import ScannerEngine
+from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.model_manager import ModelManager
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
 
@@ -32,7 +33,9 @@ class _Signals(QObject):
     progress = Signal(float)
     finished = Signal()
     setup_complete = Signal(bool)
-    version_check_done = Signal(bool)
+    remove_done = Signal()
+    version_check_done = Signal(bool, bool)  # models_update, opencv_update
+    setup_phase = Signal(str, str)  # phase_name, detail
 
 
 class ModelSetupDialog(QDialog):
@@ -198,13 +201,29 @@ class AIScannerPanel(QWidget):
         v_mod = QVBoxLayout(grp_mod)
         v_mod.setContentsMargins(6, 2, 6, 2)
         v_mod.setSpacing(2)
+        h_mod_top = QHBoxLayout()
+        h_mod_top.setSpacing(4)
         self._lbl_model = QLabel("Checking models...")
         self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
-        v_mod.addWidget(self._lbl_model)
+        h_mod_top.addWidget(self._lbl_model, 1)
+        self._btn_update = QPushButton("Update!")
+        self._btn_update.setStyleSheet("font-size:8px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:18px; min-width:52px;")
+        self._btn_update.clicked.connect(self._setup_models)
+        self._btn_update.hide()
+        h_mod_top.addWidget(self._btn_update)
+        v_mod.addLayout(h_mod_top)
+        h_mod_btns = QHBoxLayout()
+        h_mod_btns.setSpacing(4)
         self._btn_setup = QPushButton("Setup Models")
-        self._btn_setup.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
+        self._btn_setup.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:18px;")
         self._btn_setup.clicked.connect(self._setup_models)
-        v_mod.addWidget(self._btn_setup)
+        h_mod_btns.addWidget(self._btn_setup)
+        self._btn_remove = QPushButton("Remove Models")
+        self._btn_remove.setStyleSheet("font-size:8px; font-weight:700; color:#6b7280; border:2px solid transparent; min-height:18px;")
+        self._btn_remove.clicked.connect(self._remove_models)
+        self._btn_remove.setToolTip("Remove all AI model files and uninstall OpenCV (opencv-python)")
+        h_mod_btns.addWidget(self._btn_remove)
+        v_mod.addLayout(h_mod_btns)
         h_strip.addWidget(grp_mod, 2)
 
         root.addLayout(h_strip)
@@ -325,6 +344,7 @@ class AIScannerPanel(QWidget):
         root.addWidget(grp_log, 0)
 
         self._model_update_available = False
+        self._opencv_update_available = False
         self._version_check_started = False
         self._setup_in_progress = False
         # Check models and version on init
@@ -336,28 +356,34 @@ class AIScannerPanel(QWidget):
             self._check_models()
 
     def _check_models(self):
+        if not OPENCV_AVAILABLE:
+            self._lbl_model.setText("OpenCV (python-opencv) required")
+            self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
+            self._btn_setup.show()
+            self._btn_update.hide()
+            debug(UTILITY_AI_MEDIA_SCANNER, "OpenCV not installed — AI Scanner disabled")
+            self._update_start_enabled()
+            return
         ready = self._model_mgr.is_up_to_date()
         if ready:
-            if self._model_update_available:
-                self._lbl_model.setText("Updated models available")
-                self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#eab308;")
-                self._btn_setup.hide()
-                debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready, update available (optional)")
-            else:
-                self._lbl_model.setText("All Models Ready!")
-                self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
-                self._btn_setup.hide()
-                debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready")
+            self._lbl_model.setText("All Models Ready!")
+            self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
+            self._btn_setup.hide()
+            update_avail = self._model_update_available or self._opencv_update_available
+            self._btn_update.setVisible(update_avail)
+            debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready" + (", update available" if update_avail else ""))
             self._start_version_check()
         else:
             self._lbl_model.setText("AI Models Missing!")
             self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
             self._btn_setup.show()
+            self._btn_update.hide()
             debug(UTILITY_AI_MEDIA_SCANNER, f"Models check: missing {self._model_mgr.get_missing_models()}")
         self._update_start_enabled()
 
-    def _on_version_check(self, available: bool):
-        self._model_update_available = bool(available)
+    def _on_version_check(self, models_update: bool, opencv_update: bool):
+        self._model_update_available = bool(models_update)
+        self._opencv_update_available = bool(opencv_update)
         if self._model_mgr.is_up_to_date():
             self._check_models()
 
@@ -367,16 +393,28 @@ class AIScannerPanel(QWidget):
         self._version_check_started = True
 
         def _task():
+            models_up = False
+            opencv_up = False
             try:
-                available = self._model_mgr.check_model_update_available()
-                self._sig.version_check_done.emit(available)
+                models_up = self._model_mgr.check_model_update_available()
             except Exception:
-                self._sig.version_check_done.emit(False)
+                pass
+            try:
+                if OPENCV_AVAILABLE:
+                    r = subprocess.run(
+                        [sys.executable, "-m", "pip", "list", "--outdated"],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if r.returncode == 0 and "opencv-python" in (r.stdout or ""):
+                        opencv_up = True
+            except Exception:
+                pass
+            self._sig.version_check_done.emit(models_up, opencv_up)
 
         threading.Thread(target=_task, daemon=True).start()
 
     def _get_guide_target(self):
-        if self._is_running or self._setup_in_progress:
+        if self._is_running or self._setup_in_progress or not OPENCV_AVAILABLE:
             return None
         if not self._model_mgr.is_up_to_date():
             return self._btn_setup
@@ -395,8 +433,9 @@ class AIScannerPanel(QWidget):
         models_ready = self._model_mgr.is_up_to_date()
         path = self._edit_path.text().strip()
         path_ok = bool(path and os.path.isdir(path))
-        can = models_ready and path_ok and not self._is_running
+        can = OPENCV_AVAILABLE and models_ready and path_ok and not self._is_running
         self._btn_start.setEnabled(can)
+        self._btn_remove.setEnabled(not self._setup_in_progress and not self._is_running)
         self._guide_glow_phase = 0
         self._guide_pulse_timer.start()
 
@@ -416,6 +455,8 @@ class AIScannerPanel(QWidget):
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
         elif w == self._btn_setup:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
+        elif w == self._btn_update:
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:18px; min-width:52px;")
 
     def _pulse_guide(self):
         target = self._get_guide_target()
@@ -439,6 +480,8 @@ class AIScannerPanel(QWidget):
                     style += " min-height:22px;" if target == self._btn_browse else " min-height:20px;"
                 elif target == self._btn_setup:
                     style += " min-height:20px;"
+                elif target == self._btn_update:
+                    style += " min-height:18px; min-width:52px;"
                 target.setStyleSheet(style)
         else:
             self._clear_guide_glow(target)
@@ -446,11 +489,6 @@ class AIScannerPanel(QWidget):
     def _setup_models(self):
         self._add_log("Starting model setup...")
         debug(UTILITY_AI_MEDIA_SCANNER, "Model setup started")
-        missing = self._model_mgr.get_missing_models()
-        if not missing:
-            self._add_log("All models already present.")
-            self._check_models()
-            return
         self._setup_in_progress = True
         self._update_start_enabled()
         dlg = ModelSetupDialog(self._model_mgr, self)
@@ -458,6 +496,11 @@ class AIScannerPanel(QWidget):
         def _progress(downloaded, total_size, filename, overall, label, url):
             dlg.progress_update.emit(url, label, filename, downloaded, total_size, overall)
             self._sig.log_msg.emit(f"Downloading: {label} ({int(overall * 100)}%)")
+
+        def _on_phase(phase, detail):
+            dlg._lbl_model.setText(phase)
+            dlg._lbl_detail.setText(detail)
+            dlg._lbl_url.setText("")
 
         def _on_setup_complete(ok):
             self._setup_in_progress = False
@@ -471,16 +514,95 @@ class AIScannerPanel(QWidget):
             debug(UTILITY_AI_MEDIA_SCANNER, f"Model setup complete: ok={ok}")
 
         self._sig.setup_complete.connect(_on_setup_complete, Qt.ConnectionType.SingleShotConnection)
+        try:
+            self._sig.setup_phase.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        self._sig.setup_phase.connect(_on_phase)
 
         def _task():
             try:
+                opencv_just_installed = False
+                if not OPENCV_AVAILABLE:
+                    self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", "Running pip...")
+                    self._sig.log_msg.emit("Installing OpenCV (opencv-python)...")
+                    r = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "--user", "opencv-python"],
+                        capture_output=True, text=True, timeout=300
+                    )
+                    if r.returncode == 0:
+                        opencv_just_installed = True
+                        self._sig.log_msg.emit("OpenCV installed. Restart ChronoArchiver to use AI Scanner.")
+                        debug(UTILITY_AI_MEDIA_SCANNER, "OpenCV installed via pip; restart required")
+                    else:
+                        err = (r.stderr or r.stdout or "")[:200]
+                        self._sig.log_msg.emit(f"OpenCV install failed: {err}")
+                        debug(UTILITY_AI_MEDIA_SCANNER, f"OpenCV pip install failed: {r.returncode} {err}")
+
+                missing = self._model_mgr.get_missing_models()
+                if not missing:
+                    self._sig.log_msg.emit("All models already present." + (" Restart app to use OpenCV." if opencv_just_installed else ""))
+                    self._sig.setup_complete.emit(True)
+                    return
+
                 ok = self._model_mgr.download_models(_progress)
+                if opencv_just_installed:
+                    self._sig.log_msg.emit("Models ready. Restart ChronoArchiver to use AI Scanner.")
                 self._sig.setup_complete.emit(ok)
+            except subprocess.TimeoutExpired:
+                self._sig.log_msg.emit("OpenCV install timed out.")
+                self._sig.setup_complete.emit(False)
             except Exception as e:
                 debug(UTILITY_AI_MEDIA_SCANNER, f"Model setup exception: {e}")
                 self._sig.setup_complete.emit(False)
 
         dlg.show()
+        threading.Thread(target=_task, daemon=True).start()
+
+    def _remove_models(self):
+        reply = QMessageBox.question(
+            self,
+            "Remove AI Models",
+            "Remove all AI model files and uninstall OpenCV (opencv-python)?\n\n"
+            "AI Scanner will be disabled until you run Setup Models again.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._add_log("Removing models and OpenCV...")
+        self._setup_in_progress = True
+        self._update_start_enabled()
+
+        def _task():
+            try:
+                model_dir = pathlib.Path(self._model_mgr.model_dir)
+                if model_dir.exists():
+                    for f in model_dir.iterdir():
+                        try:
+                            if f.is_file():
+                                f.unlink()
+                        except OSError as e:
+                            self._sig.log_msg.emit(f"Could not remove {f.name}: {e}")
+                r = subprocess.run(
+                    [sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python"],
+                    capture_output=True, text=True, timeout=60
+                )
+                if r.returncode == 0:
+                    self._sig.log_msg.emit("OpenCV uninstalled.")
+                self._sig.remove_done.emit()
+            except Exception as e:
+                debug(UTILITY_AI_MEDIA_SCANNER, f"Remove models exception: {e}")
+                self._sig.remove_done.emit()
+
+        def _on_remove_done():
+            self._setup_in_progress = False
+            self._check_models()
+            self._update_start_enabled()
+            self._add_log("Models and OpenCV removed. Restart ChronoArchiver to apply.")
+            debug(UTILITY_AI_MEDIA_SCANNER, "Models and OpenCV removed")
+
+        self._sig.remove_done.connect(_on_remove_done, Qt.ConnectionType.SingleShotConnection)
         threading.Thread(target=_task, daemon=True).start()
 
     def _browse(self):

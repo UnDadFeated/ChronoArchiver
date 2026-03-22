@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.59] - 2026-03-22
+### Added
+- **AI Media Scanner – Engine Status**: Remove Models button (always visible) to delete all model files and uninstall OpenCV; Update! button appears next to "All Models Ready!" only when OpenCV or AI Models update is detected during pre-check.
+
+## [2.0.58] - 2026-03-22
+### Changed
+- **Footer pre-reqs**: Separate OpenCV and AI Models — OpenCV reflects cv2 import only; new AI Models entry shows model files status; both use ✓/—.
+- **Setup Models**: Installs OpenCV (opencv-python via pip) when missing, then downloads models; prompts restart after OpenCV install.
+### Fixed
+- **Uninstall**: chronoarchiver.install documents that models/config/logs are removed; OpenCV is not auto-removed (may be used by other apps).
+
+## [2.0.57] - 2026-03-22
+### Fixed
+- **AI Media Scanner**: Correct OpenCV gate — footer no longer shows OpenCV ✓ when only model files exist; START disabled and "OpenCV (python-opencv) required" shown when cv2 import fails; prevents misleading "ERROR: OpenCV not installed" after clicking Start AI Scan.
+
 ## [2.0.56] - 2026-03-22
 ### Changed
 - **AI Media Scanner**: Results row — Target folder input, Move/Copy dropdown, START button (green when target set); smaller console; guide flow includes Browse Target and START move/copy.
