@@ -341,6 +341,8 @@ class ChronoArchiverApp(QMainWindow):
                 opencv_ok = cv2.__version__
             except Exception:
                 opencv_ok = None
+            models_ready = self.panel_scn._model_mgr.is_up_to_date()
+            opencv_ok = opencv_ok or models_ready
             parts.append(f"OpenCV {ok if opencv_ok else skip}")
             parts.append(f"PySide6 {ok}")
             debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'optional'}, PySide6=ok")

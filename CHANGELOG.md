@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.55] - 2026-03-22
+### Changed
+- **Footer pre-reqs**: OpenCV shows green ✓ when cv2 imports OR when AI models are ready (same check as scanner).
+- **AI Scanner**: "Models Ready" → "All Models Ready!"
+
 ## [2.0.54] - 2026-03-22
 ### Fixed
 - **Footer pre-reqs**: OpenCV check uses direct `import cv2` at display time with broad exception handling; green ✓ when import succeeds.

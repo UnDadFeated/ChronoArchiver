@@ -320,7 +320,7 @@ class AIScannerPanel(QWidget):
                 self._btn_setup.hide()
                 debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready, update available (optional)")
             else:
-                self._lbl_model.setText("Models Ready")
+                self._lbl_model.setText("All Models Ready!")
                 self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
                 self._btn_setup.hide()
                 debug(UTILITY_AI_MEDIA_SCANNER, "Models check: ready")
