@@ -26,6 +26,7 @@ import platformdirs
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.model_manager import ModelManager
+from core.venv_manager import get_pip_exe, install_package, remove_venv, ensure_venv
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
 
 
@@ -224,7 +225,7 @@ class AIScannerPanel(QWidget):
         self._btn_remove = QPushButton("Remove Models")
         self._btn_remove.setStyleSheet("font-size:8px; font-weight:700; color:#6b7280; border:2px solid transparent; min-height:18px;")
         self._btn_remove.clicked.connect(self._remove_models)
-        self._btn_remove.setToolTip("Remove all AI model files and uninstall OpenCV (opencv-python)")
+        self._btn_remove.setToolTip("Remove AI models and app venv (all Python deps); run Setup Models to reinstall")
         h_mod_btns.addWidget(self._btn_remove)
         v_mod.addLayout(h_mod_btns)
         h_strip.addWidget(grp_mod, 2)
@@ -360,7 +361,7 @@ class AIScannerPanel(QWidget):
 
     def _check_models(self):
         if not OPENCV_AVAILABLE:
-            self._lbl_model.setText("OpenCV (python-opencv) required")
+            self._lbl_model.setText("OpenCV required — click Setup Models")
             self._lbl_model.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
             self._btn_setup.show()
             self._btn_update.hide()
@@ -403,9 +404,10 @@ class AIScannerPanel(QWidget):
             except Exception:
                 pass
             try:
-                if OPENCV_AVAILABLE:
+                pip_exe = get_pip_exe()
+                if pip_exe.exists():
                     r = subprocess.run(
-                        [sys.executable, "-m", "pip", "list", "--outdated"],
+                        [str(pip_exe), "list", "--outdated"],
                         capture_output=True, text=True, timeout=10
                     )
                     if r.returncode == 0 and "opencv-python" in (r.stdout or ""):
@@ -527,43 +529,32 @@ class AIScannerPanel(QWidget):
             pass
         self._sig.setup_phase.connect(_on_phase)
 
+        def _prog(phase, detail=""):
+            self._sig.setup_phase.emit(phase, detail[:100] if detail else "")
+
         def _task():
             try:
                 opencv_just_installed = False
                 if not OPENCV_AVAILABLE:
-                    self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", "Starting pip...")
-                    self._sig.log_msg.emit("Installing OpenCV (opencv-python)...")
-                    proc = subprocess.Popen(
-                        [sys.executable, "-m", "pip", "install", "--user", "opencv-python"],
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
-                    )
-                    output_lines = []
-                    for line in iter(proc.stdout.readline, "") if proc.stdout else []:
-                        line = (line or "").strip()
-                        if line:
-                            output_lines.append(line)
-                            self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", line[:100])
-                    proc.wait(timeout=300)
-                    full_err = " ".join(output_lines) if output_lines else ""
-                    if proc.returncode == 0:
-                        opencv_just_installed = True
-                        self._sig.setup_phase.emit("OpenCV installed.", "Restart ChronoArchiver to use AI Scanner.")
-                        self._sig.log_msg.emit("OpenCV installed. Restart ChronoArchiver to use AI Scanner.")
-                        debug(UTILITY_AI_MEDIA_SCANNER, "OpenCV installed via pip; restart required")
+                    self._sig.setup_phase.emit("Installing OpenCV (opencv-python)...", "Starting...")
+                    self._sig.log_msg.emit("Installing OpenCV (opencv-python) via app venv...")
+                    pip_exe = get_pip_exe()
+                    if pip_exe.exists():
+                        ok = install_package("opencv-python", progress_callback=_prog)
                     else:
-                        err = full_err or "pip failed"
-                        if "externally-managed-environment" in err or "externally managed" in err.lower():
-                            self._sig.setup_phase.emit(
-                                "OpenCV install failed",
-                                "On Arch Linux run: sudo pacman -S python-opencv"
-                            )
-                            self._sig.log_msg.emit("OpenCV: On Arch run: sudo pacman -S python-opencv")
-                        else:
-                            self._sig.setup_phase.emit("OpenCV install failed", (err[:80] + "…") if len(err) > 80 else err or "Unknown error")
-                            self._sig.log_msg.emit(f"OpenCV install failed: {err}")
-                        debug(UTILITY_AI_MEDIA_SCANNER, f"OpenCV pip install failed: {proc.returncode} {err}")
-                        if not opencv_just_installed:
-                            time.sleep(3)  # Let user read the error before dialog closes
+                        self._sig.setup_phase.emit("Creating app environment...", "Installing all dependencies...")
+                        self._sig.log_msg.emit("Creating app venv (first-time setup)...")
+                        ok = ensure_venv(progress_callback=_prog)
+                    if not ok:
+                        self._sig.setup_phase.emit("OpenCV install failed", "Fallback: sudo pacman -S python-opencv")
+                        self._sig.log_msg.emit("venv install failed. Fallback: sudo pacman -S python-opencv")
+                        time.sleep(3)
+                        self._sig.setup_complete.emit(False)
+                        return
+                    opencv_just_installed = True
+                    self._sig.setup_phase.emit("OpenCV installed.", "Restart ChronoArchiver to use AI Scanner.")
+                    self._sig.log_msg.emit("OpenCV installed. Restart ChronoArchiver to use AI Scanner.")
+                    debug(UTILITY_AI_MEDIA_SCANNER, "OpenCV installed via app venv; restart required")
 
                 missing = self._model_mgr.get_missing_models()
                 if not missing:
@@ -589,8 +580,8 @@ class AIScannerPanel(QWidget):
         reply = QMessageBox.question(
             self,
             "Remove AI Models",
-            "Remove all AI model files and uninstall OpenCV (opencv-python)?\n\n"
-            "AI Scanner will be disabled until you run Setup Models again.",
+            "Remove AI model files and the app venv (all Python dependencies)?\n\n"
+            "ChronoArchiver will re-run first-time setup on next launch.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -610,12 +601,10 @@ class AIScannerPanel(QWidget):
                                 f.unlink()
                         except OSError as e:
                             self._sig.log_msg.emit(f"Could not remove {f.name}: {e}")
-                r = subprocess.run(
-                    [sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python"],
-                    capture_output=True, text=True, timeout=60
-                )
-                if r.returncode == 0:
-                    self._sig.log_msg.emit("OpenCV uninstalled.")
+                if remove_venv():
+                    self._sig.log_msg.emit("App venv (all Python deps) removed.")
+                else:
+                    self._sig.log_msg.emit("No app venv found.")
                 self._sig.remove_done.emit()
             except Exception as e:
                 debug(UTILITY_AI_MEDIA_SCANNER, f"Remove models exception: {e}")

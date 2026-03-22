@@ -1,5 +1,5 @@
 """
-ChronoArchiver v2.0.0 — PySide6 Migration.
+ChronoArchiver v3.0.0 — App-private venv (all Python deps internalized).
 Replicates the high-density visual style of Mass AV1 Encoder v12.
 Uses a QStackedWidget to manage distinct application panels.
 """
@@ -11,17 +11,20 @@ import queue
 import shutil
 import subprocess
 import webbrowser
+from pathlib import Path
 
 import psutil
+
+# Add app root and app-private venv to path (v3.0: all Python deps in venv)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from core.venv_manager import add_venv_to_path
+add_venv_to_path()
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QStackedWidget, QFrame, QMessageBox
 )
 from PySide6.QtCore import Qt, QTimer
-
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
@@ -321,11 +324,6 @@ class ChronoArchiverApp(QMainWindow):
             QTimer.singleShot(400, step3)
 
         def step3():
-            try:
-                import cv2
-                _ = cv2
-            except ImportError:
-                pass
             self.lbl_status.setText("Checking AI Models…")
             QTimer.singleShot(400, step4)
 
@@ -340,16 +338,12 @@ class ChronoArchiverApp(QMainWindow):
             parts = []
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
             parts.append(f"FFmpeg {ok if ffmpeg_ok else fail}")
-            try:
-                import cv2
-                opencv_ok = bool(cv2.__version__)
-            except Exception:
-                opencv_ok = False
-            parts.append(f"OpenCV {ok if opencv_ok else skip}")
+            from core.scanner import OPENCV_AVAILABLE
+            parts.append(f"OpenCV {ok if OPENCV_AVAILABLE else skip}")
             models_ready = self.panel_scn._model_mgr.is_up_to_date()
             parts.append(f"AI Models {ok if models_ready else skip}")
             parts.append(f"PySide6 {ok}")
-            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'missing'}, AI Models={'ok' if models_ready else 'missing'}, PySide6=ok")
+            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if OPENCV_AVAILABLE else 'missing'}, AI Models={'ok' if models_ready else 'missing'}, PySide6=ok")
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
                 status += f"  ·  <span style=\"color:#10b981\">Ready</span>"

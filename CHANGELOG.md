@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.0.0] - 2026-03-21
+### Changed (Breaking)
+- **App-private venv (MAJOR)**: ChronoArchiver now runs all Python dependencies from an internal venv at `~/.local/share/ChronoArchiver/venv` (or `%LOCALAPPDATA%\ChronoArchiver\venv` on Windows). First launch runs bootstrap to create the venv and install PySide6, psutil, requests, Pillow, platformdirs, opencv-python, piexif. No sudo or system pip required.
+- **Launcher**: Entry point is `bootstrap.py` (creates venv on first run, then execs into main app).
+- **PKGBUILD**: Minimal dependencies—`python` and `ffmpeg` only. All Python packages (PySide6, opencv-python, etc.) come from the app venv.
+- **Setup Models**: Uses `venv_manager` for OpenCV install; if venv missing, runs full `ensure_venv()` to create and populate it.
+- **Remove Models**: Deletes the entire app venv; ChronoArchiver re-runs first-time setup on next launch.
+### Added
+- `src/core/venv_manager.py`: Centralized venv creation, `install_package()`, `ensure_venv()`, `remove_venv()`, `add_venv_to_path()`.
+- `src/bootstrap.py`: First-run setup with tkinter UI (or headless), then exec into venv python.
+
+## [2.0.62] - 2026-03-22
+### Changed
+- **Setup Models – OpenCV on Linux**: When `pip --user` fails with externally-managed-environment (e.g. Arch), create an app-private venv at `~/.local/share/ChronoArchiver/venv` and install opencv-python there (no sudo). App adds venv site-packages to sys.path at startup.
+- **Remove Models**: Deletes app-private venv; also runs `pip uninstall` for Windows/user installs.
+### Fixed
+- OpenCV install without sudo on Linux (Arch, etc.).
+
 ## [2.0.61] - 2026-03-22
 ### Fixed
 - **Setup Models – OpenCV install**: Show pip output live in the setup dialog (indeterminate bar + line-by-line progress); on `externally-managed-environment` (Arch etc.), show "On Arch Linux run: sudo pacman -S python-opencv"; 3s pause so user can read the error before dialog closes.
