@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.50] - 2026-03-22
+### Fixed
+- **AI Media Scanner models**: Face model URL switched from GitHub (404, Git LFS) to Hugging Face; animal model URL switched from download.tensorflow.org (SSL cert issue) to storage.googleapis.com mirror. All model URLs verified.
+
 ## [2.0.49] - 2026-03-22
 ### Fixed
 - **AI Media Scanner – Setup Models**: Setup now opens a dedicated popup dialog showing download URL, current model, and fixed progress bar (pre-calculated from known sizes). Fixes issue where clicking Setup Models showed "Downloading" but nothing happened.

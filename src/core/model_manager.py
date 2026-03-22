@@ -21,14 +21,14 @@ class ModelManager:
         "face_detection": {
             "filename": "face_detection_yunet_2023mar.onnx",
             "label": "Face (YuNet)",
-            "url": "https://github.com/opencv/opencv_zoo/raw/master/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+            "url": "https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx",
             "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
             "approx_size": 233_000,
         },
         "animal_detection_pb": {
             "filename": "ssd_mobilenet_v1_coco.pb",
             "label": "Animals & Objects (SSD)",
-            "url": "https://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz",
+            "url": "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz",
             "tar_extract": "ssd_mobilenet_v1_coco_2017_11_17/frozen_inference_graph.pb",
             "sha256": "cb3ce31b95a54162c25d951780a740a8767e6f9987298ec53d3146f0a5506858",
             "approx_size": 30_200_000,
