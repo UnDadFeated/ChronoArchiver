@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.2.10] - 2026-03-22
+### Added
+- **Restart after OpenCV install**: When OpenCV install succeeds, the Install button becomes a green glowing "RESTART" button. Clicking it relaunches ChronoArchiver so the new installation takes effect. New `restart_app()` in `core/updater.py` spawns a helper to relaunch after exit.
+### Fixed
+- **Install OpenCV button state**: After successful install, the button no longer remains "Install OpenCV"; it now shows "Restart required" with a prominent RESTART action.
+
 ## [3.2.9] - 2026-03-22
 ### Fixed
 - **OpenCV install success not reported**: Signal was `Signal(bool)` but we emitted `(ok, err)` tuple. Changed to `Signal(object)` so the slot receives the tuple correctly; install success is now reported properly.

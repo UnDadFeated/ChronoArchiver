@@ -1,8 +1,11 @@
 # TASKS
 
-**Current:** v3.2.9 (2026-03-22)
+**Current:** v3.2.10 (2026-03-22)
 
 ---
+
+- [x] **v3.2.10: Green RESTART Button After OpenCV Install (2026-03-22)**
+  - [x] After successful OpenCV install, Install button becomes green glowing RESTART; restart_app() in updater; click relaunches app.
 
 - [x] **v3.2.9: Signal Type Fix + Intensive Debug (2026-03-22)**
   - [x] setup_complete Signal(bool)→Signal(object); fix install success not reported.

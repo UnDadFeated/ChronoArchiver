@@ -18,7 +18,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
     QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox, QMessageBox,
 )
@@ -39,6 +39,7 @@ from core.venv_manager import (
     check_opencv_in_venv,
 )
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_OPENCV_INSTALL, UTILITY_MODEL_SETUP
+from core.updater import restart_app
 
 
 class _Signals(QObject):
@@ -424,6 +425,7 @@ class AIScannerPanel(QWidget):
         self._opencv_update_available = False
         self._version_check_started = False
         self._setup_in_progress = False
+        self._opencv_just_installed = False
         # Check models and version on init
         QTimer.singleShot(500, self._check_models)
 
@@ -440,8 +442,15 @@ class AIScannerPanel(QWidget):
 
     def _check_models(self):
         cv_ok = self._opencv_available()
-        debug(UTILITY_AI_MEDIA_SCANNER, f"_check_models: cv_ok={cv_ok}")
-        if not cv_ok:
+        debug(UTILITY_AI_MEDIA_SCANNER, f"_check_models: cv_ok={cv_ok} _opencv_just_installed={self._opencv_just_installed}")
+        if self._opencv_just_installed:
+            self._lbl_opencv.setText("Restart required")
+            self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
+            self._btn_install_cv.setText("RESTART")
+            self._btn_install_cv.setToolTip("Restart ChronoArchiver to use the new OpenCV installation")
+            self._btn_install_cv.show()
+            self._btn_uninstall_cv.hide()
+        elif not cv_ok:
             self._lbl_opencv.setText("Not installed")
             self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
             self._btn_install_cv.setText("Install OpenCV")
@@ -511,7 +520,7 @@ class AIScannerPanel(QWidget):
     def _get_guide_target(self):
         if self._is_running or self._setup_in_progress:
             return None
-        if not self._opencv_available():
+        if self._opencv_just_installed or not self._opencv_available():
             return self._btn_install_cv
         if not self._model_mgr.is_up_to_date():
             return self._btn_setup
@@ -559,7 +568,10 @@ class AIScannerPanel(QWidget):
         elif w == self._btn_uninstall_models:
             w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; color:#6b7280;")
         elif w == self._btn_install_cv:
-            w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px;")
+            if self._opencv_just_installed:
+                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:7px; font-weight:700; min-height:16px;")
+            else:
+                w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px;")
         elif w == self._btn_update:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:18px; min-width:52px;")
 
@@ -579,6 +591,8 @@ class AIScannerPanel(QWidget):
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
             elif target == self._btn_start_move:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:9px; font-weight:900; min-height:20px;")
+            elif target == self._btn_install_cv and self._opencv_just_installed:
+                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #34d399; font-size:7px; font-weight:700; min-height:16px;")
             else:
                 style = "font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;"
                 if target == self._btn_browse or target == self._btn_browse_target:
@@ -594,6 +608,10 @@ class AIScannerPanel(QWidget):
             self._clear_guide_glow(target)
 
     def _on_install_opencv(self):
+        if self._opencv_just_installed:
+            if restart_app():
+                QApplication.instance().quit()
+            return
         variant = get_opencv_variant()
         components = get_opencv_install_components(variant)
         pkg = get_opencv_variant_label()
@@ -666,6 +684,8 @@ class AIScannerPanel(QWidget):
             debug(UTILITY_OPENCV_INSTALL, f"OpenCV install popup DONE ok={ok} err={str(err)[:300] if err else 'None'}")
             self._setup_in_progress = False
             dlg.close()
+            if ok:
+                self._opencv_just_installed = True
             self._check_models()
             self._update_start_enabled()
             if ok:
@@ -702,6 +722,8 @@ class AIScannerPanel(QWidget):
         def _on_done(ok):
             debug(UTILITY_OPENCV_INSTALL, f"OpenCV uninstall _on_done ok={ok}")
             self._setup_in_progress = False
+            if ok:
+                self._opencv_just_installed = False
             self._add_log("OpenCV uninstalled." if ok else "OpenCV uninstall failed or not found.")
             self._check_models()
             self._update_start_enabled()

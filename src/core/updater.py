@@ -60,6 +60,15 @@ def _find_repo_root(start: str) -> str | None:
     return None
 
 
+def _get_install_method() -> str | None:
+    """Returns 'git' | 'aur' | None for use by restart/update logic."""
+    if _is_aur_install():
+        return "aur"
+    if _is_git_install():
+        return "git"
+    return None
+
+
 def _find_app_launch_cmd(install_method: str) -> list:
     """Return command to restart the app: [executable, app.py] for git, ['chronoarchiver'] for AUR."""
     if install_method == "aur":
@@ -71,6 +80,72 @@ def _find_app_launch_cmd(install_method: str) -> list:
     if os.path.isfile(app_py):
         return [sys.executable, app_py]
     return ["chronoarchiver"]
+
+
+def restart_app() -> bool:
+    """
+    Spawn a detached helper that waits for this process to exit, then relaunches the app.
+    Call QApplication.quit() after this returns.
+    Returns True if restart was scheduled, False otherwise (caller may still quit).
+    """
+    method = _get_install_method() or "git"  # fallback for dev
+    launch_cmd = _find_app_launch_cmd(method)
+    app_py = os.path.join(_script_dir, "..", "ui", "app.py")
+    app_py = os.path.abspath(app_py)
+    src_dir = os.path.dirname(os.path.dirname(app_py)) if os.path.isfile(app_py) else os.getcwd()
+
+    if platform.system() == "Windows":
+        script = f'''@echo off
+ping -n 3 127.0.0.1 > nul
+cd /d "{src_dir}"
+start "" {" ".join('"%s"' % c for c in launch_cmd)}
+'''
+        fd, path = tempfile.mkstemp(suffix=".bat")
+        try:
+            try:
+                os.write(fd, script.encode("utf-8"))
+            finally:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            subprocess.Popen(
+                ["cmd", "/c", path],
+                creationflags=subprocess.CREATE_NEW_PROCESS | subprocess.DETACHED_PROCESS,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=os.path.dirname(path),
+            )
+            return True
+        except Exception:
+            return False
+    else:
+        cmd_str = " ".join(repr(c) for c in launch_cmd)
+        script = f'''#!/bin/sh
+sleep 2
+cd "{src_dir}" && exec {cmd_str}
+'''
+        fd, path = tempfile.mkstemp(suffix=".sh")
+        try:
+            try:
+                os.write(fd, script.encode("utf-8"))
+            finally:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            os.chmod(path, 0o755)
+            subprocess.Popen(
+                [path],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return True
+        except Exception:
+            return False
 
 
 def _is_aur_install() -> bool:
@@ -113,18 +188,14 @@ class ApplicationUpdater:
         self._latest_version = None
         self._changelog = None
 
-    def get_install_method(self) -> str:
+    def get_install_method(self) -> str | None:
         """
         Returns: 'git' | 'aur' | None
         - git: Running from git clone (Windows or Linux) — use git pull
         - aur: Installed via AUR on Arch — use paru/yay/pacman
         - None: Unknown install, cannot auto-update
         """
-        if _is_aur_install():
-            return "aur"
-        if _is_git_install():
-            return "git"
-        return None
+        return _get_install_method()
 
     def is_update_available(self) -> bool:
         """True if latest known release is newer than current version."""

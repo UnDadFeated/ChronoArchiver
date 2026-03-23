@@ -1,6 +1,12 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-22 (Green RESTART button after OpenCV install v3.2.10)
+- User reported: Install OpenCV did not turn into green glowing RESTART button after successful install. cv2 import fails with libcufft.so.12, so check_opencv_in_venv stays False and _check_models kept showing "Install OpenCV".
+- Fix: Add _opencv_just_installed flag. When install succeeds (ok=True), set flag before _check_models. In _check_models, when flag is True: show "Restart required", btn "RESTART" with green base style, guide pulse uses green glow (#34d399 border). _get_guide_target returns _btn_install_cv when flag set. _on_install_opencv: if flag, call restart_app() and QApplication.quit(). Added restart_app() to core/updater.py (spawns helper to relaunch after exit). Uninstall clears flag. SemVer: PATCH 3.2.10.
+- Also cleaned venv for re-test per user request.
+
+---
 ## 2026-03-22 (Signal type fix + intensive debug v3.2.9)
 - Log showed install_opencv SUCCESS but popup DONE ok=False. Root cause: setup_complete = Signal(bool) but we emit (ok, err) tuple; type mismatch caused slot to receive wrong data.
 - Fix: Signal(object) so we can emit (ok, err) or bool; uninstall venv-fail path now emits (False, msg).
