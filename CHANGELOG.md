@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.2.25] - 2026-03-23
+### Fixed
+- **model_manager**: Initialize `dl_dest` before try and use explicit `is not None` check for cleanup on exception.
+- **bootstrap**: Catch `OSError` around `os.execv` and exit with message instead of crash.
+- **organizer**: Use `os.path.normcase` for source/target path comparison (Windows case-insensitivity).
+### Changed
+- **venv_manager**: Simplify `get_opencv_package`; remove redundant `shutil` import in `remove_venv`.
+- **av1_engine**: Remove dead `vf_before` block.
+- **app.py**: Update docstring.
+
 ## [3.2.24] - 2026-03-23
 ### Changed
 - **AUR package**: Install CHANGELOG.md to `/usr/share/doc/chronoarchiver/` so users can read release notes locally.
@@ -509,7 +519,7 @@
 ### Changed
 - AI Encoder: Reorganized config layout—Directories on top, Configuration below, Options on the right spanning full height.
 - AI Encoder: Removed Metrics box; moved CPU/GPU/RAM to global footer (right-aligned, labels and values only).
-- Nav bar: Added "☕ Buy me a coffee" donate button linking to PayPal $5 USD for jscheema@gmail.com.
+- Nav bar: Added "☕ Buy me a coffee" donate button linking to PayPal $5 USD.
 
 ## [2.0.3] - 2026-03-21
 ### Fixed

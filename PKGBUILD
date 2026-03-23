@@ -1,4 +1,4 @@
-# Maintainer: UnDadFeated <jscheema@gmail.com>
+# Maintainer: UnDadFeated
 pkgname=chronoarchiver
 pkgver=3.2.24
 pkgrel=1
