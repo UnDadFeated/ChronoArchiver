@@ -93,6 +93,9 @@ def restart_app() -> bool:
     app_py = os.path.join(_script_dir, "..", "ui", "app.py")
     app_py = os.path.abspath(app_py)
     src_dir = os.path.dirname(os.path.dirname(app_py)) if os.path.isfile(app_py) else os.getcwd()
+    # Avoid shell injection: reject paths containing quotes or newlines
+    if '"' in src_dir or "'" in src_dir or "\n" in src_dir or "\r" in src_dir:
+        src_dir = os.getcwd()
 
     if platform.system() == "Windows":
         script = f'''@echo off

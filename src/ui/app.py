@@ -161,7 +161,7 @@ class ChronoArchiverApp(QMainWindow):
         self.updater = ApplicationUpdater()
         self._update_result_queue = queue.Queue()
         self._update_poll_timer = None
-        self._metrics_gpu_cache = "0%"
+        self._metrics_gpu_cache = "  0%"
         self._metrics_gpu_counter = 0
 
         # UI Components
@@ -268,8 +268,8 @@ class ChronoArchiverApp(QMainWindow):
         self.btn_debug.clicked.connect(self._open_debug_folder)
         self.status_layout.addWidget(self.btn_debug)
 
-        self.lbl_metrics = QLabel("")
-        self.lbl_metrics.setStyleSheet("font-size: 8px; color: #6b7280; font-weight: 600;")
+        self.lbl_metrics = QLabel("  CPU  0%  ·  GPU  0%  ·  RAM  0%")
+        self.lbl_metrics.setStyleSheet("font-size: 8px; color: #6b7280; font-weight: 600; min-width: 180px;")
         self.status_layout.addWidget(self.lbl_metrics)
         
         self.layout.addWidget(self.status_bar)
@@ -501,8 +501,8 @@ class ChronoArchiverApp(QMainWindow):
     def _poll_metrics(self):
         """App-level metrics for footer (CPU, GPU, RAM) — shown on all panels."""
         try:
-            cpu = f"{psutil.cpu_percent()}%"
-            ram = f"{psutil.virtual_memory().percent}%"
+            cpu_val = psutil.cpu_percent()
+            ram_val = psutil.virtual_memory().percent
             self._metrics_gpu_counter += 1
             if self._metrics_gpu_counter >= 3:
                 try:
@@ -510,11 +510,14 @@ class ChronoArchiverApp(QMainWindow):
                         ["nvidia-smi", "--query-gpu=utilization.gpu",
                          "--format=csv,noheader,nounits"],
                         text=True, stderr=subprocess.DEVNULL).strip()
-                    self._metrics_gpu_cache = f"{out}%"
+                    g = int(out) if out.strip().isdigit() else 0
+                    self._metrics_gpu_cache = f"{min(999, g):3d}%"
                 except Exception:
-                    self._metrics_gpu_cache = "0%"
+                    self._metrics_gpu_cache = "  0%"
                 self._metrics_gpu_counter = 0
-            self.lbl_metrics.setText(f"  CPU {cpu}  ·  GPU {self._metrics_gpu_cache}  ·  RAM {ram}")
+            cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
+            ram_s = f"{min(999, int(round(ram_val))):3d}%"
+            self.lbl_metrics.setText(f"  CPU {cpu_s}  ·  GPU {self._metrics_gpu_cache}  ·  RAM {ram_s}")
         except Exception:
             pass
 

@@ -115,6 +115,11 @@ class OrganizerEngine:
                  valid_exts: Optional[set] = None, target_dir: Optional[str] = None,
                  progress_callback=None, stats_callback=None):
         debug(UTILITY_MEDIA_ORGANIZER, f"organize start: source={source_dir}, dry_run={dry_run}, flat={use_flat_folders}, target={target_dir or 'in-place'}")
+        source_dir = (source_dir or "").strip()
+        if not source_dir:
+            self.logger("Source directory is empty.")
+            debug(UTILITY_MEDIA_ORGANIZER, "ERROR: Source directory empty")
+            return
         if not os.path.exists(source_dir):
             self.logger("Source directory does not exist.")
             debug(UTILITY_MEDIA_ORGANIZER, "ERROR: Source directory does not exist")
@@ -124,6 +129,7 @@ class OrganizerEngine:
         if valid_exts is None:
             valid_exts = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.avi', '.webm', '.mkv', '.gif', '.bmp', '.tiff'}
 
+        target_dir = (target_dir or "").strip() or None
         base_dir = target_dir.rstrip(os.sep) if target_dir else source_dir
 
         # Fail-safes: source/target overlap, writable, disk space
@@ -238,7 +244,24 @@ class OrganizerEngine:
             else:
                 new_filename = f"{date_prefix}_{file}"
 
+            if ".." in new_filename or os.path.isabs(new_filename):
+                self.logger(f"Skipping {file}: Invalid filename (path traversal).")
+                debug(UTILITY_MEDIA_ORGANIZER, f"Skip (invalid name): {file}")
+                skipped += 1
+                continue
+
             target_path = os.path.join(target_subdir, new_filename)
+            try:
+                real_target = os.path.realpath(target_path)
+                real_base = os.path.realpath(base_dir)
+                if not (real_target == real_base or real_target.startswith(real_base + os.sep)):
+                    self.logger(f"Skipping {file}: Resolved path outside target.")
+                    debug(UTILITY_MEDIA_ORGANIZER, f"Skip (path escape): {file}")
+                    skipped += 1
+                    continue
+            except OSError:
+                skipped += 1
+                continue
 
             # Long path check (filesystem limit ~255 per component, 4096 total on Linux)
             if len(target_path) > 400:

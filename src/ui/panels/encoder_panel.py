@@ -64,6 +64,7 @@ class ScanProgressDialog(QDialog):
 
     def update_progress(self, count: int, total_bytes: int):
         self._lbl_files.setText(f"Files: {count}")
+        total_bytes = max(0, total_bytes)
         if total_bytes >= 1024 ** 3:
             sz = f"{total_bytes / (1024**3):.2f} GB"
         elif total_bytes >= 1024 ** 2:
@@ -111,7 +112,7 @@ class AV1EncoderPanel(QWidget):
         self._total_saved    = 0
         self._batch_start    = 0.0
         self._io_bytes       = 0.0
-        self._gpu_cache      = "0%"
+        self._gpu_cache      = "  0%"
         self._gpu_counter    = 0
         self._source_scanned = False
         self._is_scanning    = False
@@ -608,12 +609,17 @@ class AV1EncoderPanel(QWidget):
             count = 0
             total_bytes = 0
             items = []
+            last_emit = [0]
             try:
                 for path, size in AV1EncoderEngine().scan_files(src):
-                    items.append((path, size))
+                    items.append((path, max(0, size)))
                     count += 1
-                    total_bytes += size
-                    self._sig.scan_progress.emit(count, total_bytes)
+                    total_bytes = max(0, total_bytes + size)
+                    now = time.time()
+                    if count == 1 or count % 25 == 0 or (now - last_emit[0]) >= 0.15:
+                        last_emit[0] = now
+                        self._sig.scan_progress.emit(count, total_bytes)
+                self._sig.scan_progress.emit(count, total_bytes)
             except Exception as e:
                 self._sig.log_msg.emit(f"Scan error: {e}")
                 debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
@@ -878,7 +884,23 @@ class AV1EncoderPanel(QWidget):
                 if self._settings.get("maintain_structure") and base:
                     rel = os.path.relpath(input_path, base)
                     rel_stem = os.path.splitext(rel)[0]
+                    if ".." in rel_stem or os.path.isabs(rel_stem):
+                        self._add_log(f"SKIP (invalid path): {os.path.basename(input_path)}")
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Skip path escape: {input_path}")
+                        self._sig.finished.emit(engine.job_id, False, input_path, "")
+                        continue
                     tpath = os.path.join(dst, rel_stem + "_av1.mp4")
+                    try:
+                        real_tpath = os.path.realpath(tpath)
+                        real_dst = os.path.realpath(dst)
+                        if not (real_tpath == real_dst or real_tpath.startswith(real_dst + os.sep)):
+                            self._add_log(f"SKIP (path outside target): {os.path.basename(input_path)}")
+                            debug(UTILITY_MASS_AV1_ENCODER, f"Skip path escape: {tpath}")
+                            self._sig.finished.emit(engine.job_id, False, input_path, "")
+                            continue
+                    except OSError:
+                        self._sig.finished.emit(engine.job_id, False, input_path, "")
+                        continue
                     out_dir = os.path.dirname(tpath)
                     if out_dir:
                         os.makedirs(out_dir, exist_ok=True)
@@ -920,10 +942,13 @@ class AV1EncoderPanel(QWidget):
                 self._sig.batch_complete.emit()
                 debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
                 if self._settings.get("shutdown_on_finish") and self._is_encoding:
-                    if platform.system() == "Windows":
-                        os.system("shutdown /s /t 0")
-                    else:
-                        os.system("shutdown -h now")
+                    try:
+                        if platform.system() == "Windows":
+                            subprocess.run(["shutdown", "/s", "/t", "0"], check=False, timeout=5)
+                        else:
+                            subprocess.run(["shutdown", "-h", "now"], check=False, timeout=5)
+                    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Shutdown failed: {e}")
 
     # ── signal handlers ───────────────────────────────────────────────────────
 
@@ -1067,7 +1092,9 @@ class AV1EncoderPanel(QWidget):
                 self._gpu_cache   = self._get_gpu()
                 self._gpu_counter = 0
             if self._metrics_cb:
-                self._metrics_cb(f"{cpu}%", self._gpu_cache, f"{ram}%")
+                cpu_s = f"{min(999, int(round(cpu))):3d}%"
+                ram_s = f"{min(999, int(round(ram))):3d}%"
+                self._metrics_cb(cpu_s, self._gpu_cache, ram_s)
 
             if self._is_encoding and self._batch_start > 0:
                 dt = time.time() - self._batch_start
@@ -1082,9 +1109,10 @@ class AV1EncoderPanel(QWidget):
                 ["nvidia-smi", "--query-gpu=utilization.gpu",
                  "--format=csv,noheader,nounits"],
                 text=True, stderr=subprocess.DEVNULL).strip()
-            return f"{out}%"
+            g = int(out) if out.strip().isdigit() else 0
+            return f"{min(999, g):3d}%"
         except Exception:
-            return "0%"
+            return "  0%"
 
     def _open_logs(self):
         from core.debug_logger import get_log_path

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
     QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox, QMessageBox,
+    QInputDialog,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QShowEvent
@@ -193,6 +194,10 @@ class AIScannerPanel(QWidget):
 
         self._engine = None  # Initialized in _run_job
         self._is_running = False
+        self._cap_request_queue = queue.Queue()  # (list_name, current_cap, result_holder, done_event)
+        self._cap_timer = QTimer(self)
+        self._cap_timer.setInterval(80)
+        self._cap_timer.timeout.connect(self._process_cap_requests)
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
 
@@ -872,6 +877,47 @@ class AIScannerPanel(QWidget):
         if f:
             self._edit_target.setText(f)
 
+    def _ask_raise_cap(self, list_name: str, current_cap: int) -> int | None:
+        """
+        Show dialog asking user to raise list cap. Called from main thread.
+        Returns new cap (int > current_cap) or None to keep current cap.
+        """
+        label = "Keep list" if list_name == "keep" else "Others list"
+        reply = QMessageBox.question(
+            self,
+            "List Cap Reached",
+            f"The {label} has reached {current_cap:,} entries.\n\n"
+            "Raise the cap for this session? (Reverts to 100,000 on next app start.)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return None
+        new_cap, ok = QInputDialog.getInt(
+            self,
+            "Raise Cap",
+            f"New cap for {label}:",
+            value=current_cap * 2,
+            minValue=current_cap + 1,
+            maxValue=10_000_000,
+            step=50_000,
+        )
+        return new_cap if ok and new_cap > current_cap else None
+
+    def _process_cap_requests(self):
+        """Process pending cap-raise requests from scanner thread (main-thread timer)."""
+        try:
+            while True:
+                list_name, current_cap, result_holder, done_event = self._cap_request_queue.get_nowait()
+                try:
+                    result_holder.append(self._ask_raise_cap(list_name, current_cap))
+                except Exception as e:
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"Cap dialog error: {e}")
+                finally:
+                    done_event.set()  # Always unblock worker so scan can continue
+        except queue.Empty:
+            pass
+
     def _run_job(self):
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
@@ -889,10 +935,21 @@ class AIScannerPanel(QWidget):
             self._status_cb("scanning")
         self._update_start_enabled()
         self._btn_stop.setEnabled(True)
+        self._cap_timer.start()
 
         def _log(msg): self._sig.log_msg.emit(msg)
-        self._engine = ScannerEngine(logger_callback=_log, model_dir=str(self._model_mgr.model_dir))
-        # progress_callback is an attribute, not a constructor arg
+        def _cap_callback(list_name: str, current_cap: int):
+            """Request main-thread dialog; blocks until user responds."""
+            result_holder = []
+            done_event = threading.Event()
+            self._cap_request_queue.put((list_name, current_cap, result_holder, done_event))
+            done_event.wait()
+            return result_holder[0] if result_holder else None
+        self._engine = ScannerEngine(
+            logger_callback=_log,
+            model_dir=str(self._model_mgr.model_dir),
+            on_list_cap_reached=_cap_callback,
+        )
         self._engine.progress_callback = lambda c, t, eta, f: self._sig.progress.emit(
             min(1.0, c / max(t, 1)))
 
@@ -927,6 +984,7 @@ class AIScannerPanel(QWidget):
         self._bar.setValue(int(val * 100))
 
     def _on_finished(self):
+        self._cap_timer.stop()
         self._is_running = False
         if self._status_cb:
             self._status_cb("idle")

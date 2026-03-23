@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.3.3] - 2026-03-21
+### Added
+- **AI Scanner list cap**: When Keep or Others list reaches 100,000 entries, a dialog asks whether to raise the cap for this session. User can enter a higher value; cap reverts to 100,000 on next app start.
+
+## [3.3.2] - 2026-03-21
+### Security
+- **Organizer**: Reject path-traversal filenames (`..`, absolute paths); validate resolved target stays under base directory.
+- **Encoder**: Validate output path under destination when mirroring structure; reject `relpath` results containing `..`.
+- **Updater**: Reject `src_dir` containing quotes or newlines to avoid shell script injection.
+### Fixed
+- **Shutdown on finish**: Replace `os.system("shutdown ...")` with `subprocess.run()` to avoid shell injection.
+### Changed
+- **Organizer/Scanner**: Validate empty or whitespace-only source/directory paths; normalize target_dir.
+- **AI Scanner**: Cap `keep_list` and `others_list` at 100,000 entries to prevent unbounded memory on very large scans.
+
+## [3.3.1] - 2026-03-23
+### Fixed
+- **Metrics display**: Reserve 3-digit width for CPU, GPU, RAM (e.g. `  5%`, ` 99%`, `100%`) to prevent layout bounce when values change.
+- **AV1 Encoder scan**: Clamp total_bytes to non-negative; throttle progress updates (every 25 files or 150ms) to avoid negative/messed size display when scanning very fast.
+
 ## [3.3.0] - 2026-03-23
 ### Added
 - **AI Scanner: YOLOv8-nano** — Replaced SSD MobileNet V1 with YOLOv8-nano ONNX for person and animal detection. Better accuracy, smaller download (~12 MB vs ~76 MB). Detects full-body person (COCO class 0) and animals (15–24).

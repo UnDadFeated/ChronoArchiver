@@ -25,15 +25,19 @@ class ScannerEngine:
     - Not Detected -> 'Others'
     """
     
+    DEFAULT_LIST_CAP = 100_000  # Fail-safe: prevent unbounded memory; can be raised via callback
+
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None,
-                 model_dir: Optional[str] = None):
+                 model_dir: Optional[str] = None,
+                 on_list_cap_reached: Optional[Callable[[str, int], Optional[int]]] = None):
         self.logger = logger_callback or (lambda x: print(x))
         self.stop_event = threading.Event()
         self._model_dir = model_dir
+        self.on_list_cap_reached = on_list_cap_reached  # (list_name, current_cap) -> new_cap or None
         
         # Results
-        self.others_list: List[str] = [] # Files to be moved/archived
-        self.keep_list: List[str] = []   # Files containing subjects (people/animals)
+        self.others_list: List[str] = []  # Files to be moved/archived
+        self.keep_list: List[str] = []    # Files containing subjects (people/animals)
         
         # Progress Callbacks (current, total, eta_seconds)
         self.progress_callback: Optional[Callable[[int, int, float], None]] = None
@@ -48,6 +52,11 @@ class ScannerEngine:
             debug(UTILITY_AI_MEDIA_SCANNER, "ERROR: OpenCV not installed")
             return
 
+        directory = (directory or "").strip()
+        if not directory:
+            self.logger("Error: Directory path is empty.")
+            debug(UTILITY_AI_MEDIA_SCANNER, "ERROR: Directory empty")
+            return
         if not os.path.exists(directory):
             self.logger(f"Error: Directory not found: {directory}")
             debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Directory not found: {directory}")
@@ -129,9 +138,13 @@ class ScannerEngine:
         t_prod = threading.Thread(target=producer, daemon=True)
         t_prod.start()
 
-        # Consumer (Main Thread Context)
+        # Consumer (runs in scanner thread)
         start_time = time.time()
         bytes_done = 0
+        max_keep = self.DEFAULT_LIST_CAP
+        max_others = self.DEFAULT_LIST_CAP
+        keep_cap_warned = False
+        others_cap_warned = False
 
         while True:
             if self.stop_event.is_set():
@@ -169,13 +182,52 @@ class ScannerEngine:
             fname_base = os.path.basename(f_path)
             
             if is_excluded:
-                # SUBJECT DETECTED (Keep)
-                self.keep_list.append(f_path)
+                if len(self.keep_list) < max_keep:
+                    self.keep_list.append(f_path)
+                else:
+                    # Only prompt once per cap; if user declined before, don't ask again
+                    if self.on_list_cap_reached and not keep_cap_warned:
+                        try:
+                            new_cap = self.on_list_cap_reached("keep", max_keep)
+                            if new_cap is not None and new_cap > max_keep:
+                                max_keep = new_cap
+                                self.keep_list.append(f_path)
+                                self.logger(f"Cap raised to {max_keep:,} for Keep list.")
+                            else:
+                                keep_cap_warned = True
+                                self.logger(f"Keep list capped at {max_keep:,} entries.")
+                        except Exception as e:
+                            keep_cap_warned = True
+                            self.logger(f"Keep list capped at {max_keep:,} entries.")
+                            debug(UTILITY_AI_MEDIA_SCANNER, f"Cap callback error: {e}")
+                    elif not keep_cap_warned:
+                        keep_cap_warned = True
+                        self.logger(f"Keep list capped at {max_keep:,} entries.")
+                        debug(UTILITY_AI_MEDIA_SCANNER, "keep_list capped")
             else:
-                # OTHERS (Move candidates)
-                self.others_list.append(f_path)
-                # Log MOVE candidates
-                self.logger(f"[MOVE] >> {fname_base}")
+                if len(self.others_list) < max_others:
+                    self.others_list.append(f_path)
+                    self.logger(f"[MOVE] >> {fname_base}")
+                else:
+                    if self.on_list_cap_reached and not others_cap_warned:
+                        try:
+                            new_cap = self.on_list_cap_reached("others", max_others)
+                            if new_cap is not None and new_cap > max_others:
+                                max_others = new_cap
+                                self.others_list.append(f_path)
+                                self.logger(f"[MOVE] >> {fname_base}")
+                                self.logger(f"Cap raised to {max_others:,} for Others list.")
+                            else:
+                                others_cap_warned = True
+                                self.logger(f"Others list capped at {max_others:,} entries.")
+                        except Exception as e:
+                            others_cap_warned = True
+                            self.logger(f"Others list capped at {max_others:,} entries.")
+                            debug(UTILITY_AI_MEDIA_SCANNER, f"Cap callback error: {e}")
+                    elif not others_cap_warned:
+                        others_cap_warned = True
+                        self.logger(f"Others list capped at {max_others:,} entries.")
+                        debug(UTILITY_AI_MEDIA_SCANNER, "others_list capped")
                 
             bytes_done += size
             self._report_progress(bytes_done, total_bytes, start_time, fname_base)
