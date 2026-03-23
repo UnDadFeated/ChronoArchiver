@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.3.0] - 2026-03-23
+### Added
+- **AI Scanner: YOLOv8-nano** — Replaced SSD MobileNet V1 with YOLOv8-nano ONNX for person and animal detection. Better accuracy, smaller download (~12 MB vs ~76 MB). Detects full-body person (COCO class 0) and animals (15–24).
+### Removed
+- **AI Scanner: SSD MobileNet** — Removed ssd_mobilenet_v1_coco.pb and .pbtxt. Run Setup Models to download YOLOv8.
+
 ## [3.2.25] - 2026-03-23
 ### Fixed
 - **model_manager**: Initialize `dl_dest` before try and use explicit `is not None` check for cleanup on exception.

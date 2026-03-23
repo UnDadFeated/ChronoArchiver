@@ -15,7 +15,7 @@ except ImportError:
 class ModelManager:
     """Handles checking and downloading AI models for the scanner."""
 
-    MODEL_VERSION = "2024-01"
+    MODEL_VERSION = "2025-01"  # YOLOv8 replaces SSD
     VERSION_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchiver/main/docs/models_version.txt"
 
     MODELS = {
@@ -26,20 +26,12 @@ class ModelManager:
             "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
             "approx_size": 233_000,
         },
-        "animal_detection_pb": {
-            "filename": "ssd_mobilenet_v1_coco.pb",
-            "label": "Animals & Objects (SSD)",
-            "url": "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_2017_11_17.tar.gz",
-            "tar_extract": "ssd_mobilenet_v1_coco_2017_11_17/frozen_inference_graph.pb",
-            "sha256": "cb3ce31b95a54162c25d951780a740a8767e6f9987298ec53d3146f0a5506858",
-            "approx_size": 76_500_000,  # tar.gz download size (~73 MB); extracted .pb ~28 MB
-        },
-        "animal_detection_pbtxt": {
-            "filename": "ssd_mobilenet_v1_coco.pbtxt",
-            "label": "Config (SSD)",
-            "url": "https://raw.githubusercontent.com/opencv/opencv_extra/master/testdata/dnn/ssd_mobilenet_v1_coco_2017_11_17.pbtxt",
-            "sha256": "c15a9ac2df5cdb379e3a294adc73f13c796da8d682d763f4ec15831af1e11923",
-            "approx_size": 28_000,
+        "object_detection_yolov8": {
+            "filename": "yolov8n.onnx",
+            "label": "Persons & Animals (YOLOv8)",
+            "url": "https://huggingface.co/Kalray/yolov8/resolve/main/yolov8n.onnx",
+            "sha256": "65158dad735be799c2466fa15e260c09558080bd530b42a8d0c3d1b419afd8b5",
+            "approx_size": 12_800_000,  # ~12.2 MB
         },
     }
     

@@ -1,5 +1,6 @@
 import os
 import sys
+import numpy as np
 try:
     import cv2
     OPENCV_AVAILABLE = True
@@ -18,8 +19,8 @@ except ImportError:
 
 class ScannerEngine:
     """
-    AI Media Scanner using OpenCV YuNet (Face) and SSD MobileNet (Animals).
-    Logic: 
+    AI Media Scanner using OpenCV YuNet (Face) and YOLOv8 (Persons & Animals).
+    Logic:
     - Subject (Person/Animal) Detected -> 'Keep'
     - Not Detected -> 'Others'
     """
@@ -81,16 +82,16 @@ class ScannerEngine:
         
         # Models
         face_engine = None
-        animal_engine = None
+        subject_engine = None
         
         try:
             face_engine = self._init_opencv_face()
             if keep_animals:
-                animal_engine = self._init_animal_detector()
-                self.logger("Animal Filter Enabled (Keeping Animals).")
+                subject_engine = self._init_subject_detector()
+                self.logger("Subject Filter Enabled (Keeping Persons & Animals).")
             else:
-                animal_engine = None
-                self.logger("Animal Filter Disabled.")
+                subject_engine = None
+                self.logger("Subject Filter Disabled.")
                 
         except Exception as e:
             self.logger(f"Model Init Failed: {e}")
@@ -161,8 +162,8 @@ class ScannerEngine:
             if has_face:
                 is_excluded = True
             else:
-                if keep_animals and animal_engine:
-                    if self._detect_animal(animal_engine, image, animal_threshold):
+                if keep_animals and subject_engine:
+                    if self._detect_subject_yolov8(subject_engine, image, animal_threshold):
                         is_excluded = True
 
             fname_base = os.path.basename(f_path)
@@ -223,11 +224,10 @@ class ScannerEngine:
         _, faces = detector.detect(image)
         return faces is not None and len(faces) > 0
 
-    def _init_animal_detector(self):
-        """Initialize animal detector using OpenCV DNN with frozen graph (SSD MobileNet V1)."""
-        pb_path = self._get_model_path('ssd_mobilenet_v1_coco.pb')
-        pbtxt_path = self._get_model_path('ssd_mobilenet_v1_coco.pbtxt')
-        net = cv2.dnn.readNetFromTensorflow(pb_path, pbtxt_path)
+    def _init_subject_detector(self):
+        """Initialize subject detector using YOLOv8-nano ONNX (person + animals)."""
+        model_path = self._get_model_path('yolov8n.onnx')
+        net = cv2.dnn.readNetFromONNX(model_path)
         backend, target = self._get_dnn_backend_target()
         try:
             net.setPreferableBackend(backend)
@@ -236,18 +236,20 @@ class ScannerEngine:
             pass
         return net
 
-    def _detect_animal(self, net, image, threshold: float = 0.4) -> bool:
-        """Performs animal detection using OpenCV DNN (SSD Format). COCO: 16=bird, 17=cat, 18=dog, 19=horse, 20=sheep, 21=cow, 22=elephant, 23=bear, 24=zebra, 25=giraffe."""
-        blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), swapRB=True, crop=False)
+    def _detect_subject_yolov8(self, net, image, threshold: float = 0.4) -> bool:
+        """YOLOv8 ONNX: output (1,84,8400). COCO80: 0=person, 15=bird, 16=cat, 17=dog, 18=horse, 19=sheep, 20=cow, 21=elephant, 22=bear, 23=zebra, 24=giraffe."""
+        blob = cv2.dnn.blobFromImage(image, 1.0 / 255.0, (640, 640), swapRB=True, crop=False)
         net.setInput(blob)
-        detections = net.forward()
-        animal_ids = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25}
-        for i in range(detections.shape[2]):
-            score = detections[0, 0, i, 2]
-            if score > threshold:
-                class_id = int(detections[0, 0, i, 1])
-                if class_id in animal_ids:
-                    return True
+        out = net.forward()
+        # out shape (1, 84, 8400): 4 bbox + 80 class scores per prediction
+        out = out[0].T  # (8400, 84)
+        subject_ids = {0, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
+        for row in out:
+            scores = row[4:84]
+            class_id = int(np.argmax(scores))
+            conf = float(scores[class_id])
+            if conf > threshold and class_id in subject_ids:
+                return True
         return False
 
     def _get_model_path(self, filename):

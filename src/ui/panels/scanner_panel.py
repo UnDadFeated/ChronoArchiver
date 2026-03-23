@@ -226,7 +226,7 @@ class AIScannerPanel(QWidget):
         self._btn_browse.clicked.connect(self._browse)
         h_src.addWidget(self._btn_browse)
         v_dir.addLayout(h_src)
-        v_dir.addWidget(QLabel("Photos for AI detection (YuNet/SSD)", styleSheet=_shint))
+        v_dir.addWidget(QLabel("Photos for AI detection (YuNet/YOLOv8)", styleSheet=_shint))
         h_strip.addWidget(grp_dir, 8)
 
         # 2. Options (stacked vertically)
@@ -240,7 +240,7 @@ class AIScannerPanel(QWidget):
         self._chk_recursive.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
         self._chk_animals = QCheckBox("Keep Animals")
         self._chk_animals.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
-        self._chk_animals.setToolTip("Also keep photos with detected animals")
+        self._chk_animals.setToolTip("Also keep photos with detected persons and animals")
         h_conf = QHBoxLayout()
         lbl_conf = QLabel("Conf:")
         lbl_conf.setStyleSheet("font-size:7px; color:#888;")
@@ -777,7 +777,7 @@ class AIScannerPanel(QWidget):
         reply = QMessageBox.question(
             self,
             "Setup AI Models",
-            f"Download AI models (Face YuNet, Animals SSD)?\n\n"
+            f"Download AI models (Face YuNet, Persons & Animals YOLOv8)?\n\n"
             f"Approximate download size: {size_str}\n\n"
             f"Proceed?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

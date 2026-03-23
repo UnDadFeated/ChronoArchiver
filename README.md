@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-3.2.24-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-3.3.0-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -53,7 +53,7 @@ Features:
 Dual-list workflow: **Keep** (subjects detected) and **Move** (no subjects). Detection stack:
 
 - **Face** — OpenCV YuNet (`face_detection_yunet_2023mar.onnx`), OpenCL when available
-- **Animals** — OpenCV DNN SSD MobileNet V1 (optional, configurable confidence threshold)
+- **Persons & Animals** — YOLOv8-nano ONNX (optional, configurable confidence threshold)
 
 Models are stored in `~/.local/share/ChronoArchiver/models` (Linux) or the platform equivalent. Use Setup Models to download; OpenCV is installed via the Install OpenCV button in the AI Scanner panel.
 
