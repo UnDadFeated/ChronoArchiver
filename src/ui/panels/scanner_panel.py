@@ -225,7 +225,7 @@ class AIScannerPanel(QWidget):
         h_src.addWidget(self._btn_browse)
         v_dir.addLayout(h_src)
         v_dir.addWidget(QLabel("Photos for AI detection (YuNet/SSD)", styleSheet=_shint))
-        h_strip.addWidget(grp_dir, 10)
+        h_strip.addWidget(grp_dir, 8)
 
         # 2. Options (stacked vertically)
         grp_opts = QGroupBox("Options")
@@ -257,9 +257,10 @@ class AIScannerPanel(QWidget):
         v_opts.addStretch()
         h_strip.addWidget(grp_opts, 2)
 
-        # 3. Engine Status
+        # 3. Engine Status (fixed min width to prevent stretch when Install text changes)
         grp_mod = QGroupBox("Engine Status")
         grp_mod.setFixedHeight(_strip_h)
+        grp_mod.setMinimumWidth(260)
         v_mod = QVBoxLayout(grp_mod)
         v_mod.setContentsMargins(6, 2, 6, 2)
         v_mod.setSpacing(2)
@@ -269,6 +270,7 @@ class AIScannerPanel(QWidget):
         h_cv.addWidget(QLabel("OpenCV:", styleSheet="font-size:7px; color:#888;"))
         h_cv.addWidget(self._lbl_opencv, 1)
         self._btn_install_cv = QPushButton("Install OpenCV")
+        self._btn_install_cv.setFixedWidth(165)
         self._btn_install_cv.setStyleSheet("font-size:7px; font-weight:700; min-height:16px;")
         self._btn_install_cv.clicked.connect(self._on_install_opencv)
         self._btn_uninstall_cv = QPushButton("Uninstall OpenCV")
@@ -297,7 +299,7 @@ class AIScannerPanel(QWidget):
         h_mod.addWidget(self._btn_setup)
         h_mod.addWidget(self._btn_uninstall_models)
         v_mod.addLayout(h_mod)
-        h_strip.addWidget(grp_mod, 3)
+        h_strip.addWidget(grp_mod, 4)
 
         root.addLayout(h_strip)
         self._guide_pulse_timer = QTimer(self)
@@ -441,14 +443,15 @@ class AIScannerPanel(QWidget):
         if not cv_ok:
             self._lbl_opencv.setText("Not installed")
             self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
-            lbl = get_opencv_variant_label()
-            self._btn_install_cv.setText(f"Install {lbl}")
+            self._btn_install_cv.setText("Install OpenCV")
+            self._btn_install_cv.setToolTip(get_opencv_variant_label())
             self._btn_install_cv.show()
             self._btn_uninstall_cv.hide()
         else:
             v = get_opencv_variant()
             suf = " (CUDA)" if v == "cuda" else " (OpenCL)"
             self._lbl_opencv.setText(f"Ready{suf}")
+            self._btn_install_cv.setToolTip("")
             self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
             self._btn_install_cv.hide()
             self._btn_uninstall_cv.show()
@@ -607,8 +610,6 @@ class AIScannerPanel(QWidget):
             total_gb = total / (1024**3)
             total_sz = f"{total_gb:.2f} GB" if total_gb >= 0.1 else f"{total_mb:.1f} MB"
             lines.append(f"\nTotal download: {total_sz}")
-        if variant == "cuda":
-            lines.append("\nRequires: NVIDIA CUDA Toolkit and cuDNN (install separately if needed).")
         lines.append("\nInstall into app's private venv (no sudo required).")
         reply = QMessageBox.question(
             self,

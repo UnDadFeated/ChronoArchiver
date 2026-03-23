@@ -243,28 +243,37 @@ def get_opencv_install_components(variant: str | None = None) -> list[tuple[str,
     variant: 'cuda'|'opencl_amd'|'opencl_intel'|'opencl' (default: from get_opencv_variant)."""
     v = variant or get_opencv_variant()
     if v == "cuda":
-        if not requests:
-            return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
-        try:
-            r = requests.get(OPENCV_CUDA_API, timeout=10)
-            if r.status_code != 200:
-                return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
-            data = r.json()
-            is_win = platform.system() == "Windows"
-            for a in data.get("assets", []):
-                name = a.get("name", "")
-                if not name.endswith(".whl"):
-                    continue
-                size = int(a.get("size", 0) or 0)
-                if size <= 0:
-                    continue
-                if is_win and "win_amd64" in name:
-                    return [("opencv-contrib-python (CUDA, Windows)", size)]
-                if not is_win and "linux" in name.lower() and "x86_64" in name:
-                    return [("opencv-contrib-python (CUDA, Linux)", size)]
-        except Exception:
-            pass
-        return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
+        components = []
+        # CUDA Toolkit and cuDNN (required, approximate sizes)
+        CUDA_TOOLKIT_BYTES = int(3.5 * 1024 * 1024 * 1024)
+        CUDNN_BYTES = int(0.8 * 1024 * 1024 * 1024)
+        components.append(("NVIDIA CUDA Toolkit (required)", CUDA_TOOLKIT_BYTES))
+        components.append(("cuDNN (required)", CUDNN_BYTES))
+        # OpenCV CUDA wheel
+        wheel_size = OPENCV_CUDA_FALLBACK_BYTES
+        if requests:
+            try:
+                r = requests.get(OPENCV_CUDA_API, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    is_win = platform.system() == "Windows"
+                    for a in data.get("assets", []):
+                        name = a.get("name", "")
+                        if not name.endswith(".whl"):
+                            continue
+                        sz = int(a.get("size", 0) or 0)
+                        if sz <= 0:
+                            continue
+                        if is_win and "win_amd64" in name:
+                            wheel_size = sz
+                            break
+                        if not is_win and "linux" in name.lower() and "x86_64" in name:
+                            wheel_size = sz
+                            break
+            except Exception:
+                pass
+        components.append(("opencv-contrib-python (CUDA)", wheel_size))
+        return components
     # opencl_amd, opencl_intel, opencl: all use opencv-python
     url, size = _get_opencv_standard_wheel_url()
     labels = {

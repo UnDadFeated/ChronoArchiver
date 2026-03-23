@@ -1,8 +1,13 @@
 # TASKS
 
-**Current:** v3.1.0 (2026-03-21)
+**Current:** v3.2.0 (2026-03-22)
 
 ---
+
+- [x] **v3.2.0: Media Converter, Layout, CUDA Components (2026-03-22)**
+  - [x] Install OpenCV layout fix: Engine Status no stretch; fixed button width, variant in tooltip.
+  - [x] CUDA install: CUDA Toolkit and cuDNN listed as components with sizes; removed "install separately" message.
+  - [x] Media Converter: New 4th panel. Source/target, format, crop/scale/rotate/transparency. FFmpeg + PIL.
 
 - [x] **v3.1.0: GPU-Specific OpenCV Variants (2026-03-21)**
   - [x] detect_gpu() extended for nvidia|amd|intel; get_opencv_variant() returns cuda|opencl_amd|opencl_intel|opencl.

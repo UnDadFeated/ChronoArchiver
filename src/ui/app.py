@@ -30,6 +30,7 @@ from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
 from ui.panels.encoder_panel import AV1EncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
+from ui.panels.converter_panel import MediaConverterPanel
 from core.updater import ApplicationUpdater
 from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP
 from core.logger import setup_logger
@@ -182,8 +183,9 @@ class ChronoArchiverApp(QMainWindow):
         self.btn_org = self._create_nav_btn("MEDIA ORGANIZER", 0)
         self.btn_enc = self._create_nav_btn("MASS AV1 ENCODER", 1)
         self.btn_scn = self._create_nav_btn("AI MEDIA SCANNER", 2)
+        self.btn_conv = self._create_nav_btn("MEDIA CONVERTER", 3)
         
-        self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn]
+        self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn, self.btn_conv]
         
         self.nav_layout.addStretch()
 
@@ -206,10 +208,12 @@ class ChronoArchiverApp(QMainWindow):
         self.panel_org = MediaOrganizerPanel(log_callback=self._log, status_callback=self._set_activity)
         self.panel_enc = AV1EncoderPanel(log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity)
         self.panel_scn = AIScannerPanel(log_callback=self._log, status_callback=self._set_activity)
-        
+        self.panel_conv = MediaConverterPanel(log_callback=self._log, status_callback=self._set_activity)
+
         self.stack.addWidget(self.panel_org)
         self.stack.addWidget(self.panel_enc)
         self.stack.addWidget(self.panel_scn)
+        self.stack.addWidget(self.panel_conv)
         self.panel_scn._sig.prereqs_changed.connect(self._refresh_footer)
 
         self.layout.addWidget(self.stack)
@@ -282,7 +286,7 @@ class ChronoArchiverApp(QMainWindow):
             btn.setChecked(i == index)
             btn.setStyle(btn.style())  # Refresh style
         self.lbl_metrics.setVisible(True)
-        panels = ["Media Organizer", "Mass AV1 Encoder", "AI Media Scanner"]
+        panels = ["Media Organizer", "Mass AV1 Encoder", "AI Media Scanner", "Media Converter"]
         debug(UTILITY_APP, f"Panel switch: {panels[index]}")
         panel = self.stack.currentWidget()
         if hasattr(panel, "get_activity"):
@@ -291,7 +295,7 @@ class ChronoArchiverApp(QMainWindow):
     def _set_activity(self, activity: str):
         """Activity: 'idle' | 'encoding' | 'organizing' | 'scanning'. Footer left reflects app state."""
         self._activity = activity or "idle"
-        if self._activity in ("encoding", "organizing", "scanning"):
+        if self._activity in ("encoding", "organizing", "scanning", "converting"):
             self._activity_dot = 0
             self._activity_timer.start()
             self._animate_activity()
@@ -304,7 +308,7 @@ class ChronoArchiverApp(QMainWindow):
             self._activity_timer.stop()
             self.lbl_status.setText("Idle")
             return
-        base = {"encoding": "Encoding", "organizing": "Organizing", "scanning": "Scanning"}.get(self._activity, "Idle")
+        base = {"encoding": "Encoding", "organizing": "Organizing", "scanning": "Scanning", "converting": "Converting"}.get(self._activity, "Idle")
         dots = "." * (self._activity_dot % 3 + 1)
         self.lbl_status.setText(f"{base}{dots}")
         self._activity_dot += 1

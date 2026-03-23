@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.0] - 2026-03-22
+### Added
+- **Media Converter**: New 4th tool for batch media conversion. Source and target folders; convert photos/videos to different formats (jpg, png, webp, bmp, tiff, mp4, webm, mkv, avi). Options: crop (x,y,w,h), scale (width×height or percentage), rotate (0°/90°/180°/270°), transparency for PNG/WebP, quality slider. Uses FFmpeg for video and PIL for images. Guide flow and console.
+
+### Changed
+- **AI Scanner – Engine Status layout**: Fixed Install OpenCV button causing box stretch. Button uses fixed width; variant shown in tooltip. Directories box yields horizontal space to Engine Status.
+- **OpenCV CUDA install**: CUDA Toolkit (~3.5 GB) and cuDNN (~800 MB) now listed as required components with sizes; removed redundant "install separately" message.
+
 ## [3.1.0] - 2026-03-21
 ### Added
 - **GPU-specific OpenCV install**: Install flow now selects OpenCV variant based on detected GPU:
