@@ -1,6 +1,11 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-23 (OpenCV manual install + Engine Status buttons v3.2.21)
+- User: do not auto-install OpenCV at startup; install via AI Scanner. Bootstrap ensure_venv(skip_opencv=True).
+- Engine Status: Setup Models and Uninstall OpenCV different sizes; guide glow caused layout shift. Fix: all buttons fixed width 100px; pulse uses font-size 7px (not 8px); all have border:2px solid. SemVer: PATCH 3.2.21.
+
+---
 ## 2026-03-22 (Engine Status UI polish v3.2.20)
 - Install OpenCV button too big; guide blink caused layout shift. Fix: button 100px; status labels min-width; buttons border:2px solid (transparent when off) so pulse doesn't resize. SemVer: PATCH 3.2.20.
 

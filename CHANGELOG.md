@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.2.21] - 2026-03-23
+### Changed
+- **OpenCV no longer auto-installed at startup**: Bootstrap/ensure_venv uses `skip_opencv=True`. User installs OpenCV via Install OpenCV button in AI Scanner module.
+- **Engine Status buttons**: All buttons (Install/Uninstall OpenCV, Setup/Uninstall Models, Update!) use fixed width 100px. Guide glow no longer changes button size or shifts layout — pulse uses same font-size (7px) and all buttons have `border:2px solid` (transparent or colored).
+
 ## [3.2.20] - 2026-03-22
 ### Changed
 - **AI Scanner Engine Status**: Install OpenCV button width reduced (165px → 100px). Fixed layout shift when guide pulse blinks — status labels have min-width, buttons use consistent 2px border (transparent/colored).

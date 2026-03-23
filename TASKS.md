@@ -1,8 +1,12 @@
 # TASKS
 
-**Current:** v3.2.20 (2026-03-22)
+**Current:** v3.2.21 (2026-03-23)
 
 ---
+
+- [x] **v3.2.21: OpenCV manual install + Engine Status buttons (2026-03-23)**
+  - [x] Bootstrap skip_opencv=True; user installs in AI Scanner.
+  - [x] All Engine Status buttons 100px; guide glow no layout shift.
 
 - [x] **v3.2.20: Engine Status UI polish (2026-03-22)**
   - [x] Install OpenCV button 100px; guide blink layout shift fix.
