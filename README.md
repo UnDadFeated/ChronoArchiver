@@ -1,4 +1,4 @@
-# ChronoArchiver
+# <img src="src/ui/assets/icon.png" width="28" height="28" /> ChronoArchiver
 
 **Time to Archive!** — A unified media management platform for archival, classification, and transcoding.
 
