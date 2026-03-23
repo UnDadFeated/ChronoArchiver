@@ -11,7 +11,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from core.venv_manager import get_venv_path, get_python_exe, get_pip_exe, ensure_venv, is_venv_ready
+from core.venv_manager import get_venv_path, get_python_exe, get_pip_exe, ensure_venv, is_venv_runnable
 
 
 def _run_with_ui():
@@ -74,7 +74,7 @@ def main():
     app_py = _SCRIPT_DIR / "ui" / "app.py"
     app_root = str(_SCRIPT_DIR)
 
-    if py.exists() and is_venv_ready():
+    if py.exists() and is_venv_runnable():
         os.chdir(app_root)
         os.execv(str(py), [str(py), str(app_py)] + sys.argv[1:])
 

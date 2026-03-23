@@ -115,9 +115,23 @@ def check_opencv_in_venv() -> bool:
         return False
 
 
+def is_venv_runnable() -> bool:
+    """True if venv exists and can run the app (PySide6, PIL, requests). Does NOT require OpenCV."""
+    py = get_python_exe()
+    if not py.exists():
+        return False
+    try:
+        r = subprocess.run(
+            [str(py), "-c", "import PySide6; import PIL; import requests"],
+            capture_output=True, timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def is_venv_ready() -> bool:
-    """True if venv exists and has the required packages."""
-    venv = get_venv_path()
+    """True if venv exists and has all required packages including OpenCV."""
     py = get_python_exe()
     if not py.exists():
         return False

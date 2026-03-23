@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.0.9] - 2026-03-21
+### Fixed
+- **OpenCV no longer auto-reinstalled**: Bootstrap now uses `is_venv_runnable()` (PySide6, PIL, requests only) instead of `is_venv_ready()` (which required OpenCV). When the user uninstalls OpenCV and restarts, the app launches without reinstalling OpenCV.
+
 ## [3.0.8] - 2026-03-21
 ### Changed
 - **AI Scanner – Models row**: When models are not installed, only "Setup Models" is shown (like Install OpenCV). When installed, "Uninstall Models" is shown instead. Update! appears only when models are ready and an update is available.
