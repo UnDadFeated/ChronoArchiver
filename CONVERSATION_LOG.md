@@ -1,6 +1,14 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-22 (Install debug logging + venv clean v3.2.7)
+- Log analysis: CUDA wheel downloaded OK; pip install of wheel failed; OpenCL fallback also failed. Pip stderr was not in log.
+- Added debug() throughout: install_opencv (each phase, pip stderr on fail), _install_cuda_cudnn_venv, uninstall_opencv, Model setup popup/download_models, OpenCV install popup completion.
+- New constants: UTILITY_OPENCV_INSTALL, UTILITY_MODEL_SETUP. Model manager uses UTILITY_MODEL_SETUP.
+- CUDA install progress: "Downloading ~750 MB (may take 2–5 min)..." so user knows step is active (not frozen).
+- Cleaned venv: removed nvidia packages and leftover nvidia/ folder for re-test. SemVer: PATCH 3.2.7.
+
+---
 ## 2026-03-22 (nvidia-cublas in CUDA stack v3.2.6)
 - `NVIDIA_CUDA_CUDNN_PIP_PACKAGES`: added `nvidia-cublas` (explicit install + components list ~384 MB).
 - Install dialog order: cuda-runtime, cublas, cudnn, opencv wheel. Scanner panel text updated.

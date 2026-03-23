@@ -1,8 +1,13 @@
 # TASKS
 
-**Current:** v3.2.6 (2026-03-22)
+**Current:** v3.2.7 (2026-03-22)
 
 ---
+
+- [x] **v3.2.7: Install Debug Logging + Venv Clean (2026-03-22)**
+  - [x] Debug log: all OpenCV install phases, pip stderr on fail, Model setup, popup completion.
+  - [x] CUDA install: "may take 2–5 min" hint so UI not perceived as frozen.
+  - [x] Venv cleaned for re-test (nvidia + opencv removed).
 
 - [x] **v3.2.6: nvidia-cublas in CUDA Stack (2026-03-22)**
   - [x] Components list and pip install include `nvidia-cublas` with size estimate (~384 MB).

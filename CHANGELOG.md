@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.2.7] - 2026-03-22
+### Added
+- **Debug logging for installs and scans**: All OpenCV install phases, Model setup, and pip errors are now written to the debug log file. Enables diagnosing failures (e.g. pip stderr) when installs fail.
+### Changed
+- **CUDA install UX**: Progress text now shows "Downloading ~750 MB (may take 2–5 min)..." during nvidia pip install to indicate the step is active.
+
 ## [3.2.6] - 2026-03-22
 ### Changed
 - **OpenCV CUDA install components**: `nvidia-cublas` is listed in the confirmation dialog and installed explicitly with `nvidia-cuda-runtime` and `nvidia-cudnn-cu13` into the app venv (total size estimate includes cuBLAS).

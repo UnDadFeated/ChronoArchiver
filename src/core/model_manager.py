@@ -8,9 +8,9 @@ import hashlib
 import tarfile
 
 try:
-    from .debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
+    from .debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_MODEL_SETUP
 except ImportError:
-    from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
+    from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_MODEL_SETUP
 
 class ModelManager:
     """Handles checking and downloading AI models for the scanner."""
@@ -101,11 +101,11 @@ class ModelManager:
         """Downloads all missing/corrupt models. progress_callback(downloaded, total, filename, overall_0_to_1, label, url)"""
         missing = self.get_missing_models()
         if not missing:
-            debug(UTILITY_AI_MEDIA_SCANNER, "Model download: all models present")
+            debug(UTILITY_MODEL_SETUP, "Model download: all models present")
             return True
 
         total_bytes = self.get_total_download_size()
-        debug(UTILITY_AI_MEDIA_SCANNER, f"Model download start: missing={missing}, total~{total_bytes} bytes")
+        debug(UTILITY_MODEL_SETUP, f"Model download start: missing={missing}, total~{total_bytes} bytes")
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.stop_event.clear()
 
@@ -157,7 +157,7 @@ class ModelManager:
                     if dl_dest.exists():
                         dl_dest.unlink()
                     self.logger.info(f"Download cancelled for {info['filename']}")
-                    debug(UTILITY_AI_MEDIA_SCANNER, f"Model download cancelled: {info['filename']}")
+                    debug(UTILITY_MODEL_SETUP, f"Model download cancelled: {info['filename']}")
                     return False
 
                 if "tar_extract" in info:
@@ -183,7 +183,7 @@ class ModelManager:
                     time.sleep(0.25)
                 if not self.verify_hash(dest, info["sha256"]):
                     self.logger.error(f"Integrity check failed for {info['filename']}")
-                    debug(UTILITY_AI_MEDIA_SCANNER, f"Model hash mismatch: {info['filename']}")
+                    debug(UTILITY_MODEL_SETUP, f"Model hash mismatch: {info['filename']}")
                     if dest.exists():
                         dest.unlink()
                     return False
@@ -192,7 +192,7 @@ class ModelManager:
 
             except Exception as e:
                 self.logger.error(f"Failed to download {info['filename']}: {e}")
-                debug(UTILITY_AI_MEDIA_SCANNER, f"Model download failed: {info['filename']} — {e}")
+                debug(UTILITY_MODEL_SETUP, f"Model download failed: {info['filename']} — {e}")
                 if dest.exists():
                     dest.unlink()
                 if "dl_dest" in locals() and dl_dest.exists():
@@ -200,7 +200,7 @@ class ModelManager:
                 return False
 
         ok = self.is_up_to_date()
-        debug(UTILITY_AI_MEDIA_SCANNER, f"Model download complete: ok={ok}")
+        debug(UTILITY_MODEL_SETUP, f"Model download complete: ok={ok}")
         return ok
 
     def cancel(self):

@@ -22,6 +22,8 @@ UTILITY_APP = "ChronoArchiver"
 UTILITY_MEDIA_ORGANIZER = "Media Organizer"
 UTILITY_MASS_AV1_ENCODER = "Mass AV1 Encoder"
 UTILITY_AI_MEDIA_SCANNER = "AI Media Scanner"
+UTILITY_OPENCV_INSTALL = "OpenCV Install"
+UTILITY_MODEL_SETUP = "Model Setup"
 
 
 def _ensure_init():

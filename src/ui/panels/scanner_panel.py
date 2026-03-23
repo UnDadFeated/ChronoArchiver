@@ -38,7 +38,7 @@ from core.venv_manager import (
     get_opencv_install_components, install_opencv, uninstall_opencv,
     check_opencv_in_venv,
 )
-from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
+from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_OPENCV_INSTALL, UTILITY_MODEL_SETUP
 
 
 class _Signals(QObject):
@@ -653,6 +653,7 @@ class AIScannerPanel(QWidget):
         def _on_done(result):
             ok = result[0] if isinstance(result, tuple) else result
             err = result[1] if isinstance(result, tuple) and len(result) > 1 else None
+            debug(UTILITY_OPENCV_INSTALL, f"OpenCV install popup DONE ok={ok} err={str(err)[:300] if err else 'None'}")
             self._setup_in_progress = False
             dlg.close()
             self._check_models()
@@ -730,6 +731,7 @@ class AIScannerPanel(QWidget):
             self._sig.log_msg.emit(f"Downloading: {label} ({int(overall * 100)}%)")
 
         def _on_done(ok):
+            debug(UTILITY_MODEL_SETUP, f"Model setup popup DONE ok={ok}")
             self._setup_in_progress = False
             dlg.close()
             self._bar.setFormat("Ready")
@@ -743,6 +745,7 @@ class AIScannerPanel(QWidget):
         self._sig.setup_complete.connect(_on_done, Qt.ConnectionType.SingleShotConnection)
 
         def _task():
+            debug(UTILITY_MODEL_SETUP, "Model setup popup: starting download_models")
             ok = self._model_mgr.download_models(_progress)
             self._sig.setup_complete.emit(ok)
 
