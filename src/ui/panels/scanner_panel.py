@@ -34,7 +34,7 @@ from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.model_manager import ModelManager
 from core.venv_manager import (
     get_pip_exe, install_package, ensure_venv,
-    detect_gpu, get_opencv_install_size, install_opencv, uninstall_opencv,
+    detect_gpu, get_opencv_install_components, install_opencv, uninstall_opencv,
     check_opencv_in_venv,
 )
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
@@ -53,7 +53,7 @@ class _Signals(QObject):
 
 class OpenCVSetupDialog(QDialog):
     """Popup for OpenCV install progress."""
-    phase_update = Signal(str, str)  # phase, detail — emitted from worker, handled on main thread
+    phase_update = Signal(str, str, int, int)  # phase, detail, downloaded, total
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -70,16 +70,31 @@ class OpenCVSetupDialog(QDialog):
         self._lbl_detail.setStyleSheet("font-size: 8px; color: #6b7280;")
         v.addWidget(self._lbl_detail)
         self._bar = QProgressBar()
-        self._bar.setRange(0, 0)
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
         self._bar.setFixedHeight(14)
+        self._bar.setFormat("%p%")
         v.addWidget(self._bar)
         v.addStretch()
         self.setStyleSheet("QDialog { background: #0d0d0d; }")
         self.phase_update.connect(self._on_phase_update)
 
-    def _on_phase_update(self, phase: str, detail: str):
+    def _on_phase_update(self, phase: str, detail: str, downloaded: int, total: int):
         self._lbl_phase.setText(phase)
-        self._lbl_detail.setText(detail[:120] if detail else "")
+        if total > 0 and downloaded >= 0:
+            pct = min(100, int(100 * downloaded / total)) if total else 0
+            self._bar.setRange(0, 100)
+            self._bar.setValue(pct)
+            self._bar.setFormat("%p%")
+            mb_d = downloaded / (1024 * 1024)
+            mb_t = total / (1024 * 1024)
+            if mb_t >= 0.01:
+                size_str = f"{mb_d:.2f} / {mb_t:.2f} MB"
+                self._lbl_detail.setText(f"{size_str}  {detail}" if detail else size_str)
+            else:
+                self._lbl_detail.setText(detail[:120] if detail else "")
+        else:
+            self._lbl_detail.setText(detail[:120] if detail else "")
 
 
 class ModelSetupDialog(QDialog):
@@ -573,14 +588,29 @@ class AIScannerPanel(QWidget):
 
     def _on_install_opencv(self):
         use_cuda = detect_gpu() == "nvidia"
-        _, size_str = get_opencv_install_size(use_cuda)
+        components = get_opencv_install_components(use_cuda)
         pkg = "OpenCV (CUDA)" if use_cuda else "OpenCV"
+        lines = [f"Download and install {pkg}?", ""]
+        if components:
+            lines.append("Components:")
+            total = 0
+            for label, size_bytes in components:
+                mb = size_bytes / (1024 * 1024)
+                gb = size_bytes / (1024**3)
+                sz = f"{gb:.2f} GB" if gb >= 0.1 else f"{mb:.1f} MB"
+                lines.append(f"  • {label}: {sz}")
+                total += size_bytes
+            total_mb = total / (1024 * 1024)
+            total_gb = total / (1024**3)
+            total_sz = f"{total_gb:.2f} GB" if total_gb >= 0.1 else f"{total_mb:.1f} MB"
+            lines.append(f"\nTotal download: {total_sz}")
+        if use_cuda:
+            lines.append("\nRequires: NVIDIA CUDA Toolkit and cuDNN (install separately if needed).")
+        lines.append("\nInstall into app's private venv (no sudo required).")
         reply = QMessageBox.question(
             self,
             "Install OpenCV",
-            f"Download and install {pkg}?\n\n"
-            f"Approximate download size: {size_str}\n\n"
-            f"This will install into the app's private venv (no sudo required).",
+            "\n".join(lines),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -590,8 +620,8 @@ class AIScannerPanel(QWidget):
         self._update_start_enabled()
         dlg = OpenCVSetupDialog(self)
 
-        def _prog(phase, detail=""):
-            dlg.phase_update.emit(phase, detail)
+        def _prog(phase, detail="", downloaded=0, total=0):
+            dlg.phase_update.emit(phase, detail, downloaded, total)
 
         def _task():
             try:

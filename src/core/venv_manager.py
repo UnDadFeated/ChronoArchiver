@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -196,43 +197,118 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
 
 def get_opencv_install_size(use_cuda: bool) -> tuple:
     """Return (size_bytes, human_str) for OpenCV install."""
+    components = get_opencv_install_components(use_cuda)
+    total = sum(s for _, s in components)
+    if total <= 0:
+        total = OPENCV_CUDA_FALLBACK_BYTES if use_cuda else OPENCV_STANDARD_APPROX_BYTES
+    gb, mb = total / (1024**3), total / (1024**2)
+    return total, f"~{gb:.2f} GB" if gb >= 0.1 else f"~{mb:.1f} MB"
+
+
+def get_opencv_install_components(use_cuda: bool) -> list[tuple[str, int]]:
+    """Return [(component_name, size_bytes), ...] for the install confirmation dialog."""
     if not use_cuda:
-        return OPENCV_STANDARD_APPROX_BYTES, "~90 MB"
-    if requests:
+        url, size = _get_opencv_standard_wheel_url()
+        if url and size > 0:
+            return [("opencv-python (CPU/OpenCL)", size)]
+        return [("opencv-python", OPENCV_STANDARD_APPROX_BYTES)]
+    if not requests:
+        return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
+    try:
+        r = requests.get(OPENCV_CUDA_API, timeout=10)
+        if r.status_code != 200:
+            return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
+        data = r.json()
+        is_win = platform.system() == "Windows"
+        out = []
+        for a in data.get("assets", []):
+            name = a.get("name", "")
+            if not name.endswith(".whl"):
+                continue
+            size = int(a.get("size", 0) or 0)
+            if size <= 0:
+                continue
+            if is_win and "win_amd64" in name:
+                label = "opencv-contrib-python (CUDA, Windows)"
+                out.append((label, size))
+                break
+            if not is_win and "linux" in name.lower() and "x86_64" in name:
+                label = "opencv-contrib-python (CUDA, Linux)"
+                out.append((label, size))
+                break
+        if out:
+            return out
+    except Exception:
+        pass
+    return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
+
+
+def _get_opencv_standard_wheel_url() -> tuple:
+    """Return (url, size_bytes) for opencv-python wheel from PyPI. Returns (None, 0) on failure."""
+    if not requests:
+        return None, 0
+    try:
+        r = requests.get("https://pypi.org/pypi/opencv-python/json", timeout=15)
+        if r.status_code != 200:
+            return None, 0
+        data = r.json()
+        is_win = platform.system() == "Windows"
+        for info in data.get("urls", []):
+            if info.get("packagetype") != "bdist_wheel":
+                continue
+            fn = info.get("filename", "").lower()
+            if is_win and "win_amd64" in fn:
+                return info.get("url"), int(info.get("size", 0) or 0)
+            if not is_win and "manylinux" in fn and "x86_64" in fn:
+                return info.get("url"), int(info.get("size", 0) or 0)
+            if platform.system() == "Darwin" and "macosx" in fn:
+                return info.get("url"), int(info.get("size", 0) or 0)
+        return None, 0
+    except Exception:
+        return None, 0
+
+
+def _download_wheel_with_progress(url: str, progress_callback, total_hint: int = 0) -> Path | None:
+    """Download wheel to temp file, report progress. Returns path or None on failure."""
+    if not requests:
+        return None
+    try:
+        r = requests.get(url, stream=True, timeout=(10, 120))
+        r.raise_for_status()
+        total = int(r.headers.get("content-length", 0) or 0) or total_hint
+        progress_callback("Downloading...", "", 0, total)
+        fd, path = tempfile.mkstemp(suffix=".whl")
         try:
-            r = requests.get(OPENCV_CUDA_API, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                is_win = platform.system() == "Windows"
-                for a in data.get("assets", []):
-                    name = a.get("name", "")
-                    if "linux" in name.lower() and "x86_64" in name and not is_win:
-                        size = a.get("size", 0)
-                        if size > 0:
-                            mb, gb = size / (1024**2), size / (1024**3)
-                            return size, f"~{gb:.2f} GB" if gb >= 0.1 else f"~{mb:.1f} MB"
-                    if "win_amd64" in name and is_win:
-                        size = a.get("size", 0)
-                        if size > 0:
-                            mb, gb = size / (1024**2), size / (1024**3)
-                            return size, f"~{gb:.2f} GB" if gb >= 0.1 else f"~{mb:.1f} MB"
+            with os.fdopen(fd, "wb") as f:
+                downloaded = 0
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        progress_callback("Downloading...", "", downloaded, total)
+            return Path(path)
         except Exception:
-            pass
-    mb = OPENCV_CUDA_FALLBACK_BYTES / (1024**2)
-    return OPENCV_CUDA_FALLBACK_BYTES, f"~{mb/1024:.1f} GB"
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            return None
+    except Exception:
+        return None
 
 
 def install_opencv(progress_callback=None, use_cuda: bool = False) -> bool:
-    """Install OpenCV into venv. use_cuda=True for NVIDIA CUDA wheel."""
+    """Install OpenCV into venv. use_cuda=True for NVIDIA CUDA wheel.
+    progress_callback(phase, detail, downloaded=0, total=0) — total>0 enables size-based bar."""
     pip = get_pip_exe()
     if not pip.exists():
         if progress_callback:
-            progress_callback("venv not ready", "Run first-time setup first.")
+            progress_callback("venv not ready", "Run first-time setup first.", 0, 0)
         return False
 
-    def prog(phase, detail=""):
+    def prog(phase, detail="", downloaded=0, total=0):
         if progress_callback:
-            progress_callback(phase, detail[:100] if detail else "")
+            progress_callback(phase, detail[:100] if detail else "", downloaded, total)
 
     # Uninstall existing opencv (standard and cudawarped wheel both use opencv-contrib-python)
     prog("Removing existing OpenCV...", "")
@@ -243,50 +319,77 @@ def install_opencv(progress_callback=None, use_cuda: bool = False) -> bool:
         capture_output=True, timeout=60,
     )
 
-    if use_cuda and detect_gpu() == "nvidia" and requests:
-        prog("Fetching OpenCV CUDA wheel URL...", "")
-        try:
-            r = requests.get(OPENCV_CUDA_API, timeout=10)
-            if r.status_code != 200:
-                prog("Failed", "Could not fetch release info")
+    wheel_path: Path | None = None
+    try:
+        if use_cuda and detect_gpu() == "nvidia" and requests:
+            prog("Fetching OpenCV CUDA wheel URL...", "")
+            try:
+                r = requests.get(OPENCV_CUDA_API, timeout=10)
+                if r.status_code != 200:
+                    prog("Failed", "Could not fetch release info", 0, 0)
+                    return False
+                data = r.json()
+                wheel_url = None
+                wheel_size = 0
+                is_win = platform.system() == "Windows"
+                for a in data.get("assets", []):
+                    name = a.get("name", "")
+                    if name.endswith(".whl"):
+                        if is_win and "win_amd64" in name:
+                            wheel_url = a.get("browser_download_url")
+                            wheel_size = int(a.get("size", 0) or 0)
+                            break
+                        if not is_win and "linux" in name.lower() and "x86_64" in name:
+                            wheel_url = a.get("browser_download_url")
+                            wheel_size = int(a.get("size", 0) or 0)
+                            break
+                if not wheel_url:
+                    prog("Failed", "No matching CUDA wheel for this platform", 0, 0)
+                    return False
+                wheel_path = _download_wheel_with_progress(
+                    wheel_url,
+                    lambda p, d, down, tot: prog(p, d, down, tot),
+                    total_hint=wheel_size,
+                )
+            except Exception as e:
+                prog("Failed", str(e)[:80], 0, 0)
                 return False
-            data = r.json()
-            wheel_url = None
-            is_win = platform.system() == "Windows"
-            for a in data.get("assets", []):
-                name = a.get("name", "")
-                if name.endswith(".whl"):
-                    if is_win and "win_amd64" in name:
-                        wheel_url = a.get("browser_download_url")
-                        break
-                    if not is_win and "linux" in name.lower() and "x86_64" in name:
-                        wheel_url = a.get("browser_download_url")
-                        break
-            if not wheel_url:
-                prog("Failed", "No matching CUDA wheel for this platform")
-                return False
-            prog("Installing OpenCV (CUDA)...", "Downloading wheel...")
-            proc = subprocess.Popen(
-                [str(pip), "install", wheel_url],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-            )
-            for line in iter(proc.stdout.readline, "") if proc.stdout else []:
-                line = (line or "").strip()
-                if line:
-                    prog("Installing OpenCV (CUDA)...", line[:100])
-            proc.wait(timeout=600)
-            if proc.returncode != 0:
-                prog("Failed", "See console for details")
-                return False
-        except Exception as e:
-            prog("Failed", str(e)[:80])
-            return False
-    else:
-        prog("Installing OpenCV...", "")
-        ok = install_package("opencv-python", progress_callback)
-        return ok
+        else:
+            wheel_url, wheel_size = _get_opencv_standard_wheel_url()
+            if wheel_url:
+                wheel_path = _download_wheel_with_progress(
+                    wheel_url,
+                    lambda p, d, down, tot: prog(p, d, down, tot),
+                    total_hint=wheel_size or OPENCV_STANDARD_APPROX_BYTES,
+                )
+            if not wheel_path:
+                prog("Installing OpenCV...", "Downloading via pip...", 0, 0)
+                return install_package("opencv-python", lambda p, d: progress_callback(p, d, 0, 0))
 
-    return True
+        if not wheel_path or not wheel_path.exists():
+            prog("Failed", "Download failed", 0, 0)
+            return False
+
+        prog("Installing OpenCV...", "Installing wheel...", 0, 0)
+        result = subprocess.run(
+            [str(pip), "install", str(wheel_path)],
+            capture_output=True, text=True, timeout=300,
+        )
+        try:
+            wheel_path.unlink()
+        except OSError:
+            pass
+        if result.returncode != 0:
+            prog("Failed", (result.stderr or result.stdout or "")[:80], 0, 0)
+            return False
+        prog("Complete.", "", 1, 1)
+        return True
+    finally:
+        if wheel_path and wheel_path.exists():
+            try:
+                wheel_path.unlink()
+            except OSError:
+                pass
 
 
 def uninstall_opencv(progress_callback=None) -> bool:

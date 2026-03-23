@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.0.10] - 2026-03-21
+### Changed
+- **OpenCV install progress**: Progress bar is now a fixed (determinate) bar driven by download size. Wheel is downloaded with streaming, then installed locally. Shows MB downloaded / total.
+- **OpenCV install confirmation**: Dialog now lists each component with its size and shows total download size before install. For CUDA: shows wheel name and size; adds note about CUDA/cuDNN requirement.
+
 ## [3.0.9] - 2026-03-21
 ### Fixed
 - **OpenCV no longer auto-reinstalled**: Bootstrap now uses `is_venv_runnable()` (PySide6, PIL, requests only) instead of `is_venv_ready()` (which required OpenCV). When the user uninstalls OpenCV and restarts, the app launches without reinstalling OpenCV.
