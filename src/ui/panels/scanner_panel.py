@@ -91,7 +91,7 @@ class OpenCVSetupDialog(QDialog):
             mb_t = total / (1024 * 1024)
             if mb_t >= 0.01:
                 size_str = f"{mb_d:.2f} / {mb_t:.2f} MB"
-                self._lbl_detail.setText(f"{size_str}  {detail}" if detail else size_str)
+                self._lbl_detail.setText(f"{size_str}  ·  {detail}" if detail else size_str)
             else:
                 self._lbl_detail.setText(detail[:120] if detail else "")
         else:
@@ -610,6 +610,8 @@ class AIScannerPanel(QWidget):
             total_gb = total / (1024**3)
             total_sz = f"{total_gb:.2f} GB" if total_gb >= 0.1 else f"{total_mb:.1f} MB"
             lines.append(f"\nTotal download: {total_sz}")
+        if variant == "cuda":
+            lines.append("\nCUDA runtime and cuDNN install via pip into venv (no sudo).")
         lines.append("\nInstall into app's private venv (no sudo required).")
         reply = QMessageBox.question(
             self,
@@ -638,19 +640,31 @@ class AIScannerPanel(QWidget):
                         time.sleep(2)
                         self._sig.setup_complete.emit(False)
                         return
-                ok = install_opencv(progress_callback=_prog, variant=variant)
-                self._sig.setup_complete.emit(ok)
+                ok, err = install_opencv(progress_callback=_prog, variant=variant)
+                if not ok and err and variant == "cuda":
+                    _prog("Trying OpenCL fallback...", "")
+                    ok, err = install_opencv(progress_callback=_prog, variant="opencl")
+                self._sig.setup_complete.emit((ok, err))
             except Exception as e:
                 _prog("Failed", str(e)[:80])
                 time.sleep(2)
-                self._sig.setup_complete.emit(False)
+                self._sig.setup_complete.emit((False, str(e)))
 
-        def _on_done(ok):
+        def _on_done(result):
+            ok = result[0] if isinstance(result, tuple) else result
+            err = result[1] if isinstance(result, tuple) and len(result) > 1 else None
             self._setup_in_progress = False
             dlg.close()
             self._check_models()
             self._update_start_enabled()
-            self._add_log("OpenCV installed. Restart ChronoArchiver." if ok else "OpenCV install failed.")
+            if ok:
+                self._add_log("OpenCV installed. Restart ChronoArchiver.")
+            else:
+                self._add_log("OpenCV install failed.")
+                if err:
+                    for line in err.strip().split("\n")[:10]:
+                        if line.strip():
+                            self._add_log(f"  {line[:200]}")
             self._sig.prereqs_changed.emit()
 
         self._sig.setup_complete.connect(_on_done, Qt.ConnectionType.SingleShotConnection)

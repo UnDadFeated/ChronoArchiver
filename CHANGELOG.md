@@ -1,9 +1,28 @@
 # Changelog
 
-## [3.2.0] - 2026-03-22
-### Added
-- **Media Converter**: New 4th tool for batch media conversion. Source and target folders; convert photos/videos to different formats (jpg, png, webp, bmp, tiff, mp4, webm, mkv, avi). Options: crop (x,y,w,h), scale (width×height or percentage), rotate (0°/90°/180°/270°), transparency for PNG/WebP, quality slider. Uses FFmpeg for video and PIL for images. Guide flow and console.
+## [3.2.5] - 2026-03-22
+### Changed
+- **OpenCV CUDA: venv-only install (no sudo)**: CUDA runtime and cuDNN are now installed via pip packages (`nvidia-cuda-runtime`, `nvidia-cudnn-cu13`) into the app venv. Removed pacman/pkexec/sudo; all CUDA stack installs app-internally without elevated privileges.
 
+## [3.2.4] - 2026-03-22
+### Added
+- **OpenCV CUDA: CUDA Toolkit and cuDNN**: For NVIDIA GPU on Arch Linux, CUDA and cuDNN are now installed automatically via `pacman -S cuda cudnn` before the OpenCV wheel. Components list shows all three (CUDA ~2.2 GB, cuDNN ~314 MB, OpenCV wheel ~483 MB). Prompts for password via pkexec/sudo.
+
+## [3.2.3] - 2026-03-22
+### Changed
+- **OpenCV install progress**: Download speed (MB/s) shown during download. At 100% download, phase changes to "Installing..." with "Setting up wheel (this may take a minute)" so UI indicates activity during pip install.
+
+## [3.2.2] - 2026-03-22
+### Fixed
+- **OpenCV CUDA install**: Components list now shows only the actual download (~483 MB wheel), not CUDA/cuDNN (which are system packages). Progress bar matches real download size.
+- **OpenCV install failure**: Pip error output is now shown in the console when install fails.
+- **CUDA wheel fallback**: If CUDA wheel fails (e.g. missing CUDA 13.1/cuDNN 9.17.1), installer automatically falls back to OpenCL build.
+
+## [3.2.1] - 2026-03-22
+### Removed
+- **Media Converter**: Tool removed; code stripped.
+
+## [3.2.0] - 2026-03-22
 ### Changed
 - **AI Scanner – Engine Status layout**: Fixed Install OpenCV button causing box stretch. Button uses fixed width; variant shown in tooltip. Directories box yields horizontal space to Engine Status.
 - **OpenCV CUDA install**: CUDA Toolkit (~3.5 GB) and cuDNN (~800 MB) now listed as required components with sizes; removed redundant "install separately" message.

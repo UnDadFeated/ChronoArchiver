@@ -1,13 +1,31 @@
 # TASKS
 
-**Current:** v3.2.0 (2026-03-22)
+**Current:** v3.2.5 (2026-03-22)
 
 ---
 
-- [x] **v3.2.0: Media Converter, Layout, CUDA Components (2026-03-22)**
+- [x] **v3.2.5: CUDA/cuDNN Venv-Only (No Sudo) (2026-03-22)**
+  - [x] CUDA runtime and cuDNN via pip (nvidia-cuda-runtime, nvidia-cudnn-cu13) into app venv.
+  - [x] Removed pacman/pkexec/sudo; all CUDA stack app-internal.
+
+- [x] **v3.2.4: CUDA/cuDNN Auto-Install (2026-03-22)**
+  - [x] CUDA Toolkit and cuDNN in components list; auto-install via pacman on Arch before wheel. (Superseded by v3.2.5 venv-only.)
+
+- [x] **v3.2.3: OpenCV Progress UX (2026-03-22)**
+  - [x] Download speed (MB/s) in progress popup.
+  - [x] At 100% download → "Installing... / Setting up wheel" so UI not frozen during pip.
+
+- [x] **v3.2.2: OpenCV Install Fix (2026-03-22)**
+  - [x] CUDA: show only wheel in components (~483 MB); progress matches download.
+  - [x] Surface pip error to console on failure.
+  - [x] CUDA wheel fail → auto-fallback to OpenCL build.
+
+- [x] **v3.2.1: Remove Media Converter (2026-03-22)**
+  - [x] Media Converter panel and engine removed.
+
+- [x] **v3.2.0: Layout, CUDA Components (2026-03-22)**
   - [x] Install OpenCV layout fix: Engine Status no stretch; fixed button width, variant in tooltip.
   - [x] CUDA install: CUDA Toolkit and cuDNN listed as components with sizes; removed "install separately" message.
-  - [x] Media Converter: New 4th panel. Source/target, format, crop/scale/rotate/transparency. FFmpeg + PIL.
 
 - [x] **v3.1.0: GPU-Specific OpenCV Variants (2026-03-21)**
   - [x] detect_gpu() extended for nvidia|amd|intel; get_opencv_variant() returns cuda|opencl_amd|opencl_intel|opencl.

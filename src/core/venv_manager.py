@@ -5,9 +5,11 @@ Ensures all Python deps run from ~/.local/share/ChronoArchiver/venv.
 
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 try:
@@ -24,9 +26,8 @@ APP_NAME = "ChronoArchiver"
 APP_AUTHOR = "UnDadFeated"
 OPENCV_CUDA_API = "https://api.github.com/repos/cudawarped/opencv-python-cuda-wheels/releases/latest"
 OPENCV_STANDARD_APPROX_BYTES = 90 * 1024 * 1024  # ~90 MB
-# Fallback when API unavailable: system opencv-cuda (pacman) ~7498 MiB installed
-# (cuda+cuDNN+vtk+openmpi+opencv-cuda+python-opencv-cuda). Our pip wheel is smaller.
-OPENCV_CUDA_FALLBACK_BYTES = 7498 * 1024 * 1024
+# Fallback when API unavailable: cudawarped wheel ~500 MB
+OPENCV_CUDA_FALLBACK_BYTES = 506 * 1024 * 1024
 
 # Base packages (opencv chosen by get_opencv_package())
 VENV_PACKAGES_BASE = [
@@ -238,18 +239,64 @@ def get_opencv_install_size(variant: str | None = None) -> tuple:
     return total, f"~{gb:.2f} GB" if gb >= 0.1 else f"~{mb:.1f} MB"
 
 
+# Approximate sizes for NVIDIA pip packages (venv install, no sudo)
+NVIDIA_CUDA_RUNTIME_APPROX_BYTES = int(2.2 * 1024 * 1024)   # ~2.2 MB
+NVIDIA_CUDNN_APPROX_BYTES = int(366 * 1024 * 1024)          # ~366 MB
+
+# PyPI packages for CUDA/cuDNN in venv (compatible with cudawarped OpenCV CUDA wheel)
+NVIDIA_CUDA_CUDNN_PIP_PACKAGES = ["nvidia-cuda-runtime", "nvidia-cudnn-cu13"]
+
+
+def _is_cuda_cudnn_installed() -> bool:
+    """Check if CUDA and cuDNN are installed in the app venv (pip packages)."""
+    pip = get_pip_exe()
+    if not pip.exists():
+        return False
+    try:
+        r = subprocess.run(
+            [str(pip), "show", "nvidia-cudnn-cu13"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _install_cuda_cudnn_venv(progress_callback=None) -> tuple[bool, str | None]:
+    """Install CUDA and cuDNN via pip into app venv (no sudo). Returns (success, error)."""
+    def prog(msg, detail=""):
+        if progress_callback:
+            progress_callback(msg, detail, 0, 0)
+
+    pip = get_pip_exe()
+    if not pip.exists():
+        return False, "venv not ready"
+
+    prog("Installing CUDA runtime and cuDNN...", "pip install into venv (no sudo)")
+    try:
+        r = subprocess.run(
+            [str(pip), "install", *NVIDIA_CUDA_CUDNN_PIP_PACKAGES],
+            capture_output=True, text=True, timeout=600,
+        )
+        if r.returncode == 0:
+            return True, None
+        err = (r.stderr or r.stdout or "Unknown error").strip()
+        return False, err
+    except subprocess.TimeoutExpired:
+        return False, "Installation timed out"
+    except Exception as e:
+        return False, str(e)
+
+
 def get_opencv_install_components(variant: str | None = None) -> list[tuple[str, int]]:
     """Return [(component_name, size_bytes), ...] for the install confirmation dialog.
     variant: 'cuda'|'opencl_amd'|'opencl_intel'|'opencl' (default: from get_opencv_variant)."""
     v = variant or get_opencv_variant()
     if v == "cuda":
-        components = []
-        # CUDA Toolkit and cuDNN (required, approximate sizes)
-        CUDA_TOOLKIT_BYTES = int(3.5 * 1024 * 1024 * 1024)
-        CUDNN_BYTES = int(0.8 * 1024 * 1024 * 1024)
-        components.append(("NVIDIA CUDA Toolkit (required)", CUDA_TOOLKIT_BYTES))
-        components.append(("cuDNN (required)", CUDNN_BYTES))
-        # OpenCV CUDA wheel
+        components = [
+            ("nvidia-cuda-runtime (CUDA, venv)", NVIDIA_CUDA_RUNTIME_APPROX_BYTES),
+            ("nvidia-cudnn-cu13 (cuDNN, venv)", NVIDIA_CUDNN_APPROX_BYTES),
+        ]
         wheel_size = OPENCV_CUDA_FALLBACK_BYTES
         if requests:
             try:
@@ -313,23 +360,34 @@ def _get_opencv_standard_wheel_url() -> tuple:
 
 
 def _download_wheel_with_progress(url: str, progress_callback, total_hint: int = 0) -> Path | None:
-    """Download wheel to temp file, report progress. Returns path or None on failure."""
+    """Download wheel to temp file, report progress with speed. Returns path or None on failure."""
     if not requests:
         return None
     try:
         r = requests.get(url, stream=True, timeout=(10, 120))
         r.raise_for_status()
         total = int(r.headers.get("content-length", 0) or 0) or total_hint
-        progress_callback("Downloading...", "", 0, total)
+        progress_callback("Downloading...", "0.00 MB/s", 0, total)
         fd, path = tempfile.mkstemp(suffix=".whl")
         try:
+            start = time.monotonic()
+            last_update = start
+            downloaded = 0
             with os.fdopen(fd, "wb") as f:
-                downloaded = 0
                 for chunk in r.iter_content(chunk_size=65536):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-                        progress_callback("Downloading...", "", downloaded, total)
+                        now = time.monotonic()
+                        if now - last_update >= 0.2:  # throttle updates
+                            elapsed = now - start
+                            speed_mbs = (downloaded / (1024 * 1024)) / elapsed if elapsed > 0 else 0
+                            progress_callback("Downloading...", f"{speed_mbs:.2f} MB/s", downloaded, total)
+                            last_update = now
+                # final update at 100%
+                elapsed = time.monotonic() - start
+                speed_mbs = (downloaded / (1024 * 1024)) / elapsed if elapsed > 0 else 0
+                progress_callback("Downloading...", f"{speed_mbs:.2f} MB/s", downloaded, total)
             return Path(path)
         except Exception:
             try:
@@ -341,22 +399,23 @@ def _download_wheel_with_progress(url: str, progress_callback, total_hint: int =
         return None
 
 
-def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
+def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[bool, str | None]:
     """Install OpenCV into venv.
     variant: 'cuda'|'opencl_amd'|'opencl_intel'|'opencl' (default: from get_opencv_variant).
-    progress_callback(phase, detail, downloaded=0, total=0) — total>0 enables size-based bar."""
+    progress_callback(phase, detail, downloaded=0, total=0) — total>0 enables size-based bar.
+    Returns (success, error_message). On success: (True, None). On failure: (False, "reason")."""
     pip = get_pip_exe()
     if not pip.exists():
         if progress_callback:
             progress_callback("venv not ready", "Run first-time setup first.", 0, 0)
-        return False
+        return False, "venv not ready"
 
     def prog(phase, detail="", downloaded=0, total=0):
         if progress_callback:
             progress_callback(phase, detail[:100] if detail else "", downloaded, total)
 
     # Uninstall existing opencv (all variants)
-    prog("Removing existing OpenCV...", "")
+    prog("Removing...", "Uninstalling previous OpenCV", 0, 0)
     subprocess.run(
         [str(pip), "uninstall", "-y",
          "opencv-python", "opencv-python-headless",
@@ -368,13 +427,24 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
     v = variant or get_opencv_variant()
     wheel_path: Path | None = None
     try:
+        if v == "cuda" and detect_gpu() == "nvidia":
+            if not _is_cuda_cudnn_installed():
+                prog("Installing CUDA runtime and cuDNN...", "pip install into venv...", 0, 0)
+                ok_venv, err_venv = _install_cuda_cudnn_venv(
+                    lambda msg, det, d, t: prog(msg, det, d, t)
+                )
+                if not ok_venv:
+                    prog("Failed", err_venv[:80] if err_venv else "Could not install CUDA/cuDNN", 0, 0)
+                    return False, err_venv or "Could not install CUDA/cuDNN"
+            if not requests:
+                return False, "requests module required for wheel download"
         if v == "cuda" and detect_gpu() == "nvidia" and requests:
             prog("Fetching OpenCV CUDA wheel URL...", "")
             try:
                 r = requests.get(OPENCV_CUDA_API, timeout=10)
                 if r.status_code != 200:
                     prog("Failed", "Could not fetch release info", 0, 0)
-                    return False
+                    return False, "Could not fetch CUDA wheel release info"
                 data = r.json()
                 wheel_url = None
                 wheel_size = 0
@@ -392,15 +462,16 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
                             break
                 if not wheel_url:
                     prog("Failed", "No matching CUDA wheel for this platform", 0, 0)
-                    return False
+                    return False, "No matching CUDA wheel for this platform"
                 wheel_path = _download_wheel_with_progress(
                     wheel_url,
                     lambda p, d, down, tot: prog(p, d, down, tot),
                     total_hint=wheel_size,
                 )
             except Exception as e:
-                prog("Failed", str(e)[:80], 0, 0)
-                return False
+                msg = str(e)[:200]
+                prog("Failed", msg[:80], 0, 0)
+                return False, msg
         else:
             wheel_url, wheel_size = _get_opencv_standard_wheel_url()
             if wheel_url:
@@ -411,13 +482,14 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
                 )
             if not wheel_path:
                 prog("Installing OpenCV...", "Downloading via pip...", 0, 0)
-                return install_package("opencv-python", lambda p, d: progress_callback(p, d, 0, 0))
+                ok = install_package("opencv-python", lambda p, d: progress_callback(p, d, 0, 0))
+                return (ok, None if ok else "pip install opencv-python failed")
 
         if not wheel_path or not wheel_path.exists():
             prog("Failed", "Download failed", 0, 0)
-            return False
+            return False, "Download failed"
 
-        prog("Installing OpenCV...", "Installing wheel...", 0, 0)
+        prog("Installing...", "Setting up wheel (this may take a minute)", 1, 1)
         result = subprocess.run(
             [str(pip), "install", str(wheel_path)],
             capture_output=True, text=True, timeout=300,
@@ -427,10 +499,11 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
         except OSError:
             pass
         if result.returncode != 0:
-            prog("Failed", (result.stderr or result.stdout or "")[:80], 0, 0)
-            return False
+            err = (result.stderr or result.stdout or "Unknown error").strip()
+            prog("Failed", err[:80], 0, 0)
+            return False, err
         prog("Complete.", "", 1, 1)
-        return True
+        return True, None
     finally:
         if wheel_path and wheel_path.exists():
             try:
@@ -440,16 +513,20 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
 
 
 def uninstall_opencv(progress_callback=None) -> bool:
-    """Remove OpenCV from venv (all variants)."""
+    """Remove OpenCV from venv (all variants). Also removes NVIDIA CUDA/cuDNN pip packages if present."""
     pip = get_pip_exe()
     if not pip.exists():
         return False
+    packages = [
+        "opencv-python", "opencv-python-headless",
+        "opencv-contrib-python", "opencv-contrib-python-headless",
+        "opencv-openvino-contrib-python",
+        # CUDA stack (pip installs into venv; safe to uninstall even if not present)
+        "nvidia-cudnn-cu13", "nvidia-cuda-runtime", "nvidia-cublas",
+    ]
     r = subprocess.run(
-        [str(pip), "uninstall", "-y",
-         "opencv-python", "opencv-python-headless",
-         "opencv-contrib-python", "opencv-contrib-python-headless",
-         "opencv-openvino-contrib-python"],
-        capture_output=True, text=True, timeout=60,
+        [str(pip), "uninstall", "-y", *packages],
+        capture_output=True, text=True, timeout=120,
     )
     return r.returncode == 0
 

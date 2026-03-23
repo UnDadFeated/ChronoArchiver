@@ -1,6 +1,37 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-22 (CUDA/cuDNN venv-only, no sudo v3.2.5)
+- Replaced system CUDA/cuDNN install (pacman + pkexec/sudo) with pip packages in app venv.
+- `_install_cuda_cudnn_venv()`: pip install nvidia-cuda-runtime nvidia-cudnn-cu13 into venv. No sudo.
+- `_is_cuda_cudnn_installed()`: checks `pip show nvidia-cudnn-cu13` in venv.
+- Components: nvidia-cuda-runtime (~2.2 MB), nvidia-cudnn-cu13 (~366 MB), opencv wheel (~483 MB).
+- `uninstall_opencv()`: also removes nvidia-cudnn-cu13, nvidia-cuda-runtime, nvidia-cublas.
+- Scanner panel dialog: "CUDA runtime and cuDNN install via pip into venv (no sudo)". SemVer: PATCH 3.2.5.
+
+---
+## 2026-03-22 (CUDA/cuDNN auto-install v3.2.4)
+- CUDA Toolkit and cuDNN added back to components list (~2.2 GB + ~314 MB).
+- On Arch/Arch-based Linux with NVIDIA GPU, install_opencv now runs pacman -S cuda cudnn (via pkexec/sudo) before downloading the OpenCV wheel, if not already installed. Prompts for password.
+- _is_cuda_cudnn_installed() checks ldconfig or pacman -Q. _install_cuda_cudnn_system() for Arch. SemVer: PATCH 3.2.4.
+
+---
+## 2026-03-22 (OpenCV progress UX v3.2.3)
+- Download progress: show speed (MB/s) during download; throttle updates every 0.2s.
+- At 100% download, phase changes to "Installing..." / "Setting up wheel (this may take a minute)" so UI doesn't appear frozen during pip install.
+- Components dialog shows only what we download (~483 MB for CUDA wheel); matches actual download. SemVer: PATCH 3.2.3.
+
+---
+## 2026-03-22 (OpenCV install fix v3.2.2)
+- CUDA components: removed CUDA Toolkit/cuDNN from download total (we don't download them). Dialog now shows only wheel ~483 MB.
+- install_opencv returns (bool, str|None) for error propagation; pip stderr shown in console on failure.
+- CUDA wheel failure fallback: if pip install fails for CUDA variant, automatically try OpenCL build. Note added to dialog: "Requires CUDA 13.1 and cuDNN 9.17.1 installed separately. If missing, install will try OpenCL build instead." SemVer: PATCH 3.2.2.
+
+---
+## 2026-03-22 (Remove Media Converter v3.2.1)
+- Media Converter panel and engine removed; all related code stripped. SemVer: PATCH 3.2.1.
+
+---
 ## 2026-03-22 (Media Converter, layout, CUDA components v3.2.0)
 - **Install OpenCV layout**: Fixed Engine Status box stretch when Install button text changed. Button fixed width 165px, label always "Install OpenCV", variant in tooltip. Directories stretch 10→8, Engine Status 3→4; grp_mod setMinimumWidth(260).
 - **CUDA components**: get_opencv_install_components for cuda variant now lists NVIDIA CUDA Toolkit (~3.5 GB), cuDNN (~800 MB), opencv-contrib-python (CUDA). Removed "Requires... install separately" message.

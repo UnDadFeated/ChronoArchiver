@@ -22,7 +22,6 @@ UTILITY_APP = "ChronoArchiver"
 UTILITY_MEDIA_ORGANIZER = "Media Organizer"
 UTILITY_MASS_AV1_ENCODER = "Mass AV1 Encoder"
 UTILITY_AI_MEDIA_SCANNER = "AI Media Scanner"
-UTILITY_MEDIA_CONVERTER = "Media Converter"
 
 
 def _ensure_init():
