@@ -20,7 +20,7 @@ import psutil
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.venv_manager import (
     add_venv_to_path, add_ffmpeg_to_path,
-    check_opencv_in_venv, check_ffmpeg_in_venv, ensure_ffmpeg_in_venv,
+    check_opencv_in_venv, check_ffmpeg_in_venv, ensure_ffmpeg_in_venv_with_progress,
     get_pip_exe,
 )
 add_venv_to_path()
@@ -245,6 +245,10 @@ class ChronoArchiverApp(QMainWindow):
         self._bar_ffmpeg.setStyleSheet("font-size: 7px; font-weight: 700;")
         self._bar_ffmpeg.hide()
         self.status_layout.addWidget(self._bar_ffmpeg)
+        self._lbl_ffmpeg_speed = QLabel("")
+        self._lbl_ffmpeg_speed.setStyleSheet("font-size: 7px; color: #6b7280; min-width: 48px;")
+        self._lbl_ffmpeg_speed.hide()
+        self.status_layout.addWidget(self._lbl_ffmpeg_speed)
         self.status_layout.addStretch()
 
         self.lbl_prereq = QLabel("Checking…")
@@ -372,33 +376,36 @@ class ChronoArchiverApp(QMainWindow):
             self.lbl_status.setText("Installing FFmpeg")
             self._bar_ffmpeg.setValue(0)
             self._bar_ffmpeg.show()
-            self._ffmpeg_pct = 0
+            self._lbl_ffmpeg_speed.setText("")
+            self._lbl_ffmpeg_speed.show()
             self._ffmpeg_done = False
             self._ffmpeg_done_handled = False
 
-            def _simulate():
-                if self._ffmpeg_done:
-                    if not self._ffmpeg_done_handled:
-                        self._ffmpeg_done_handled = True
-                        self._bar_ffmpeg.setValue(100)
-                        self._bar_ffmpeg.hide()
-                        add_ffmpeg_to_path()
-                        self._refresh_footer()
-                        on_done()
-                    return
-                self._ffmpeg_pct = min(95, self._ffmpeg_pct + 8)
-                self._bar_ffmpeg.setValue(self._ffmpeg_pct)
-                QTimer.singleShot(400, _simulate)
+            def _on_progress(phase: str, pct: int, detail: str):
+                def _update():
+                    self._bar_ffmpeg.setValue(min(100, pct))
+                    self._lbl_ffmpeg_speed.setText(detail if detail else "")
+                    if phase == "done":
+                        self._ffmpeg_done = True
+                        if not self._ffmpeg_done_handled:
+                            self._ffmpeg_done_handled = True
+                            self._bar_ffmpeg.setValue(100)
+                            self._bar_ffmpeg.hide()
+                            self._lbl_ffmpeg_speed.hide()
+                            add_ffmpeg_to_path()
+                            self._refresh_footer()
+                            on_done()
+                QTimer.singleShot(0, _update)
 
             def _worker():
-                ok = ensure_ffmpeg_in_venv()
-                self._ffmpeg_done = True
+                ok = ensure_ffmpeg_in_venv_with_progress(_on_progress)
                 if not ok:
                     debug(UTILITY_APP, "Pre-reqs: FFmpeg install failed")
-                QTimer.singleShot(0, _simulate)
+                if not self._ffmpeg_done_handled:
+                    self._ffmpeg_done = True
+                    QTimer.singleShot(0, lambda: _on_progress("done", 100, ""))
 
             threading.Thread(target=_worker, daemon=True).start()
-            QTimer.singleShot(400, _simulate)
 
         step1()
 

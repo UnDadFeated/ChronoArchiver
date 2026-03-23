@@ -1,6 +1,19 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-22 (OpenCV CUDA fix after restart v3.2.16)
+- Continued OpenCV fix: cv2 import fails with libcufft/libcudnn when LD_LIBRARY_PATH not set.
+- check_opencv_in_venv: call _add_nvidia_libs_to_ld_path() before subprocess; pass env=os.environ.copy() so child gets nvidia lib dirs.
+- bootstrap.py: add_venv_to_path() before both execv calls so child process inherits LD_LIBRARY_PATH from start.
+- Ensures footer/scanner show OpenCV ✓ after restart when CUDA wheel is installed. SemVer: PATCH 3.2.16.
+
+---
+## 2026-03-22 (FFmpeg footer download speed v3.2.15)
+- User requested download speed next to FFmpeg progress bar in footer.
+- ensure_ffmpeg_in_venv_with_progress(progress_callback) added: streams download in-process, computes bytes/sec, reports (phase, pct, detail) e.g. "2.3 MB/s". ensure_ffmpeg_in_venv delegates to it with None callback.
+- app.py: _lbl_ffmpeg_speed QLabel next to _bar_ffmpeg; _install_ffmpeg_async uses new API and updates bar + speed. SemVer: PATCH 3.2.15.
+
+---
 ## 2026-03-22 (GitPython for updater v3.2.14)
 - Added GitPython to VENV_PACKAGES_BASE. _spawn_git_updater now runs a Python helper script that uses git.Repo().remotes.origin.pull() instead of shell + git pull. Removes system git dependency for git-clone updater. Fallback to subprocess git pull if ImportError. SemVer: PATCH 3.2.14.
 

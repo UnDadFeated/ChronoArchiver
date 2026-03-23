@@ -1,8 +1,16 @@
 # TASKS
 
-**Current:** v3.2.14 (2026-03-22)
+**Current:** v3.2.16 (2026-03-22)
 
 ---
+
+- [x] **v3.2.16: OpenCV CUDA fix after restart (2026-03-22)**
+  - [x] check_opencv_in_venv: _add_nvidia_libs_to_ld_path + env=os.environ for subprocess.
+  - [x] bootstrap: add_venv_to_path before execv so child gets LD_LIBRARY_PATH.
+
+- [x] **v3.2.15: FFmpeg footer download speed (2026-03-22)**
+  - [x] ensure_ffmpeg_in_venv_with_progress(progress_callback) with real streaming download and speed (e.g. "2.3 MB/s").
+  - [x] Speed label next to FFmpeg progress bar in footer during install.
 
 - [x] **v3.2.14: GitPython for updater (2026-03-22)**
   - [x] GitPython in venv; updater uses it for git pull instead of system git.

@@ -11,7 +11,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from core.venv_manager import get_venv_path, get_python_exe, get_pip_exe, ensure_venv, is_venv_runnable
+from core.venv_manager import get_venv_path, get_python_exe, get_pip_exe, ensure_venv, is_venv_runnable, add_venv_to_path
 
 
 def _run_with_ui():
@@ -75,6 +75,7 @@ def main():
     app_root = str(_SCRIPT_DIR)
 
     if py.exists() and is_venv_runnable():
+        add_venv_to_path()  # LD_LIBRARY_PATH for OpenCV CUDA (libcufft, libcudnn) before execv
         os.chdir(app_root)
         os.execv(str(py), [str(py), str(app_py)] + sys.argv[1:])
 
@@ -84,6 +85,7 @@ def main():
         print("Setup failed. See messages above.")
         sys.exit(1)
     print("Setup complete. Launching...")
+    add_venv_to_path()  # LD_LIBRARY_PATH for OpenCV CUDA (libcufft, libcudnn) before execv
     os.chdir(app_root)
     os.execv(str(py), [str(py), str(app_py)] + sys.argv[1:])
 

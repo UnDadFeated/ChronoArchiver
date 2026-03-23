@@ -156,8 +156,11 @@ def check_opencv_in_venv() -> bool:
     if not py.exists():
         debug(UTILITY_OPENCV_INSTALL, "check_opencv_in_venv: python exe not found")
         return False
+    # Ensure nvidia lib paths are in LD_LIBRARY_PATH for CUDA OpenCV wheel (libcufft, libcudnn)
+    _add_nvidia_libs_to_ld_path()
+    env = os.environ.copy()
     try:
-        r = subprocess.run([str(py), "-c", "import cv2"], capture_output=True, timeout=5)
+        r = subprocess.run([str(py), "-c", "import cv2"], capture_output=True, timeout=5, env=env)
         ok = r.returncode == 0
         debug(UTILITY_OPENCV_INSTALL, f"check_opencv_in_venv: returncode={r.returncode} ok={ok}")
         return ok
@@ -191,20 +194,122 @@ def ensure_ffmpeg_in_venv() -> bool:
     Ensure FFmpeg/ffprobe binaries are available via static-ffmpeg. Downloads on first run.
     Call add_ffmpeg_to_path() after this returns True.
     """
-    py = get_python_exe()
-    if not py.exists():
-        return False
+    return ensure_ffmpeg_in_venv_with_progress(None)
+
+
+def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
+    """
+    Ensure FFmpeg/ffprobe via static-ffmpeg. Downloads on first run with real progress/speed.
+    progress_callback(phase: str, pct: int, detail: str) where phase in ('downloading','extracting','done'),
+    pct 0-100, detail e.g. "2.3 MB/s" or "Extracting...". Call add_ffmpeg_to_path() after True.
+    """
+    def prog(phase: str, pct: int, detail: str):
+        if progress_callback:
+            progress_callback(phase, pct, detail)
+
     try:
-        subprocess.run(
-            [str(py), "-c", (
-                "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; "
-                "get_or_fetch_platform_executables_else_raise()"
-            )],
-            capture_output=True, timeout=600,
+        from static_ffmpeg.run import (
+            get_platform_http_zip,
+            get_platform_dir,
+            get_platform_key,
+            LOCK_FILE,
+            PLATFORM_ZIP_FILES,
         )
+        from filelock import FileLock, Timeout
+    except ImportError:
+        # Fallback to subprocess when static_ffmpeg not importable (e.g. bootstrap)
+        py = get_python_exe()
+        if not py.exists():
+            return False
+        try:
+            subprocess.run(
+                [str(py), "-c", (
+                    "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; "
+                    "get_or_fetch_platform_executables_else_raise()"
+                )],
+                capture_output=True, timeout=600,
+            )
+            return True
+        except Exception:
+            return False
+
+    if get_platform_key() not in PLATFORM_ZIP_FILES:
+        return False
+
+    exe_dir = get_platform_dir()
+    installed_crumb = os.path.join(exe_dir, "installed.crumb")
+    if os.path.exists(installed_crumb):
+        return True
+
+    if not requests:
+        return False
+
+    TIMEOUT = 10 * 60
+    lock = FileLock(LOCK_FILE, timeout=TIMEOUT)
+    try:
+        lock.acquire()
+    except Timeout:
+        pass
+
+    try:
+        install_dir = os.path.dirname(exe_dir)
+        os.makedirs(exe_dir, exist_ok=True)
+        url = get_platform_http_zip()
+        local_zip = exe_dir + ".zip"
+
+        prog("downloading", 0, "")
+        start = time.time()
+        downloaded = 0
+        chunk_size = 256 * 1024
+        total = -1
+
+        with requests.get(url, stream=True, timeout=TIMEOUT) as req:
+            req.raise_for_status()
+            try:
+                total = int(req.headers.get("content-length", 0))
+            except (ValueError, TypeError):
+                total = -1
+
+            with open(local_zip, "wb") as f:
+                for chunk in req.iter_content(chunk_size):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    elapsed = time.time() - start
+                    speed_bps = downloaded / elapsed if elapsed > 0 else 0
+                    speed_mb = speed_bps / (1024 * 1024)
+                    pct = int((downloaded / total * 100)) if total > 0 else min(90, downloaded // (1024 * 1024))
+                    detail = f"{speed_mb:.1f} MB/s" if speed_mb >= 0.01 else f"{speed_bps / 1024:.0f} KB/s"
+                    prog("downloading", min(90, pct), detail)
+
+        prog("extracting", 92, "Extracting...")
+        import zipfile
+        with zipfile.ZipFile(local_zip, mode="r") as zipf:
+            zipf.extractall(install_dir)
+        try:
+            os.remove(local_zip)
+        except OSError:
+            pass
+        from datetime import datetime
+        with open(installed_crumb, "wt") as fd:
+            fd.write(f"installed from {url} on {str(datetime.now())}")
+
+        # Fix permissions on Unix
+        if platform.system() != "Windows":
+            import stat
+            for name in ("ffmpeg", "ffprobe"):
+                exe = os.path.join(exe_dir, name)
+                if os.path.exists(exe):
+                    os.chmod(exe, stat.S_IXOTH | stat.S_IXUSR | stat.S_IXGRP | stat.S_IRUSR | stat.S_IRGRP)
+
+        prog("done", 100, "")
         return True
     except Exception:
         return False
+    finally:
+        try:
+            lock.release()
+        except Exception:
+            pass
 
 
 def add_ffmpeg_to_path() -> bool:
@@ -700,6 +805,29 @@ def remove_venv() -> bool:
     return False
 
 
+def _add_nvidia_libs_to_ld_path():
+    """Prepend nvidia CUDA lib dirs to LD_LIBRARY_PATH so OpenCV CUDA wheel finds libcufft, libcudnn."""
+    if platform.system() == "Windows":
+        return
+    venv = get_venv_path()
+    lib = venv / "lib"
+    if not lib.exists():
+        return
+    nvidia_libs = []
+    for d in lib.iterdir():
+        if d.name.startswith("python") and (d / "site-packages" / "nvidia").exists():
+            nv = d / "site-packages" / "nvidia"
+            for sub in ("cu13", "cudnn"):
+                p = nv / sub / "lib"
+                if p.is_dir():
+                    nvidia_libs.append(str(p))
+            break
+    if nvidia_libs:
+        existing = os.environ.get("LD_LIBRARY_PATH", "")
+        prefix = ":".join(nvidia_libs)
+        os.environ["LD_LIBRARY_PATH"] = f"{prefix}:{existing}" if existing else prefix
+
+
 def add_venv_to_path():
     """Add venv site-packages to sys.path (call before importing app deps)."""
     venv = get_venv_path()
@@ -712,3 +840,4 @@ def add_venv_to_path():
             if sp not in sys.path:
                 sys.path.insert(0, sp)
             break
+    _add_nvidia_libs_to_ld_path()

@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.16] - 2026-03-22
+### Fixed
+- **OpenCV CUDA import after restart**: `check_opencv_in_venv` subprocess now receives `LD_LIBRARY_PATH` with nvidia lib dirs (cu13, cudnn) so cv2 import succeeds. Bootstrap calls `add_venv_to_path()` before execv so child process starts with correct library path.
+
+## [3.2.15] - 2026-03-22
+### Added
+- **FFmpeg download speed**: Download speed (e.g. "2.3 MB/s") shown next to the footer progress bar during FFmpeg install. Uses in-process streaming fetch with real progress and speed calculation.
+
 ## [3.2.14] - 2026-03-22
 ### Changed
 - **Updater**: Git pull now uses GitPython (from venv) instead of system git. Removes system git dependency for git-clone installs when updating in-app. Falls back to system git if GitPython unavailable.
