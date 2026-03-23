@@ -1,8 +1,10 @@
 # ChronoArchiver
 
-A unified media management platform for archival, classification, and transcoding. ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application built on PySide6.
+**Time to Archive!** — A unified media management platform for archival, classification, and transcoding.
 
-[![Version](https://img.shields.io/badge/version-2.0.56-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
+
+[![Version](https://img.shields.io/badge/version-3.2.24-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -10,15 +12,15 @@ A unified media management platform for archival, classification, and transcodin
 
 ## Overview
 
-ChronoArchiver addresses three core workflows for managing large media libraries:
+ChronoArchiver provides three core workflows for managing large media libraries:
 
 | Module | Purpose |
 |--------|---------|
-| **Media Organizer** | Sorts photos and videos into a date-based folder hierarchy from EXIF, filename, or metadata. |
+| **Media Organizer** | Sorts photos and videos into date-based folder hierarchies using EXIF, filename, or metadata. |
 | **AI Media Scanner** | Classifies images by subject presence (faces, animals) for bulk triage and archival. |
 | **Mass AV1 Encoder** | Batch-transcodes video to AV1 with optional hardware acceleration. |
 
-Settings persist to the platform config directory; no manual configuration is required. Each panel disables its Start button until all required inputs (paths, media types, AI models) are set.
+Configuration is stored in the platform user-data directory. Each panel validates prerequisites before enabling execution; Start remains disabled until all required inputs (paths, models, etc.) are satisfied.
 
 ---
 
@@ -27,14 +29,14 @@ Settings persist to the platform config directory; no manual configuration is re
 Organizes media into `YYYY/YYYY-MM/` (nested) or `YYYY-MM/` (flat) structures. Date resolution order:
 
 1. **EXIF** — `DateTimeOriginal` or `DateTimeDigitized`
-2. **Video metadata** — FFprobe `creation_time` where available
+2. **Video metadata** — FFprobe `creation_time` when available
 3. **Filename** — `YYYYMMDD`, `YYYY-MM-DD`, `YYYY_MM_DD`, and common prefixes (`IMG_`, `VID-`, `Signal-`)
 4. **Modification time** — Fallback; timestamps before 1980 are rejected
 
-Additional behavior:
+Features:
 
 - Appends `YYYY-MM-DD_` to filenames for chronological ordering
-- Corrects existing date prefixes when mismatched
+- Corrects mismatched date prefixes
 - Optional target directory for organizing into a separate root
 - Comma-separated extension override; blank uses default photo/video sets
 - Duplicate detection via size comparison and partial MD5 (first 1 MB)
@@ -50,7 +52,7 @@ Dual-list workflow: **Keep** (subjects detected) and **Move** (no subjects). Det
 - **Face** — OpenCV YuNet (`face_detection_yunet_2023mar.onnx`), OpenCL when available
 - **Animals** — OpenCV DNN SSD MobileNet V1 (optional, configurable confidence threshold)
 
-Models are verified on launch and stored in the platform user-data directory (`~/.local/share/ChronoArchiver/models` on Linux). Start AI Scan is disabled until models exist and a valid folder is selected (use Setup Models if missing).
+Models are stored in `~/.local/share/ChronoArchiver/models` (Linux) or the platform equivalent. Use Setup Models to download; OpenCV is installed via the Install OpenCV button in the AI Scanner panel.
 
 Features:
 
@@ -80,7 +82,7 @@ Batch AV1 transcoding with preserved folder structure and metadata.
 
 **Options:**
 
-- Output: always `.mp4` (`stem_av1.mp4`); files ending `_av1.ext` skipped on rescan
+- Output: `.mp4` (`stem_av1.mp4`); files ending `_av1.ext` skipped on rescan
 - Auto-scan on source selection; queue resets when source changes
 - Skip Short Clips, Auto-Shutdown, Delete Source (safety-locked)
 - Space Saved, ETA, per-thread speed
@@ -99,16 +101,15 @@ yay -S chronoarchiver
 
 ### From Source
 
-**Requirements:** Python 3.10+, FFmpeg on `PATH`
+**Requirements:** Python 3.10 or later. FFmpeg is bundled; no system installation required.
 
 ```bash
 git clone https://github.com/UnDadFeated/ChronoArchiver.git
 cd ChronoArchiver
-pip install -r requirements.txt
-python src/ui/app.py
+python src/bootstrap.py
 ```
 
-NVIDIA RTX 40-series (or later) with AV1 NVENC enables hardware-accelerated encoding; the application runs fully in software without it.
+First launch creates an app-private virtual environment at `~/.local/share/ChronoArchiver/venv` and installs dependencies. Subsequent runs start directly. NVIDIA RTX 40-series (or later) with AV1 NVENC enables hardware-accelerated encoding; the application runs fully in software without it.
 
 ---
 
@@ -117,8 +118,7 @@ NVIDIA RTX 40-series (or later) with AV1 NVENC enables hardware-accelerated enco
 | Component | Requirement |
 |-----------|-------------|
 | Python | 3.10 or later |
-| FFmpeg | Recent version on `PATH` |
-| OS | Windows, Linux, macOS (Arch/AUR package available on Linux) |
+| OS | Windows, Linux, macOS (Arch/AUR package available) |
 | GPU | Optional — NVIDIA RTX 40-series for NVENC AV1 |
 
 ---
@@ -143,7 +143,8 @@ NVIDIA RTX 40-series (or later) with AV1 NVENC enables hardware-accelerated enco
 **AUR:** `pacman -R chronoarchiver` removes the application and all user data (models, config, logs).
 
 **Source install:** Delete the following directories to remove all traces:
-- `~/.local/share/ChronoArchiver` (models)
+
+- `~/.local/share/ChronoArchiver` (venv, models)
 - `~/.config/ChronoArchiver` (settings)
 - `~/.local/state/ChronoArchiver` (logs)
 
@@ -151,7 +152,13 @@ NVIDIA RTX 40-series (or later) with AV1 NVENC enables hardware-accelerated enco
 
 ## Updates
 
-The application checks GitHub Releases on startup. Updates can be applied in-app: the process closes, performs the update (git pull for source installs, or `paru`/`yay` for AUR), and restarts. Version comparison follows semantic versioning.
+The application checks GitHub tags on startup. Updates can be applied in-app: the process closes, performs the update (git pull for source installs, or `paru`/`yay` for AUR), and restarts. Version comparison follows semantic versioning.
+
+---
+
+## Changelog
+
+Release notes are available in [CHANGELOG.md](CHANGELOG.md). AUR installations include the changelog at `/usr/share/doc/chronoarchiver/CHANGELOG.md`.
 
 ---
 
