@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.18] - 2026-03-22
+### Fixed
+- **FFmpeg progress bar stuck at 0%**: Switched from `QTimer.singleShot` (worker thread) to queue + main-thread poll (80ms), matching updater pattern. Progress updates now reliably reach the UI.
+- **Footer "CHECKING…" stuck**: Same fix — queue-based delivery ensures completion callback is processed.
+### Changed
+- **Footer text**: All caps (CHECKING…, FFMPEG, OPENCV, AI MODELS, READY, IDLE, etc.) for better visibility.
+
 ## [3.2.17] - 2026-03-22
 ### Fixed
 - **Startup hang during FFmpeg install**: Scanner panel's `_check_models` (which called `check_opencv_in_venv` and blocked ~500ms) ran at 500ms via timer, blocking the main thread and preventing FFmpeg progress callbacks from running. Deferred until prereqs complete; `check_opencv_in_venv` now runs off main thread in both footer refresh and scanner status.

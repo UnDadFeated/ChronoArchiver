@@ -1,8 +1,12 @@
 # TASKS
 
-**Current:** v3.2.17 (2026-03-22)
+**Current:** v3.2.18 (2026-03-22)
 
 ---
+
+- [x] **v3.2.18: FFmpeg progress queue + footer caps (2026-03-22)**
+  - [x] FFmpeg progress: queue + main-thread poll instead of QTimer from worker.
+  - [x] Footer text all caps for visibility.
 
 - [x] **v3.2.17: Startup hang during FFmpeg install (2026-03-22)**
   - [x] Defer scanner _check_models until prereqs done; run check_opencv_in_venv off main thread.

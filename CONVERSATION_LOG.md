@@ -1,6 +1,12 @@
 # CONVERSATION_LOG.md
 
 ---
+## 2026-03-22 (FFmpeg progress queue + footer caps v3.2.18)
+- FFmpeg bar still stuck at 0%, "Checking..." in footer. QTimer.singleShot from worker thread unreliable for cross-thread UI updates.
+- Fix: queue + main-thread QTimer poll (80ms) for FFmpeg progress, same pattern as updater. Worker puts (phase, pct, detail) in queue; poll timer drains and updates UI.
+- Footer text: all caps (CHECKING…, FFMPEG, OPENCV, READY, IDLE) for visibility. SemVer: PATCH 3.2.18.
+
+---
 ## 2026-03-22 (Startup hang during FFmpeg install v3.2.17)
 - User: FFmpeg bar stuck at 0%, footer "Checking…", nothing moving, guide blinking. Log showed check_opencv_in_venv every ~500ms.
 - Root cause: Scanner's _check_models ran at 500ms (QTimer), called check_opencv_in_venv (subprocess ~500ms) on main thread. Blocked event loop so FFmpeg progress callbacks never processed.

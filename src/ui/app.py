@@ -227,7 +227,7 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout = QHBoxLayout(self.status_bar)
         self.status_layout.setContentsMargins(10, 0, 10, 0)
 
-        self.lbl_status = QLabel("Checking…")
+        self.lbl_status = QLabel("CHECKING…")
         self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
         self.lbl_status.setToolTip("Current activity: Encoding, Organizing, Scanning, etc.")
         self._activity = "idle"
@@ -251,7 +251,7 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout.addWidget(self._lbl_ffmpeg_speed)
         self.status_layout.addStretch()
 
-        self.lbl_prereq = QLabel("Checking…")
+        self.lbl_prereq = QLabel("CHECKING…")
         self.lbl_prereq.setStyleSheet("font-size: 7px; color: #6b7280;")
         self.lbl_prereq.setAlignment(Qt.AlignCenter)
         self.status_layout.addWidget(self.lbl_prereq)
@@ -314,14 +314,14 @@ class ChronoArchiverApp(QMainWindow):
             self._animate_activity()
         elif self._precheck_done:
             self._activity_timer.stop()
-            self.lbl_status.setText("Idle")
+            self.lbl_status.setText("IDLE")
 
     def _animate_activity(self):
         if self._activity == "idle":
             self._activity_timer.stop()
-            self.lbl_status.setText("Idle")
+            self.lbl_status.setText("IDLE")
             return
-        base = {"encoding": "Encoding", "organizing": "Organizing", "scanning": "Scanning"}.get(self._activity, "Idle")
+        base = {"encoding": "ENCODING", "organizing": "ORGANIZING", "scanning": "SCANNING"}.get(self._activity, "IDLE")
         dots = "." * (self._activity_dot % 3 + 1)
         self.lbl_status.setText(f"{base}{dots}")
         self._activity_dot += 1
@@ -332,20 +332,20 @@ class ChronoArchiverApp(QMainWindow):
     def _check_prereqs(self):
         """Run pre-req checks, show updates on left footer, then Pre-check complete for 3s, then Idle."""
         def step2():
-            self.lbl_status.setText("Checking OpenCV…")
+            self.lbl_status.setText("CHECKING OPENCV…")
             QTimer.singleShot(400, step3)
 
         def step3():
-            self.lbl_status.setText("Checking AI Models…")
+            self.lbl_status.setText("CHECKING AI MODELS…")
             QTimer.singleShot(400, step4)
 
         def step4():
-            self.lbl_status.setText("Checking PySide6…")
+            self.lbl_status.setText("CHECKING PYSIDE6…")
             QTimer.singleShot(400, step5)
 
         def step5():
             self._refresh_footer()
-            self.lbl_status.setText("Pre-check complete")
+            self.lbl_status.setText("PRE-CHECK COMPLETE")
             self._precheck_done = True
             if hasattr(self, "panel_scn") and hasattr(self.panel_scn, "_check_models"):
                 self.panel_scn._check_models()  # Deferred from init — was blocking main thread during FFmpeg install
@@ -353,11 +353,11 @@ class ChronoArchiverApp(QMainWindow):
 
         def _go_idle():
             if self._activity == "idle":
-                self.lbl_status.setText("Idle")
+                self.lbl_status.setText("IDLE")
             self._activity_timer.stop()
 
         def step1():
-            self.lbl_status.setText("Checking FFmpeg…")
+            self.lbl_status.setText("CHECKING FFMPEG…")
             QTimer.singleShot(200, _do_ffmpeg_check)
 
         def _do_ffmpeg_check():
@@ -375,38 +375,51 @@ class ChronoArchiverApp(QMainWindow):
             step2()
 
         def _install_ffmpeg_async(on_done):
-            self.lbl_status.setText("Installing FFmpeg")
+            self.lbl_status.setText("INSTALLING FFMPEG…")
             self._bar_ffmpeg.setValue(0)
             self._bar_ffmpeg.show()
             self._lbl_ffmpeg_speed.setText("")
             self._lbl_ffmpeg_speed.show()
-            self._ffmpeg_done = False
             self._ffmpeg_done_handled = False
+            ffmpeg_queue = queue.Queue()
 
             def _on_progress(phase: str, pct: int, detail: str):
-                def _update():
-                    self._bar_ffmpeg.setValue(min(100, pct))
-                    self._lbl_ffmpeg_speed.setText(detail if detail else "")
-                    if phase == "done":
-                        self._ffmpeg_done = True
-                        if not self._ffmpeg_done_handled:
-                            self._ffmpeg_done_handled = True
-                            self._bar_ffmpeg.setValue(100)
-                            self._bar_ffmpeg.hide()
-                            self._lbl_ffmpeg_speed.hide()
-                            add_ffmpeg_to_path()
-                            self._refresh_footer()
-                            on_done()
-                QTimer.singleShot(0, _update)
+                try:
+                    ffmpeg_queue.put_nowait((phase, pct, detail))
+                except queue.Full:
+                    pass
+
+            def _poll_ffmpeg():
+                try:
+                    while True:
+                        phase, pct, detail = ffmpeg_queue.get_nowait()
+                        self._bar_ffmpeg.setValue(min(100, pct))
+                        self._lbl_ffmpeg_speed.setText(detail if detail else "")
+                        if phase == "done":
+                            self._ffmpeg_poll_timer.stop()
+                            self._ffmpeg_poll_timer = None
+                            if not self._ffmpeg_done_handled:
+                                self._ffmpeg_done_handled = True
+                                self._bar_ffmpeg.setValue(100)
+                                self._bar_ffmpeg.hide()
+                                self._lbl_ffmpeg_speed.hide()
+                                add_ffmpeg_to_path()
+                                self._refresh_footer()
+                                on_done()
+                            return
+                except queue.Empty:
+                    pass
 
             def _worker():
                 ok = ensure_ffmpeg_in_venv_with_progress(_on_progress)
                 if not ok:
                     debug(UTILITY_APP, "Pre-reqs: FFmpeg install failed")
                 if not self._ffmpeg_done_handled:
-                    self._ffmpeg_done = True
-                    QTimer.singleShot(0, lambda: _on_progress("done", 100, ""))
+                    _on_progress("done", 100, "")
 
+            self._ffmpeg_poll_timer = QTimer(self)
+            self._ffmpeg_poll_timer.timeout.connect(_poll_ffmpeg)
+            self._ffmpeg_poll_timer.start(80)
             threading.Thread(target=_worker, daemon=True).start()
 
         step1()
@@ -419,15 +432,15 @@ class ChronoArchiverApp(QMainWindow):
         ffmpeg_ok = bool(shutil.which("ffmpeg"))
 
         def _apply(opencv_ok: bool):
-            parts = [f"FFmpeg {ok_sym if ffmpeg_ok else fail_sym}"]
-            parts.append(f"OpenCV {ok_sym if opencv_ok else skip_sym}")
+            parts = [f"FFMPEG {ok_sym if ffmpeg_ok else fail_sym}"]
+            parts.append(f"OPENCV {ok_sym if opencv_ok else skip_sym}")
             models_ready = self.panel_scn._model_mgr.is_up_to_date()
-            parts.append(f"AI Models {ok_sym if models_ready else skip_sym}")
-            parts.append(f"PySide6 {ok_sym}")
+            parts.append(f"AI MODELS {ok_sym if models_ready else skip_sym}")
+            parts.append(f"PYSIDE6 {ok_sym}")
             debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'missing'}, AI Models={'ok' if models_ready else 'missing'}, PySide6=ok")
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
-                status += "  ·  <span style=\"color:#10b981\">Ready</span>"
+                status += "  ·  <span style=\"color:#10b981\">READY</span>"
             self.lbl_prereq.setTextFormat(Qt.RichText)
             self.lbl_prereq.setText(status)
 
