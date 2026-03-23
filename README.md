@@ -1,8 +1,11 @@
-# <img src="src/ui/assets/icon.png" width="28" height="28" /> ChronoArchiver
+# ChronoArchiver
 
-**Time to Archive!** — A unified media management platform for archival, classification, and transcoding.
+<div>
+<img src="src/ui/assets/icon.png" width="22" height="22" align="right" />
+<strong>Time to Archive!</strong> — A unified media management platform for archival, classification, and transcoding.
 
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
+</div>
 
 [![Version](https://img.shields.io/badge/version-3.2.24-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
