@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.1.0] - 2026-03-21
+### Added
+- **GPU-specific OpenCV install**: Install flow now selects OpenCV variant based on detected GPU:
+  - **NVIDIA**: CUDA wheel (cudawarped/opencv-contrib-python); requires CUDA/cuDNN.
+  - **AMD Radeon**: opencv-python with OpenCL (cv2.UMat, ROCm-compatible).
+  - **Intel Xe/Arc/Integrated**: opencv-python with OpenCL.
+  - **No discrete GPU**: opencv-python with OpenCL (universal).
+- **Engine Status**: Install button label reflects variant (e.g. "Install OpenCV (CUDA)", "Install OpenCV (OpenCL — AMD Radeon)").
+
+### Changed
+- `detect_gpu()` now returns `nvidia`|`amd`|`intel`|`''`; Intel detection via DRM vendor and lspci.
+- `get_opencv_install_components()` and `install_opencv()` use variant parameter instead of use_cuda.
+
 ## [3.0.10] - 2026-03-21
 ### Changed
 - **OpenCV install progress**: Progress bar is now a fixed (determinate) bar driven by download size. Wheel is downloaded with streaming, then installed locally. Shows MB downloaded / total.

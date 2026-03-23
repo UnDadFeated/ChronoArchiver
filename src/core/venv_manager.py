@@ -36,7 +36,7 @@ VENV_PACKAGES_BASE = [
 
 
 def detect_gpu() -> str:
-    """Return 'nvidia', 'amd', or ''."""
+    """Return 'nvidia', 'amd', 'intel', or ''."""
     try:
         r = subprocess.run(
             ["nvidia-smi"], capture_output=True, timeout=3,
@@ -50,29 +50,62 @@ def detect_gpu() -> str:
             vendor = f.read().strip()
         if "0x1002" in vendor or "amd" in vendor.lower():
             return "amd"
+        if "0x8086" in vendor:
+            return "intel"
     except Exception:
         pass
     try:
         r = subprocess.run(
             ["lspci"], capture_output=True, text=True, timeout=2,
         )
-        if r.returncode == 0 and "amd" in (r.stdout or "").lower():
-            return "amd"
+        if r.returncode == 0:
+            out = (r.stdout or "").lower()
+            if "amd" in out and ("radeon" in out or "graphics" in out):
+                return "amd"
+            if "intel" in out and ("xe" in out or "arc" in out or "uhd" in out or "iris" in out or "graphics" in out):
+                return "intel"
+            if "amd" in out:
+                return "amd"
+            if "intel" in out:
+                return "intel"
     except Exception:
         pass
     return ""
 
 
-def get_opencv_package() -> str:
-    """Return opencv package for pip. CUDA requires build-from-source (not automated)."""
+def get_opencv_variant() -> str:
+    """
+    Return OpenCV install variant based on GPU:
+    - 'cuda': NVIDIA → cudawarped wheel
+    - 'opencl_amd': AMD Radeon → opencv-python (OpenCL / ROCm path, cv2.UMat)
+    - 'opencl_intel': Intel Xe/Arc/integrated → opencv-python (OpenCL)
+    - 'opencl': No discrete GPU → opencv-python (OpenCL, universal)
+    """
     gpu = detect_gpu()
     if gpu == "nvidia":
-        # Standard pip opencv has no CUDA. opencv-contrib-python has same.
-        # For CUDA: build from source with -DWITH_CUDA=ON (see docs).
-        return "opencv-python"
+        return "cuda"
     if gpu == "amd":
-        # Standard opencv-python has OpenCL; scanner will use DNN_TARGET_OPENCL.
-        return "opencv-python"
+        return "opencl_amd"
+    if gpu == "intel":
+        return "opencl_intel"
+    return "opencl"
+
+
+def get_opencv_variant_label() -> str:
+    """Human-readable label for the selected OpenCV variant."""
+    v = get_opencv_variant()
+    return {
+        "cuda": "OpenCV (CUDA)",
+        "opencl_amd": "OpenCV (OpenCL — AMD Radeon)",
+        "opencl_intel": "OpenCV (OpenCL — Intel)",
+        "opencl": "OpenCV (OpenCL)",
+    }.get(v, "OpenCV (OpenCL)")
+
+
+def get_opencv_package() -> str:
+    """Return opencv package for pip (bootstrap/ensure_venv). CUDA uses wheel install separately."""
+    if get_opencv_variant() == "cuda":
+        return "opencv-python"  # Bootstrap uses standard; user installs CUDA via Install button
     return "opencv-python"
 
 
@@ -195,52 +228,54 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
     return True
 
 
-def get_opencv_install_size(use_cuda: bool) -> tuple:
+def get_opencv_install_size(variant: str | None = None) -> tuple:
     """Return (size_bytes, human_str) for OpenCV install."""
-    components = get_opencv_install_components(use_cuda)
+    components = get_opencv_install_components(variant)
     total = sum(s for _, s in components)
     if total <= 0:
-        total = OPENCV_CUDA_FALLBACK_BYTES if use_cuda else OPENCV_STANDARD_APPROX_BYTES
+        total = OPENCV_CUDA_FALLBACK_BYTES if (variant or get_opencv_variant()) == "cuda" else OPENCV_STANDARD_APPROX_BYTES
     gb, mb = total / (1024**3), total / (1024**2)
     return total, f"~{gb:.2f} GB" if gb >= 0.1 else f"~{mb:.1f} MB"
 
 
-def get_opencv_install_components(use_cuda: bool) -> list[tuple[str, int]]:
-    """Return [(component_name, size_bytes), ...] for the install confirmation dialog."""
-    if not use_cuda:
-        url, size = _get_opencv_standard_wheel_url()
-        if url and size > 0:
-            return [("opencv-python (CPU/OpenCL)", size)]
-        return [("opencv-python", OPENCV_STANDARD_APPROX_BYTES)]
-    if not requests:
-        return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
-    try:
-        r = requests.get(OPENCV_CUDA_API, timeout=10)
-        if r.status_code != 200:
-            return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
-        data = r.json()
-        is_win = platform.system() == "Windows"
-        out = []
-        for a in data.get("assets", []):
-            name = a.get("name", "")
-            if not name.endswith(".whl"):
-                continue
-            size = int(a.get("size", 0) or 0)
-            if size <= 0:
-                continue
-            if is_win and "win_amd64" in name:
-                label = "opencv-contrib-python (CUDA, Windows)"
-                out.append((label, size))
-                break
-            if not is_win and "linux" in name.lower() and "x86_64" in name:
-                label = "opencv-contrib-python (CUDA, Linux)"
-                out.append((label, size))
-                break
-        if out:
-            return out
-    except Exception:
-        pass
-    return [("OpenCV CUDA wheel", OPENCV_CUDA_FALLBACK_BYTES)]
+def get_opencv_install_components(variant: str | None = None) -> list[tuple[str, int]]:
+    """Return [(component_name, size_bytes), ...] for the install confirmation dialog.
+    variant: 'cuda'|'opencl_amd'|'opencl_intel'|'opencl' (default: from get_opencv_variant)."""
+    v = variant or get_opencv_variant()
+    if v == "cuda":
+        if not requests:
+            return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
+        try:
+            r = requests.get(OPENCV_CUDA_API, timeout=10)
+            if r.status_code != 200:
+                return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
+            data = r.json()
+            is_win = platform.system() == "Windows"
+            for a in data.get("assets", []):
+                name = a.get("name", "")
+                if not name.endswith(".whl"):
+                    continue
+                size = int(a.get("size", 0) or 0)
+                if size <= 0:
+                    continue
+                if is_win and "win_amd64" in name:
+                    return [("opencv-contrib-python (CUDA, Windows)", size)]
+                if not is_win and "linux" in name.lower() and "x86_64" in name:
+                    return [("opencv-contrib-python (CUDA, Linux)", size)]
+        except Exception:
+            pass
+        return [("opencv-contrib-python (CUDA)", OPENCV_CUDA_FALLBACK_BYTES)]
+    # opencl_amd, opencl_intel, opencl: all use opencv-python
+    url, size = _get_opencv_standard_wheel_url()
+    labels = {
+        "opencl_amd": "opencv-python (OpenCL — AMD Radeon)",
+        "opencl_intel": "opencv-python (OpenCL — Intel)",
+        "opencl": "opencv-python (OpenCL)",
+    }
+    label = labels.get(v, "opencv-python (OpenCL)")
+    if url and size > 0:
+        return [(label, size)]
+    return [(label, OPENCV_STANDARD_APPROX_BYTES)]
 
 
 def _get_opencv_standard_wheel_url() -> tuple:
@@ -297,8 +332,9 @@ def _download_wheel_with_progress(url: str, progress_callback, total_hint: int =
         return None
 
 
-def install_opencv(progress_callback=None, use_cuda: bool = False) -> bool:
-    """Install OpenCV into venv. use_cuda=True for NVIDIA CUDA wheel.
+def install_opencv(progress_callback=None, variant: str | None = None) -> bool:
+    """Install OpenCV into venv.
+    variant: 'cuda'|'opencl_amd'|'opencl_intel'|'opencl' (default: from get_opencv_variant).
     progress_callback(phase, detail, downloaded=0, total=0) — total>0 enables size-based bar."""
     pip = get_pip_exe()
     if not pip.exists():
@@ -310,18 +346,20 @@ def install_opencv(progress_callback=None, use_cuda: bool = False) -> bool:
         if progress_callback:
             progress_callback(phase, detail[:100] if detail else "", downloaded, total)
 
-    # Uninstall existing opencv (standard and cudawarped wheel both use opencv-contrib-python)
+    # Uninstall existing opencv (all variants)
     prog("Removing existing OpenCV...", "")
     subprocess.run(
         [str(pip), "uninstall", "-y",
          "opencv-python", "opencv-python-headless",
-         "opencv-contrib-python", "opencv-contrib-python-headless"],
+         "opencv-contrib-python", "opencv-contrib-python-headless",
+         "opencv-openvino-contrib-python"],
         capture_output=True, timeout=60,
     )
 
+    v = variant or get_opencv_variant()
     wheel_path: Path | None = None
     try:
-        if use_cuda and detect_gpu() == "nvidia" and requests:
+        if v == "cuda" and detect_gpu() == "nvidia" and requests:
             prog("Fetching OpenCV CUDA wheel URL...", "")
             try:
                 r = requests.get(OPENCV_CUDA_API, timeout=10)
@@ -393,14 +431,15 @@ def install_opencv(progress_callback=None, use_cuda: bool = False) -> bool:
 
 
 def uninstall_opencv(progress_callback=None) -> bool:
-    """Remove OpenCV from venv (standard and cudawarped CUDA wheel)."""
+    """Remove OpenCV from venv (all variants)."""
     pip = get_pip_exe()
     if not pip.exists():
         return False
     r = subprocess.run(
         [str(pip), "uninstall", "-y",
          "opencv-python", "opencv-python-headless",
-         "opencv-contrib-python", "opencv-contrib-python-headless"],
+         "opencv-contrib-python", "opencv-contrib-python-headless",
+         "opencv-openvino-contrib-python"],
         capture_output=True, text=True, timeout=60,
     )
     return r.returncode == 0

@@ -34,7 +34,8 @@ from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.model_manager import ModelManager
 from core.venv_manager import (
     get_pip_exe, install_package, ensure_venv,
-    detect_gpu, get_opencv_install_components, install_opencv, uninstall_opencv,
+    get_opencv_variant, get_opencv_variant_label,
+    get_opencv_install_components, install_opencv, uninstall_opencv,
     check_opencv_in_venv,
 )
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
@@ -440,11 +441,13 @@ class AIScannerPanel(QWidget):
         if not cv_ok:
             self._lbl_opencv.setText("Not installed")
             self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444;")
+            lbl = get_opencv_variant_label()
+            self._btn_install_cv.setText(f"Install {lbl}")
             self._btn_install_cv.show()
             self._btn_uninstall_cv.hide()
         else:
-            gpu = detect_gpu()
-            suf = " (CUDA)" if gpu == "nvidia" else (" (OpenCL)" if gpu == "amd" else "")
+            v = get_opencv_variant()
+            suf = " (CUDA)" if v == "cuda" else " (OpenCL)"
             self._lbl_opencv.setText(f"Ready{suf}")
             self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
             self._btn_install_cv.hide()
@@ -587,9 +590,9 @@ class AIScannerPanel(QWidget):
             self._clear_guide_glow(target)
 
     def _on_install_opencv(self):
-        use_cuda = detect_gpu() == "nvidia"
-        components = get_opencv_install_components(use_cuda)
-        pkg = "OpenCV (CUDA)" if use_cuda else "OpenCV"
+        variant = get_opencv_variant()
+        components = get_opencv_install_components(variant)
+        pkg = get_opencv_variant_label()
         lines = [f"Download and install {pkg}?", ""]
         if components:
             lines.append("Components:")
@@ -604,7 +607,7 @@ class AIScannerPanel(QWidget):
             total_gb = total / (1024**3)
             total_sz = f"{total_gb:.2f} GB" if total_gb >= 0.1 else f"{total_mb:.1f} MB"
             lines.append(f"\nTotal download: {total_sz}")
-        if use_cuda:
+        if variant == "cuda":
             lines.append("\nRequires: NVIDIA CUDA Toolkit and cuDNN (install separately if needed).")
         lines.append("\nInstall into app's private venv (no sudo required).")
         reply = QMessageBox.question(
@@ -634,7 +637,7 @@ class AIScannerPanel(QWidget):
                         time.sleep(2)
                         self._sig.setup_complete.emit(False)
                         return
-                ok = install_opencv(progress_callback=_prog, use_cuda=use_cuda)
+                ok = install_opencv(progress_callback=_prog, variant=variant)
                 self._sig.setup_complete.emit(ok)
             except Exception as e:
                 _prog("Failed", str(e)[:80])
