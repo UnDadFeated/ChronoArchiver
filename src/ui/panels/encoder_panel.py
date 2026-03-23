@@ -152,7 +152,8 @@ class AV1EncoderPanel(QWidget):
         self._edit_src.setMinimumWidth(150)
         self._edit_src.setMaximumWidth(600)
         h_src.addWidget(self._edit_src, 1)
-        self._btn_browse_src = QPushButton("Browse"); self._btn_browse_src.setFixedWidth(52)
+        self._btn_browse_src = QPushButton("Browse")
+        self._btn_browse_src.setFixedSize(52, 22)
         self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_src.clicked.connect(self._browse_src)
         h_src.addWidget(self._btn_browse_src)
@@ -176,7 +177,8 @@ class AV1EncoderPanel(QWidget):
 
         h_dst = QHBoxLayout()
         h_dst.addWidget(self._edit_dst, 1)
-        self._btn_browse_dst = QPushButton("Browse"); self._btn_browse_dst.setFixedWidth(52)
+        self._btn_browse_dst = QPushButton("Browse")
+        self._btn_browse_dst.setFixedSize(52, 22)
         self._btn_browse_dst.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_dst.clicked.connect(self._browse_dst)
         h_dst.addWidget(self._btn_browse_dst)
@@ -556,7 +558,7 @@ class AV1EncoderPanel(QWidget):
         if w == self._btn_start:
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:10px; font-weight:900;")
         else:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
 
     def _update_start_enabled(self):
         if self._btn_start.text() == "ENCODING COMPLETE":
@@ -581,7 +583,7 @@ class AV1EncoderPanel(QWidget):
             if target == self._btn_start:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
             else:
-                target.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
+                target.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:22px;")
         else:
             self._clear_guide_glow(target)
 

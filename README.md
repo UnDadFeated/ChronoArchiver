@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-3.3.3-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-3.3.5-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -29,15 +29,25 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Media Organizer
 
-Organizes media into `YYYY/YYYY-MM/` (nested) or `YYYY-MM/` (flat) structures. Date resolution order:
+Organizes media into date-based folder structures (dropdown):
 
-1. **EXIF** — `DateTimeOriginal` or `DateTimeDigitized`
-2. **Video metadata** — FFprobe `creation_time` when available
-3. **Filename** — `YYYYMMDD`, `YYYY-MM-DD`, `YYYY_MM_DD`, and common prefixes (`IMG_`, `VID-`, `Signal-`)
-4. **Modification time** — Fallback; timestamps before 1980 are rejected
+- **YYYY/YYYY-MM** — Nested (year → month)
+- **YYYY-MM** — Flat by month
+- **YYYY-MM-DD** — Flat by day
+- **YYYY/YYYY-MM/YYYY-MM-DD** — Nested by day
+
+Date resolution order:
+
+1. **Images**: EXIF `DateTimeOriginal`/`DateTimeDigitized` → filename → modification time
+2. **Videos**: FFprobe `creation_time` → filename → modification time
+3. **Filename** — `YYYYMMDD`, `YYYY-MM-DD`, `YYYY_MM_DD` (with optional separators)
+4. **Modification time** — Fallback; timestamps before 1957 are rejected
 
 Features:
 
+- **Action**: Move, Copy, or Symlink. Move sidecars (.xmp, .aae, .xml) with main files.
+- **Exclude**: Skip .trash, @Recently Deleted, etc.; custom comma-separated dirs.
+- **Duplicates**: Rename, Skip, Keep newer, or Overwrite if same.
 - Appends `YYYY-MM-DD_` to filenames for chronological ordering
 - Corrects mismatched date prefixes
 - Optional target directory for organizing into a separate root
@@ -127,6 +137,18 @@ First launch creates an app-private virtual environment at `~/.local/share/Chron
 ---
 
 ## Configuration Reference
+
+### Media Organizer
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Action | Move | Move, Copy, or Symlink files |
+| Sidecars | Off | Move .xmp, .aae, .xml, .json with main files |
+| Exclude dirs | .trash, @Recently Deleted, etc. | Skip folders; comma-separated custom names |
+| Duplicate policy | Rename | Rename, Skip, Keep newer, or Overwrite if same |
+| Folder structure | YYYY/YYYY-MM | Nested, flat by month/day |
+
+### Mass AV1 Encoder
 
 | Setting | Default | Description |
 |---------|---------|-------------|

@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.3.5] - 2026-03-22
+### Added
+- **Media Organizer**: Action (Move/Copy/Symlink); Move sidecars (.xmp, .xml, .aae, .json); Exclude dirs (comma-separated + default .trash, @Recently Deleted, etc.); Duplicate policy (Rename/Skip/Keep newer/Overwrite if same); Export Log button.
+- **Date resolution**: Stream-level FFprobe creation_time fallback for videos; parent folder date fallback (YYYY-MM-DD in dir name).
+### Fixed
+- **Guide glow**: All panels use `border:2px solid` (transparent/colored) and consistent min-height so pulsing does not warp text or change button sizes.
+
+## [3.3.4] - 2026-03-22
+### Added
+- **Media Organizer**: Folder structure dropdown with four options: YYYY/YYYY-MM (nested), YYYY-MM (flat month), YYYY-MM-DD (flat day), YYYY/YYYY-MM/YYYY-MM-DD (nested by day).
+### Changed
+- **Date resolution**: Videos now prefer FFprobe `creation_time` before filename (container metadata often more accurate). Images unchanged: EXIF → filename → mtime.
+- **Minimum year**: Rejected dates changed from before 1980 to before 1957 (first digital photo).
+
 ## [3.3.3] - 2026-03-21
 ### Added
 - **AI Scanner list cap**: When Keep or Others list reaches 100,000 entries, a dialog asks whether to raise the cap for this session. User can enter a higher value; cap reverts to 100,000 on next app start.

@@ -602,7 +602,7 @@ class AIScannerPanel(QWidget):
             if self._btn_start_move.isEnabled():
                 w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:9px; font-weight:900; min-height:20px;")
             else:
-                w.setStyleSheet("font-size:8px; font-weight:700; min-height:20px; background:#1a1a1a; color:#6b7280; border:1px solid #262626;")
+                w.setStyleSheet("font-size:8px; font-weight:700; min-height:20px; background:#1a1a1a; color:#6b7280; border:2px solid #262626;")
         elif w == self._btn_browse:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
         elif w == self._btn_browse_target:

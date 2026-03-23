@@ -14,6 +14,9 @@ except ImportError:
     from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
 VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.mpg', '.mpeg', '.ts'}
+SIDECAR_EXTS = {'.xmp', '.xml', '.aae', '.json', '.aac'}
+MIN_YEAR = 1957  # First digital photo (Russell Kirsch 1957)
+DEFAULT_EXCLUDE_DIRS = {'.thumbnails', '@recently deleted', '$recycle.bin', '.trash', 'thumbnails'}
 
 class OrganizerEngine:
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None):
@@ -25,70 +28,102 @@ class OrganizerEngine:
 
     def get_date_taken(self, file_path: str) -> Optional[datetime]:
         """
-        Extract date taken from EXIF or fallback to file modified time.
+        Extract date taken. Resolution order:
+        - Images: EXIF DateTimeOriginal/Digitized → filename → mtime
+        - Videos: FFprobe creation_time → filename → mtime (container metadata often more accurate than filename)
         """
-        # Try Piexif for images (can raise on corrupt EXIF: InvalidImageDataError, struct.error, MemoryError)
-        try:
-            exif_dict = piexif.load(file_path)
-            exif_section = exif_dict.get("Exif") or {}
-            for tag_id in (36867, 36868):
-                if tag_id not in exif_section:
-                    continue
-                raw = exif_section[tag_id]
-                date_str = raw.decode("utf-8", errors="replace").strip()
-                if len(date_str) < 19:
-                    continue
-                date_str = date_str[:19]
-                for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-                    try:
-                        return datetime.strptime(date_str, fmt)
-                    except ValueError:
+        ext = pathlib.Path(file_path).suffix.lower()
+        is_video = ext in VIDEO_EXTS
+
+        def _valid(dt: datetime) -> bool:
+            return dt is not None and dt.year >= MIN_YEAR
+
+        # 1. Images: EXIF (DateTimeOriginal 36867, DateTimeDigitized 36868)
+        if not is_video:
+            try:
+                exif_dict = piexif.load(file_path)
+                exif_section = exif_dict.get("Exif") or {}
+                for tag_id in (36867, 36868):
+                    if tag_id not in exif_section:
                         continue
-                break
-        except (Exception, MemoryError):
-            pass
-            
-        # 2. Try Filename Parsing (Smart Regex)
+                    raw = exif_section[tag_id]
+                    date_str = raw.decode("utf-8", errors="replace").strip()
+                    if len(date_str) < 19:
+                        continue
+                    date_str = date_str[:19]
+                    for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            dt = datetime.strptime(date_str, fmt)
+                            if _valid(dt):
+                                return dt
+                        except ValueError:
+                            continue
+                    break
+            except (Exception, MemoryError):
+                pass
+
+        # 2. Videos: FFprobe creation_time (format, then stream tags as fallback)
+        if is_video:
+            probes = [
+                ["ffprobe", "-v", "error", "-show_entries", "format_tags=creation_time",
+                 "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                ["ffprobe", "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream_tags=creation_time",
+                 "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+            ]
+            for cmd in probes:
+                try:
+                    out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+                    if out:
+                        line = out.split("=")[-1] if "=" in out else out.split("\n")[0]
+                        if line:
+                            dt = datetime.fromisoformat(line.replace("Z", "+00:00"))
+                            if dt.tzinfo:
+                                dt = dt.replace(tzinfo=None)
+                            if _valid(dt):
+                                return dt
+                except (subprocess.SubprocessError, ValueError, OSError, IndexError):
+                    pass
+
+        # 3. Filename (YYYY, MM, DD with optional separators)
         filename = os.path.basename(file_path)
-        
-        # Regex: Matches YYYY followed by MM followed by DD (with optional separators)
         pattern = r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})"
         match = re.search(pattern, filename)
         if match:
             y, m, d = match.groups()
             try:
-                # Validates against a standard calendar (raises ValueError for things like Feb 31)
-                return datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
+                dt = datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
+                if _valid(dt):
+                    return dt
             except ValueError:
-                return None
-
-        # 3. For videos: try ffprobe creation_time
-        ext = pathlib.Path(file_path).suffix.lower()
-        if ext in VIDEO_EXTS:
-            try:
-                cmd = [
-                    "ffprobe", "-v", "error", "-show_entries", "format_tags=creation_time",
-                    "-of", "default=noprint_wrappers=1:nokey=1", file_path
-                ]
-                out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
-                if out:
-                    dt = datetime.fromisoformat(out.replace("Z", "+00:00"))
-                    if dt.tzinfo:
-                        dt = dt.replace(tzinfo=None)
-                    if dt.year >= 1980:
-                        return dt
-            except (subprocess.SubprocessError, ValueError, OSError):
                 pass
 
-        # 4. Fallback to file modification time
+        # 4. Parent folder date (e.g. 2024-03-15 or 20240315 in dir name)
+        parent = os.path.dirname(file_path)
+        for _ in range(3):  # Check up to 3 levels up
+            if not parent or parent == os.path.dirname(parent):
+                break
+            pname = os.path.basename(parent)
+            m = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", pname)
+            if m:
+                y, mo, d = m.groups()
+                try:
+                    dt = datetime.strptime(f"{y}{mo}{d}", "%Y%m%d")
+                    if _valid(dt):
+                        return dt
+                except ValueError:
+                    pass
+            parent = os.path.dirname(parent)
+
+        # 5. File modification time
         try:
             timestamp = pathlib.Path(file_path).stat().st_mtime
             dt = datetime.fromtimestamp(timestamp)
-            if dt.year < 1980:
-                return None
-            return dt
+            if _valid(dt):
+                return dt
         except OSError:
-            return None
+            pass
+        return None
 
     def _quick_hash(self, file_path: str, chunk_size: int = 1024 * 1024) -> str:
         """Read the first 1MB of a file and return its MD5 hash."""
@@ -111,10 +146,20 @@ class OrganizerEngine:
                     count += 1
         return count
 
-    def organize(self, source_dir: str, dry_run: bool = True, use_flat_folders: bool = False,
+    FOLDER_STRUCTURES = {
+        "nested": "YYYY/YYYY-MM",
+        "flat_month": "YYYY-MM",
+        "flat_day": "YYYY-MM-DD",
+        "nested_day": "YYYY/YYYY-MM/YYYY-MM-DD",
+    }
+
+    def organize(self, source_dir: str, dry_run: bool = True, folder_structure: str = "nested",
                  valid_exts: Optional[set] = None, target_dir: Optional[str] = None,
+                 action: str = "move", move_sidecars: bool = False,
+                 exclude_dirs: Optional[set] = None, duplicate_policy: str = "rename",
                  progress_callback=None, stats_callback=None):
-        debug(UTILITY_MEDIA_ORGANIZER, f"organize start: source={source_dir}, dry_run={dry_run}, flat={use_flat_folders}, target={target_dir or 'in-place'}")
+        """action: move|copy|symlink. duplicate_policy: skip|keep_newer|overwrite|rename"""
+        debug(UTILITY_MEDIA_ORGANIZER, f"organize start: source={source_dir}, dry_run={dry_run}, structure={folder_structure}, action={action}, target={target_dir or 'in-place'}")
         source_dir = (source_dir or "").strip()
         if not source_dir:
             self.logger("Source directory is empty.")
@@ -131,6 +176,9 @@ class OrganizerEngine:
 
         target_dir = (target_dir or "").strip() or None
         base_dir = target_dir.rstrip(os.sep) if target_dir else source_dir
+        exclude_dirs = exclude_dirs or set()
+        exclude_lower = {d.lower().strip() for d in exclude_dirs if d}
+        exclude_lower.update(DEFAULT_EXCLUDE_DIRS)
 
         # Fail-safes: source/target overlap, writable, disk space
         if target_dir:
@@ -155,9 +203,10 @@ class OrganizerEngine:
             progress_callback(0, 1, 0, 0, "Scanning...")
 
         queue_list = []
-        for root, _, files in os.walk(source_dir):
+        for root, dirs, files in os.walk(source_dir):
             if self.cancel_flag:
                 break
+            dirs[:] = [d for d in dirs if d.lower() not in exclude_lower]
             for file in files:
                 if self.cancel_flag:
                     break
@@ -188,7 +237,7 @@ class OrganizerEngine:
             except OSError:
                 pass
 
-        folder_style = "Flat (YYYY-MM)" if use_flat_folders else "Nested (YYYY/YYYY-MM)"
+        folder_style = self.FOLDER_STRUCTURES.get(folder_structure, folder_structure)
         dest_note = f" -> {base_dir}" if target_dir else " (in-place)"
         self.logger(f"Starting Organization (Dry Run: {dry_run}, Style: {folder_style}{dest_note})...")
 
@@ -222,10 +271,17 @@ class OrganizerEngine:
             date_prefix = f"{date_obj.year}-{date_obj.month:02d}-{date_obj.day:02d}"
 
             # Target Structure (base_dir = target or source for in-place)
-            if use_flat_folders:
+            day_str = f"{date_obj.year}-{date_obj.month:02d}-{date_obj.day:02d}"
+            if folder_structure == "flat_month":
                 target_subdir = os.path.join(base_dir, month_name)
                 rel_base = month_name
-            else:
+            elif folder_structure == "flat_day":
+                target_subdir = os.path.join(base_dir, day_str)
+                rel_base = day_str
+            elif folder_structure == "nested_day":
+                target_subdir = os.path.join(base_dir, year, month_name, day_str)
+                rel_base = os.path.join(year, month_name, day_str)
+            else:  # nested (default)
                 target_subdir = os.path.join(base_dir, year, month_name)
                 rel_base = os.path.join(year, month_name)
 
@@ -273,41 +329,68 @@ class OrganizerEngine:
 
             # Deduplication / Collision
             if os.path.exists(target_path):
-                if os.path.getsize(full_path) == os.path.getsize(target_path) and \
-                   self._quick_hash(full_path) == self._quick_hash(target_path):
+                same_size = os.path.getsize(full_path) == os.path.getsize(target_path)
+                same_hash = same_size and self._quick_hash(full_path) == self._quick_hash(target_path)
+                if same_hash and duplicate_policy in ("skip", "overwrite"):
                     self.logger(f"[DUPLICATE] {file} exists in {rel_base}. Skipping.")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"Duplicate: {file}")
                     duplicates_found += 1
                     continue
-                else:
-                    p_new = pathlib.Path(new_filename)
-                    base, extension = p_new.stem, p_new.suffix
-                    new_name_collision = f"{base}_{int(datetime.now().timestamp())}{extension}"
-                    target_path = os.path.join(target_subdir, new_name_collision)
-                    new_filename = new_name_collision
+                if duplicate_policy == "skip":
+                    self.logger(f"[SKIP] {file} exists in {rel_base} (different file).")
+                    duplicates_found += 1
+                    continue
+                if duplicate_policy == "keep_newer":
+                    try:
+                        if os.path.getmtime(full_path) <= os.path.getmtime(target_path):
+                            self.logger(f"[SKIP] {file} — target newer.")
+                            duplicates_found += 1
+                            continue
+                    except OSError:
+                        pass
+                p_new = pathlib.Path(new_filename)
+                base, extension = p_new.stem, p_new.suffix
+                new_name_collision = f"{base}_{int(datetime.now().timestamp())}{extension}"
+                target_path = os.path.join(target_subdir, new_name_collision)
+                new_filename = new_name_collision
 
             rel_target_path = os.path.join(rel_base, new_filename)
+            action_verb = {"move": "MOVE", "copy": "COPY", "symlink": "LINK"}.get(action, "MOVE")
+
+            def _do_file(src: str, dst: str, label: str) -> bool:
+                try:
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                except OSError as e:
+                    self.logger(f"Error creating directory for {label}: {e}")
+                    return False
+                try:
+                    if action == "move":
+                        shutil.move(src, dst)
+                    elif action == "copy":
+                        shutil.copy2(src, dst)
+                    else:
+                        os.symlink(src, dst)
+                    return True
+                except OSError as e:
+                    self.logger(f"Error {action} {label}: {e}")
+                    return False
 
             if not dry_run:
-                try:
-                    os.makedirs(target_subdir, exist_ok=True)
-                except (PermissionError, OSError) as e:
-                    self.logger(f"Error creating directory for {file}: {e}")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"Mkdir failed: {target_subdir} — {e}")
-                    continue
-                try:
-                    shutil.move(full_path, target_path)
+                if _do_file(full_path, target_path, file):
                     files_moved += 1
-                    self.logger(f"[MOVE] \"{file}\" -> \"{rel_target_path}\"")
-                except PermissionError as e:
-                    self.logger(f"Permission denied moving {file}: {e}")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"PermissionError: {file} — {e}")
-                except OSError as e:
-                    self.logger(f"Error moving {file}: {e}")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"OSError moving {file}: {e}")
+                    self.logger(f"[{action_verb}] \"{file}\" -> \"{rel_target_path}\"")
+                if move_sidecars and action != "symlink":
+                    stem = pathlib.Path(full_path).stem
+                    src_dir = os.path.dirname(full_path)
+                    dst_dir = os.path.dirname(target_path)
+                    for sc_ext in SIDECAR_EXTS:
+                        sc_src = os.path.join(src_dir, stem + sc_ext)
+                        if os.path.isfile(sc_src):
+                            sc_dst = os.path.join(dst_dir, pathlib.Path(new_filename).stem + sc_ext)
+                            if _do_file(sc_src, sc_dst, stem + sc_ext):
+                                self.logger(f"[{action_verb}] sidecar \"{stem}{sc_ext}\" -> \"{rel_base}\"")
             else:
                 files_moved += 1
-                self.logger(f"[DRY RUN] \"{file}\" -> \"{rel_target_path}\"")
+                self.logger(f"[DRY RUN] [{action_verb}] \"{file}\" -> \"{rel_target_path}\"")
 
         self.logger(f"Done. Moved: {files_moved}, Skipped: {skipped}, Duplicates: {duplicates_found}.")
         debug(UTILITY_MEDIA_ORGANIZER, f"Done: moved={files_moved}, skipped={skipped}, duplicates={duplicates_found}")
