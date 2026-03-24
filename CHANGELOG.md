@@ -10,6 +10,8 @@
 ### Fixed
 - **Windows in-app update**: Replaced invalid `subprocess.CREATE_NEW_PROCESS` with `CREATE_NEW_PROCESS_GROUP` when spawning the post-exit installer helper (Python has no `CREATE_NEW_PROCESS`). Same correction for git-update and setup launcher app spawn. If installer spawn fails, the app no longer quits immediately after the error dialog.
 - **Setup quick-launch**: Running the setup exe no longer skips install/update when `version.txt` matches the bundle but `src/version.py` is still older (e.g. stuck on 3.7.7). Quick-launch now requires the same checks as “skip source zip” (`src/version.py`, launcher, `requirements.txt`).
+- **Setup merge extract**: Skips overwriting a file only when **MD5 matches** the zip entry, not merely the same file size (so e.g. `3.7.7` → `3.7.9` in `src/version.py` always refreshes). Clears `src/**/__pycache__` after extract to avoid stale bytecode.
+- **Setup UX**: Welcome screen before install; optional **detailed install log** (`ChronoArchiver_installer.log`, off by default) written next to the setup executable for debugging.
 
 ### Added
 - **GitHub Actions**: Manual **Run workflow** on `release-installers.yml` to rebuild Windows/macOS setup artifacts for a chosen version (e.g. `3.7.9`) and upload them to the matching release tag.

@@ -4,8 +4,11 @@ Installs as .pyw/pythonw (no native compile). Uses stdlib: tkinter, urllib, zipf
 
 Updates: merge-extract into the install dir (preserves venv), skip re-downloading the source zip when
 installed src/version.py already matches this setup's version, and run pip install -r on existing
-venvs so new requirements are applied without wiping site-packages.
+venvs so new requirements are applied without wiping site-packages. Merge skips only byte-identical
+files (MD5), not same-size-only — avoids stale src/version.py when patch digits change without size change.
+Welcome screen; optional ChronoArchiver_installer.log beside the setup exe.
 """
+import hashlib
 import json
 import os
 import platform
@@ -36,6 +39,90 @@ def _read_version() -> str:
 
 VERSION = _read_version()
 GITHUB_RELEASES = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/releases/tags/v{version}"
+
+# Optional file log (ChronoArchiver_installer.log next to setup exe when enabled from welcome screen)
+_INSTALL_LOG_FILE: Path | None = None
+
+
+def _installer_log_dir() -> Path:
+    """Directory containing the setup executable (frozen) or this script (dev)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def _setup_install_logging(enabled: bool) -> None:
+    global _INSTALL_LOG_FILE
+    if not enabled:
+        _INSTALL_LOG_FILE = None
+        return
+    p = _installer_log_dir() / "ChronoArchiver_installer.log"
+    try:
+        p.write_text(
+            f"ChronoArchiver installer log — v{VERSION}\n"
+            f"Started {datetime.now().isoformat(timespec='seconds')}\n"
+            f"frozen={getattr(sys, 'frozen', False)} executable={sys.executable!r}\n\n",
+            encoding="utf-8",
+        )
+        _INSTALL_LOG_FILE = p
+    except OSError:
+        _INSTALL_LOG_FILE = None
+
+
+def _install_log(msg: str) -> None:
+    if _INSTALL_LOG_FILE is None:
+        return
+    try:
+        line = f"{datetime.now().isoformat(timespec='seconds')} {msg}\n"
+        with open(_INSTALL_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass
+
+
+def _md5_digest_stream(fobj) -> bytes:
+    h = hashlib.md5()
+    while True:
+        b = fobj.read(65536)
+        if not b:
+            break
+        h.update(b)
+    return h.digest()
+
+
+def _dest_matches_zip_member(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path) -> bool:
+    """True if on-disk file is byte-identical to zip member (not just same size)."""
+    if not dest.is_file():
+        return False
+    if dest.stat().st_size != info.file_size:
+        return False
+    if info.file_size > 32 * 1024 * 1024:
+        return True
+    try:
+        with open(dest, "rb") as df:
+            d = _md5_digest_stream(df)
+        with zf.open(info) as zr:
+            z = _md5_digest_stream(zr)
+        return d == z
+    except Exception:
+        return False
+
+
+def _purge_src_pycache(app_dir: Path) -> None:
+    """Remove stale bytecode so a bumped src/version.py cannot load old __pycache__."""
+    src = app_dir / "src"
+    if not src.is_dir():
+        return
+    removed = 0
+    for p in list(src.rglob("__pycache__")):
+        if p.is_dir():
+            try:
+                shutil.rmtree(p)
+                removed += 1
+            except OSError:
+                pass
+    if removed:
+        _install_log(f"purge __pycache__: removed {removed} dir(s) under src/")
 
 
 def _app_dir() -> Path:
@@ -142,8 +229,10 @@ def _zip_relative_dest(member: str) -> str | None:
 
 
 def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> None:
-    """Unpack source zip over existing install without deleting venv; skip files that already match size."""
+    """Unpack source zip over existing install without deleting venv; skip only byte-identical files."""
     app_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    skipped = 0
     with zipfile.ZipFile(zip_path, "r") as zf:
         infos = [zi for zi in zf.infolist() if _zip_relative_dest(zi.filename) is not None]
         n = max(1, len(infos))
@@ -157,13 +246,19 @@ def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> Non
                 dest.mkdir(parents=True, exist_ok=True)
                 progress_cb("Extracting…", pct, 0, 0, rel[:72])
                 continue
-            if dest.is_file() and dest.stat().st_size == info.file_size:
+            if _dest_matches_zip_member(zf, info, dest):
+                skipped += 1
+                _install_log(f"extract skip identical: {rel} ({info.file_size} B)")
                 progress_cb("Extracting…", pct, 0, 0, f"skip {rel[:48]}")
                 continue
+            written += 1
+            _install_log(f"extract write: {rel} ({info.file_size} B)")
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(dest, "wb") as out_f:
                 shutil.copyfileobj(src, out_f)
             progress_cb("Extracting…", pct, 0, 0, rel[:72])
+    _install_log(f"extract summary: wrote {written}, skipped_identical {skipped}")
+    _purge_src_pycache(app_dir)
 
 
 def _venv_import_ok(py_exe: Path) -> bool:
@@ -262,6 +357,7 @@ def _find_system_python() -> list[str] | None:
 
 def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
     """Ensure venv exists and requirements are satisfied; reuse healthy venv and sync via pip -r."""
+    _install_log(f"bootstrap: app_root={app_root}")
     venv = app_root / "venv"
     win = platform.system() == "Windows"
     if win:
@@ -552,18 +648,88 @@ def _run_app(app_root: Path):
         pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
         launcher = app_root / "chronoarchiver.pyw"
         cmd = [str(pyw), str(launcher)] if pyw.exists() else ["pythonw", str(launcher)]
+        _install_log(f"launch: cmd={cmd!r} cwd={app_root}")
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         subprocess.Popen(cmd, cwd=str(app_root), creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         app_bundle = app_root / "ChronoArchiver.app"
         if app_bundle.exists():
+            _install_log(f"launch: open -a {app_bundle}")
             subprocess.Popen(["open", "-a", str(app_bundle)])
         else:
-            subprocess.Popen(["python3", str(app_root / "chronoarchiver.pyw")], cwd=str(app_root), start_new_session=True)
+            cmd = ["python3", str(app_root / "chronoarchiver.pyw")]
+            _install_log(f"launch: cmd={cmd!r} cwd={app_root}")
+            subprocess.Popen(cmd, cwd=str(app_root), start_new_session=True)
 
 
-def _do_setup_gui():
-    """Show progress window, download, extract, create shortcuts, launch."""
+def _show_welcome_and_log_choice() -> tuple[bool, bool]:
+    """Welcome screen. Returns (proceed_with_install, enable_install_log). Checkbox default off."""
+    try:
+        import tkinter as tk
+    except ImportError:
+        return True, False
+    out = {"proceed": False, "log": False}
+    root = tk.Tk()
+    root.title("ChronoArchiver — Welcome")
+    root.geometry("500x340")
+    root.resizable(False, False)
+    root.configure(bg="#0d0d0d")
+    root.option_add("*Font", "TkDefaultFont 9")
+    tk.Label(
+        root,
+        text="Welcome to ChronoArchiver",
+        fg="#e5e7eb",
+        bg="#0d0d0d",
+        font=("", 13, "bold"),
+    ).pack(pady=(22, 6))
+    blurb = (
+        f"This installer sets up or updates ChronoArchiver v{VERSION}.\n\n"
+        "Your data folder is kept; application files and the Python environment "
+        "are refreshed from the official release when needed."
+    )
+    tk.Label(root, text=blurb, fg="#9ca3af", bg="#0d0d0d", wraplength=440, justify=tk.LEFT).pack(pady=6, padx=22)
+    log_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(
+        root,
+        text="Create detailed install log (ChronoArchiver_installer.log next to this installer)",
+        variable=log_var,
+        fg="#e5e7eb",
+        bg="#0d0d0d",
+        selectcolor="#1f1f1f",
+        activebackground="#0d0d0d",
+        activeforeground="#e5e7eb",
+        font=("", 9),
+        anchor="w",
+    ).pack(pady=(14, 4), padx=22, fill=tk.X)
+    tk.Label(
+        root,
+        text="Leave off unless troubleshooting. Log is overwritten each run.",
+        fg="#6b7280",
+        bg="#0d0d0d",
+        font=("", 8),
+        wraplength=440,
+        justify=tk.LEFT,
+    ).pack(padx=22, anchor="w")
+    btn_fr = tk.Frame(root, bg="#0d0d0d")
+    btn_fr.pack(pady=22)
+
+    def on_exit():
+        out["proceed"] = False
+        root.destroy()
+
+    def on_install():
+        out["proceed"] = True
+        out["log"] = bool(log_var.get())
+        root.destroy()
+
+    tk.Button(btn_fr, text="Exit", command=on_exit, width=11, padx=8, pady=4).pack(side=tk.LEFT, padx=6)
+    tk.Button(btn_fr, text="Install / Update", command=on_install, width=16, padx=8, pady=4).pack(side=tk.LEFT, padx=6)
+    root.mainloop()
+    return out["proceed"], out["log"]
+
+
+def _do_setup_gui(download_url: str) -> bool:
+    """Show progress window, download, extract, create shortcuts. Caller supplies release asset URL."""
     try:
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -571,13 +737,15 @@ def _do_setup_gui():
         print("ChronoArchiver: tkinter required for setup UI.")
         return False
 
-    url = _download_url()
+    url = download_url
     if not url:
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("ChronoArchiver", f"Could not find download for v{VERSION}. Check your connection.")
         root.destroy()
         return False
+
+    _install_log(f"setup GUI: download URL length={len(url)}")
 
     root = tk.Tk()
     root.title("ChronoArchiver — Setup")
@@ -658,9 +826,13 @@ def _do_setup_gui():
         try:
             app_dir = _app_dir()
             app_dir.mkdir(parents=True, exist_ok=True)
+            _install_log(f"task: app_dir={app_dir}")
+            _install_log(f"task: installed __version__ from src/version.py = {_read_source_version(app_dir)!r}")
+            _install_log(f"task: setup VERSION = {VERSION!r} skip_zip={_should_skip_source_zip(app_dir)}")
             zip_path: str | None = None
             try:
                 if _should_skip_source_zip(app_dir):
+                    _install_log("task: skipping source zip (tree already matches VERSION)")
                     _set_stage(0, "Source already matches this version — skipping download")
                     progress_cb("Using installed source", 100, 0, 0, f"v{VERSION} (src/version.py)")
                     _set_stage(1, "Application files — already up to date")
@@ -668,15 +840,19 @@ def _do_setup_gui():
                 else:
                     fd, zip_path = tempfile.mkstemp(suffix=".zip")
                     os.close(fd)
+                    _install_log(f"task: temp zip {zip_path}")
                     _set_stage(0, "Downloading ChronoArchiver source…")
                     if not _download_with_progress(url, zip_path, progress_cb):
+                        _install_log("task: ERROR download failed")
                         result[0] = False
                         result_error[0] = "Failed while downloading source package."
                         done[0] = True
                         return
+                    _install_log("task: download OK, merging extract")
                     _set_stage(1, "Updating application files (venv preserved)…")
                     progress_cb("Extracting…", 0, 0, 0)
                     _extract_source_zip_merged(zip_path, app_dir, progress_cb)
+                    _install_log(f"task: after extract, src __version__ = {_read_source_version(app_dir)!r}")
             finally:
                 if zip_path:
                     try:
@@ -686,12 +862,15 @@ def _do_setup_gui():
             _set_stage(2, "Virtual environment…")
             progress_cb("Virtual environment…", 0, 0, 0)
             _set_stage(3, "Installing dependencies…")
+            _install_log("task: starting venv / pip bootstrap")
             ok, err = _run_setup_bootstrap(app_dir, progress_cb)
             if not ok:
+                _install_log(f"task: bootstrap FAILED {err!r}")
                 result[0] = False
                 result_error[0] = err or "Dependency installation failed."
                 done[0] = True
                 return
+            _install_log("task: bootstrap OK")
             _set_stage(4, "Verifying installation…")
             progress_cb("Verifying…", 100, 0, 0)
             _set_stage(5, "Creating shortcuts…")
@@ -702,9 +881,12 @@ def _do_setup_gui():
                 _create_macos_app_and_uninstaller(app_dir)
             _app_dir().mkdir(parents=True, exist_ok=True)
             _version_file().write_text(VERSION)
+            _install_log(f"task: wrote version.txt -> {VERSION!r}")
+            _install_log(f"task: final src __version__ = {_read_source_version(app_dir)!r}")
             progress_cb("Completed", 100, 0, 0, "Installation finished successfully.")
             result[0] = True
         except Exception as e:
+            _install_log(f"task: EXCEPTION {type(e).__name__}: {e!r}")
             result[0] = False
             result_error[0] = str(e)
         done[0] = True
@@ -733,11 +915,42 @@ def _do_setup_gui():
 
 
 def main():
+    proceed, want_log = _show_welcome_and_log_choice()
+    if not proceed:
+        return
+    _setup_install_logging(want_log)
+    _install_log(f"main: VERSION={VERSION!r} frozen={getattr(sys, 'frozen', False)}")
+    _install_log(f"main: sys.executable={sys.executable!r}")
+
     app_dir = _app_dir()
+    _install_log(f"main: app_dir={app_dir}")
+    sv = _read_source_version(app_dir)
+    _install_log(f"main: installed src __version__={sv!r} quick_launch_eligible={_can_launch_without_setup(app_dir)}")
+
     if _can_launch_without_setup(app_dir):
+        _install_log("main: quick-launch (source already matches VERSION); skipping setup GUI")
         _run_app(app_dir)
         return
-    if _do_setup_gui():
+
+    url = _download_url()
+    if not url:
+        _install_log("main: ERROR could not resolve source zip URL from GitHub")
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showerror(
+                "ChronoArchiver",
+                f"Could not find download for v{VERSION}. Check your connection.",
+            )
+            r.destroy()
+        except Exception:
+            pass
+        return
+
+    if _do_setup_gui(url):
         _run_app(app_dir)
 
 
