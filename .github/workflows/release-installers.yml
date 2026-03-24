@@ -24,27 +24,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller static-ffmpeg opencv-python GitPython
-          pip install Inno-Setup-Command-Line-Builder 2>nul || echo "Will use iscc if available"
 
       - name: Get version from tag
         id: ver
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller tools/chronoarchiver.spec
-          dir dist\ChronoArchiver
+          pyinstaller --noconfirm tools/chronoarchiver.spec
+          ls -la dist/ChronoArchiver
+        shell: bash
 
       - name: Install Inno Setup
-        run: |
-          choco install innosetup -y
+        run: choco install innosetup -y
 
       - name: Set version in Inno Setup script
         run: |
           (Get-Content tools\ChronoArchiver.iss) -replace 'MyAppVersion "[^"]+"', 'MyAppVersion "${{ steps.ver.outputs.VERSION }}"' | Set-Content tools\ChronoArchiver.iss
 
       - name: Build Windows installer
-        run: iscc tools/ChronoArchiver.iss
+        run: & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" tools\ChronoArchiver.iss
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
