@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.31] - 2026-03-24
+### Fixed
+- **Mass AV1 Encoder Work Progress**: I/O throughput now updates in telemetry poll so it stays current even when ffmpeg progress callbacks are sparse.
+
 ## [3.3.30] - 2026-03-24
 ### Changed
 - **Console (all panels)**: Path separators (/, \\) bright pink instead of gray.

@@ -1107,6 +1107,15 @@ class AV1EncoderPanel(QWidget):
                 dt = time.time() - self._batch_start
                 h = int(dt // 3600); m = int((dt % 3600) // 60); s = int(dt % 60)
                 self._lbl_time.setText(f"Time: {h:02}:{m:02}:{s:02}")
+                # Keep I/O throughput updated (progress callbacks may be sparse)
+                active_bytes = sum(
+                    (self._job_progress.get(jid, 0) / 100) * self._queue_sizes.get(self._current_files.get(jid), 0)
+                    for jid in self._current_files
+                )
+                total_written = self._done_bytes + active_bytes
+                if dt > 0.5 and total_written > 0:
+                    rate_mbs = (total_written / (1024 * 1024)) / dt
+                    self._lbl_io.setText(f"I/O: {rate_mbs:.1f} MB/s")
         except Exception:
             pass
 
