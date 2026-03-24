@@ -19,6 +19,7 @@ src_dir = os.path.join(repo_root, 'src')
 datas = [
     (os.path.join(src_dir, 'ui', 'assets', 'icon.png'), 'src/ui/assets'),
     (os.path.join(src_dir, 'ui', 'assets', 'icon.ico'), 'src/ui/assets'),
+    (os.path.join(src_dir, 'ui', 'assets', 'fonts'), 'src/ui/assets/fonts'),
 ]
 # Add each package dir so 'from core.xxx' and 'from ui.xxx' work
 for pkg in ('core', 'ui', 'ui/panels'):
@@ -85,8 +86,8 @@ if is_mac:
         info_plist={
             'CFBundleName': 'ChronoArchiver',
             'CFBundleDisplayName': 'ChronoArchiver',
-            'CFBundleVersion': '3.5.2',
-            'CFBundleShortVersionString': '3.5.2',
+            'CFBundleVersion': '3.5.4',
+            'CFBundleShortVersionString': '3.5.4',
             'NSHighResolutionCapable': True,
         },
     )
