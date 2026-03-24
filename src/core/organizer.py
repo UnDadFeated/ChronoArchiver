@@ -13,8 +13,8 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
+PHOTO_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.dng', '.arw', '.cr2', '.nef', '.orf', '.rw2'}
 VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.mpg', '.mpeg', '.ts'}
-SIDECAR_EXTS = {'.xmp', '.xml', '.aae', '.json', '.aac'}
 MIN_YEAR = 1957  # First digital photo (Russell Kirsch 1957)
 DEFAULT_EXCLUDE_DIRS = {'.thumbnails', '@recently deleted', '$recycle.bin', '.trash', 'thumbnails'}
 
@@ -155,7 +155,7 @@ class OrganizerEngine:
 
     def organize(self, source_dir: str, dry_run: bool = True, folder_structure: str = "nested",
                  valid_exts: Optional[set] = None, target_dir: Optional[str] = None,
-                 action: str = "move", move_sidecars: bool = False,
+                 action: str = "move",
                  exclude_dirs: Optional[set] = None, duplicate_policy: str = "rename",
                  progress_callback=None, stats_callback=None):
         """action: move|copy|symlink. duplicate_policy: skip|keep_newer|overwrite|rename"""
@@ -172,7 +172,7 @@ class OrganizerEngine:
 
         self.cancel_flag = False
         if valid_exts is None:
-            valid_exts = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.avi', '.webm', '.mkv', '.gif', '.bmp', '.tiff'}
+            valid_exts = PHOTO_EXTS | VIDEO_EXTS
 
         target_dir = (target_dir or "").strip() or None
         base_dir = target_dir.rstrip(os.sep) if target_dir else source_dir
@@ -378,16 +378,6 @@ class OrganizerEngine:
                 if _do_file(full_path, target_path, file):
                     files_moved += 1
                     self.logger(f"[{action_verb}] \"{file}\" -> \"{rel_target_path}\"")
-                if move_sidecars and action != "symlink":
-                    stem = pathlib.Path(full_path).stem
-                    src_dir = os.path.dirname(full_path)
-                    dst_dir = os.path.dirname(target_path)
-                    for sc_ext in SIDECAR_EXTS:
-                        sc_src = os.path.join(src_dir, stem + sc_ext)
-                        if os.path.isfile(sc_src):
-                            sc_dst = os.path.join(dst_dir, pathlib.Path(new_filename).stem + sc_ext)
-                            if _do_file(sc_src, sc_dst, stem + sc_ext):
-                                self.logger(f"[{action_verb}] sidecar \"{stem}{sc_ext}\" -> \"{rel_base}\"")
             else:
                 files_moved += 1
                 self.logger(f"[DRY RUN] [{action_verb}] \"{file}\" -> \"{rel_target_path}\"")

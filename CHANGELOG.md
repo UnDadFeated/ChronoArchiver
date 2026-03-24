@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.3.6] - 2026-03-22
+### Removed
+- **Media Organizer**: Export Log button (use Copy Console in footer instead).
+- **Media Organizer**: Extensions input — Photos/Videos checkboxes now process all supported extensions automatically (PHOTO_EXTS: jpg, png, heic, raw, etc.; VIDEO_EXTS: mp4, mov, mkv, etc.).
+- **Media Organizer**: Exclude dirs input — .trash, @Recently Deleted, .thumbnails, etc. excluded by default.
+- **Media Organizer**: Sidecars checkbox — sidecars no longer moved with main files.
+
+### Changed
+- **Media Organizer**: Photos and Videos checkboxes stacked vertically; Directories group extends to fill available space.
+
 ## [3.3.5] - 2026-03-22
 ### Added
 - **Media Organizer**: Action (Move/Copy/Symlink); Move sidecars (.xmp, .xml, .aae, .json); Exclude dirs (comma-separated + default .trash, @Recently Deleted, etc.); Duplicate policy (Rename/Skip/Keep newer/Overwrite if same); Export Log button.

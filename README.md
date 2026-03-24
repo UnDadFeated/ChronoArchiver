@@ -45,13 +45,13 @@ Date resolution order:
 
 Features:
 
-- **Action**: Move, Copy, or Symlink. Move sidecars (.xmp, .aae, .xml) with main files.
-- **Exclude**: Skip .trash, @Recently Deleted, etc.; custom comma-separated dirs.
+- **Action**: Move, Copy, or Symlink.
+- **Exclude**: .trash, @Recently Deleted, .thumbnails, etc. excluded by default.
 - **Duplicates**: Rename, Skip, Keep newer, or Overwrite if same.
 - Appends `YYYY-MM-DD_` to filenames for chronological ordering
 - Corrects mismatched date prefixes
 - Optional target directory for organizing into a separate root
-- Comma-separated extension override; blank uses default photo/video sets
+- Photos and/or Videos checkboxes — processes all supported extensions for selected types
 - Duplicate detection via size comparison and partial MD5 (first 1 MB)
 - Dry-run mode; cancellable during execution
 - Summary statistics: Moved, Skipped, Duplicates
@@ -143,8 +143,6 @@ First launch creates an app-private virtual environment at `~/.local/share/Chron
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Action | Move | Move, Copy, or Symlink files |
-| Sidecars | Off | Move .xmp, .aae, .xml, .json with main files |
-| Exclude dirs | .trash, @Recently Deleted, etc. | Skip folders; comma-separated custom names |
 | Duplicate policy | Rename | Rename, Skip, Keep newer, or Overwrite if same |
 | Folder structure | YYYY/YYYY-MM | Nested, flat by month/day |
 
@@ -177,7 +175,11 @@ First launch creates an app-private virtual environment at `~/.local/share/Chron
 
 ## Updates
 
-The application checks GitHub tags on startup. Updates can be applied in-app: the process closes, performs the update (git pull for source installs, or `paru`/`yay` for AUR), and restarts. Version comparison follows semantic versioning.
+The application checks GitHub tags on startup. In-app updates work on:
+
+- **Arch Linux (AUR)**: `paru`/`yay` — app closes, updates, restarts.
+- **Git clone (Linux, Windows, macOS)**: `git pull` — app closes, pulls, restarts.
+- **Other installs**: Update check still works; if newer version available, offers to open GitHub releases.
 
 ---
 

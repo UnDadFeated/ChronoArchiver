@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from core.organizer import OrganizerEngine
+from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
 from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
 
@@ -56,9 +56,9 @@ class MediaOrganizerPanel(QWidget):
         h_strip.setSpacing(6)
         _box_height = 118  # Equal height for all three boxes
 
-        # 1. Directories
+        # 1. Directories (extends to fill space)
         grp_dir = QGroupBox("Directories")
-        grp_dir.setFixedHeight(_box_height)
+        grp_dir.setMinimumHeight(_box_height)
         v_dir = QVBoxLayout(grp_dir)
         v_dir.setContentsMargins(6, 2, 6, 2)
         v_dir.setSpacing(1)
@@ -92,7 +92,7 @@ class MediaOrganizerPanel(QWidget):
         h_tgt.addWidget(self._btn_browse_target)
         v_dir.addLayout(h_tgt)
         v_dir.addWidget(QLabel("Blank = in-place", styleSheet=_shint))
-        h_strip.addWidget(grp_dir, 11)
+        h_strip.addWidget(grp_dir, 18)
 
         # 2. Options
         grp_opts = QGroupBox("Options")
@@ -100,28 +100,17 @@ class MediaOrganizerPanel(QWidget):
         v_opts = QVBoxLayout(grp_opts)
         v_opts.setContentsMargins(6, 2, 6, 2)
         v_opts.setSpacing(1)
-        h_row = QHBoxLayout()
+        v_opts_chk = QVBoxLayout()
         self._chk_photos = QCheckBox("Photos")
         self._chk_photos.setChecked(True)
         self._chk_videos = QCheckBox("Videos")
         self._chk_videos.setChecked(True)
-        self._chk_sidecars = QCheckBox("Sidecars")
-        self._chk_sidecars.setToolTip("Move .xmp, .aae, .xml, .json with main files")
-        for cb in [self._chk_photos, self._chk_videos, self._chk_sidecars]:
+        for cb in [self._chk_photos, self._chk_videos]:
             cb.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
-            h_row.addWidget(cb)
-        v_opts.addLayout(h_row)
-        self._edit_exts = QLineEdit()
-        self._edit_exts.setPlaceholderText("Extensions (.jpg,.mp4)")
-        self._edit_exts.setStyleSheet("font-size:8px; color:#888; background:#121212; border:1px solid #1a1a1a; padding:2px; min-height:20px;")
-        v_opts.addWidget(self._edit_exts)
-        self._edit_exclude = QLineEdit()
-        self._edit_exclude.setPlaceholderText("Exclude dirs: .trash, @Recently Deleted")
-        self._edit_exclude.setToolTip("Comma-separated folder names to skip (always skips .trash, @Recently Deleted)")
-        self._edit_exclude.setStyleSheet("font-size:7px; color:#666; background:#121212; border:1px solid #1a1a1a; padding:2px; min-height:18px;")
-        v_opts.addWidget(self._edit_exclude)
+            v_opts_chk.addWidget(cb)
+        v_opts.addLayout(v_opts_chk)
         v_opts.addStretch()
-        h_strip.addWidget(grp_opts, 3)
+        h_strip.addWidget(grp_opts, 1)
 
         # 3. Execution Mode
         grp_mode = QGroupBox("Execution Mode")
@@ -201,7 +190,6 @@ class MediaOrganizerPanel(QWidget):
         self._edit_target.textChanged.connect(self._update_start_enabled)
         self._chk_photos.stateChanged.connect(self._update_start_enabled)
         self._chk_videos.stateChanged.connect(self._update_start_enabled)
-        self._edit_exts.textChanged.connect(self._update_start_enabled)
         self._guide_pulse_timer = QTimer(self)
         self._guide_pulse_timer.setInterval(550)
         self._guide_pulse_timer.timeout.connect(self._pulse_guide)
@@ -215,38 +203,24 @@ class MediaOrganizerPanel(QWidget):
         grp_log = QGroupBox("Console")
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 4, 6, 4); v_log.setSpacing(0)
-        h_log = QHBoxLayout()
-        h_log.addStretch()
-        self._btn_export = QPushButton("Export Log")
-        self._btn_export.setToolTip("Save console log to file")
-        self._btn_export.setStyleSheet("font-size:7px; min-height:18px;")
-        self._btn_export.clicked.connect(self._export_log)
-        h_log.addWidget(self._btn_export)
-        v_log.addLayout(h_log)
         self._log_list = QListWidget()
         v_log.addWidget(self._log_list)
         root.addWidget(grp_log, 1)  # Stretch: console takes all remaining vertical space
+
+    def _get_valid_exts(self):
+        """Set of photo and/or video extensions based on checkboxes. Only these file types are processed."""
+        exts = set()
+        if self._chk_photos.isChecked():
+            exts.update(PHOTO_EXTS)
+        if self._chk_videos.isChecked():
+            exts.update(VIDEO_EXTS)
+        return exts
 
     def _can_start(self):
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
             return False
-        exts_override = self._edit_exts.text().strip()
-        if exts_override:
-            exts = set()
-            for p in exts_override.replace(" ", "").split(","):
-                ext = p.strip().lower()
-                if ext and not ext.startswith("."):
-                    ext = "." + ext
-                if ext:
-                    exts.add(ext)
-        else:
-            exts = set()
-            if self._chk_photos.isChecked():
-                exts.update({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'})
-            if self._chk_videos.isChecked():
-                exts.update({'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'})
-        if not exts:
+        if not self._get_valid_exts():
             return False
         target = self._edit_target.text().strip()
         if target and not os.path.isdir(target):
@@ -260,22 +234,7 @@ class MediaOrganizerPanel(QWidget):
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
             return self._btn_browse_src
-        exts_override = self._edit_exts.text().strip()
-        if exts_override:
-            exts = set()
-            for p in exts_override.replace(" ", "").split(","):
-                ext = p.strip().lower()
-                if ext and not ext.startswith("."):
-                    ext = "." + ext
-                if ext:
-                    exts.add(ext)
-        else:
-            exts = set()
-            if self._chk_photos.isChecked():
-                exts.update({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'})
-            if self._chk_videos.isChecked():
-                exts.update({'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'})
-        if not exts:
+        if not self._get_valid_exts():
             return self._chk_photos
         target = self._edit_target.text().strip()
         if target and not os.path.isdir(target):
@@ -295,7 +254,7 @@ class MediaOrganizerPanel(QWidget):
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid transparent; font-size:10px; font-weight:900;")
         elif w == self._btn_browse_src or w == self._btn_browse_target:
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
-        elif w == self._chk_photos:
+        elif w in (self._chk_photos, self._chk_videos):
             w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
 
     def _pulse_guide(self):
@@ -329,17 +288,6 @@ class MediaOrganizerPanel(QWidget):
         if f:
             self._edit_target.setText(f)
 
-    def _export_log(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Export Log", "", "Text (*.txt);;All (*)")
-        if path:
-            try:
-                lines = [self._log_list.item(i).text() for i in range(self._log_list.count())]
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines))
-                self._add_log(f"Log exported to {path}")
-            except OSError as e:
-                self._add_log(f"Export failed: {e}")
-
     def _run_job(self):
         path = self._edit_path.text().strip()
         if not path or not os.path.isdir(path):
@@ -347,23 +295,9 @@ class MediaOrganizerPanel(QWidget):
             debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: Invalid source directory: {path or '(empty)'}")
             return
 
-        exts_override = self._edit_exts.text().strip()
-        if exts_override:
-            exts = set()
-            for p in exts_override.replace(" ", "").split(","):
-                ext = p.strip().lower()
-                if ext and not ext.startswith("."):
-                    ext = "." + ext
-                if ext:
-                    exts.add(ext)
-        else:
-            exts = set()
-            if self._chk_photos.isChecked():
-                exts.update({'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'})
-            if self._chk_videos.isChecked():
-                exts.update({'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv'})
+        exts = self._get_valid_exts()
         if not exts:
-            self._add_log("ERROR: Select at least one media type or specify extensions.")
+            self._add_log("ERROR: Select at least one media type (Photos and/or Videos).")
             debug(UTILITY_MEDIA_ORGANIZER, "ERROR: No media types selected")
             return
 
@@ -379,8 +313,6 @@ class MediaOrganizerPanel(QWidget):
         action = action_keys[self._combo_action.currentIndex()]
         dup_keys = ("rename", "skip", "keep_newer", "overwrite")
         duplicate_policy = dup_keys[self._combo_dup.currentIndex()]
-        exclude_text = self._edit_exclude.text().strip()
-        exclude_dirs = {p.strip() for p in exclude_text.split(",") if p.strip()} if exclude_text else None
         debug(UTILITY_MEDIA_ORGANIZER, f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}")
         self._is_running = True
         if self._status_cb:
@@ -409,8 +341,7 @@ class MediaOrganizerPanel(QWidget):
                     valid_exts=exts,
                     target_dir=target,
                     action=action,
-                    move_sidecars=self._chk_sidecars.isChecked(),
-                    exclude_dirs=exclude_dirs,
+                    exclude_dirs=None,
                     duplicate_policy=duplicate_policy,
                     progress_callback=_prog,
                     stats_callback=_stats)
