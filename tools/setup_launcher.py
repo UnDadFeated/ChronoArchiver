@@ -25,7 +25,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.5")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.6")
 
 
 VERSION = _read_version()
@@ -199,7 +199,9 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
             cwd=str(app_root),
         )
-        last_update = [0]
+        last_update = [0.0]
+        prev_bytes = [0.0]
+        prev_time = [time.time()]
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
             line = (line or "").strip()
             if not line:
@@ -210,7 +212,14 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
                 a, b = float(m.group(1)), float(m.group(2))
                 sub_pct = (a / b * 100) if b > 0 else 0
                 speed_m = re.search(r"(\d+\.?\d*)\s*MB/s", line)
-                speed = float(speed_m.group(1)) if speed_m else 0
+                if speed_m:
+                    speed = float(speed_m.group(1))
+                else:
+                    now = time.time()
+                    dt = max(0.001, now - prev_time[0])
+                    speed = max(0.0, (a - prev_bytes[0]) / dt)
+                    prev_time[0] = now
+                    prev_bytes[0] = a
                 now = time.time()
                 if now - last_update[0] >= 0.3:
                     last_update[0] = now
@@ -246,7 +255,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
 
 
 def _create_windows_shortcuts(app_root: Path):
-    """Create desktop shortcut, Start Menu shortcut, and uninstaller. Uses pythonw (no console)."""
+    """Create desktop/start-menu shortcuts and uninstaller without VBS."""
     start_menu = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
     desktop = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
     if not start_menu.exists():
@@ -254,40 +263,32 @@ def _create_windows_shortcuts(app_root: Path):
     folder = start_menu / "ChronoArchiver"
     folder.mkdir(exist_ok=True)
 
-    app_root_str = str(app_root).replace("\\", "\\\\")
     venv_pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
     launcher_pyw = app_root / "chronoarchiver.pyw"
 
-    # Launcher VBS: runs pythonw with no console; uses venv if exists, else system
-    launcher_vbs = app_root / "launcher.vbs"
-    launcher_vbs.write_text(f'''Set FSO = CreateObject("Scripting.FileSystemObject")
-Set WshShell = CreateObject("WScript.Shell")
-appRoot = "{app_root_str}"
-venvPyw = appRoot & "\\venv\\Scripts\\pythonw.exe"
-launcher = appRoot & "\\chronoarchiver.pyw"
-If FSO.FileExists(venvPyw) Then
-    WshShell.CurrentDirectory = appRoot
-    WshShell.Run """" & venvPyw & """ """ & launcher & """", 0, False
-Else
-    WshShell.CurrentDirectory = appRoot
-    WshShell.Run "pythonw """ & launcher & """", 0, False
-End If
-''', encoding="utf-8")
+    # Remove legacy VBS launcher if present
+    try:
+        old_launcher_vbs = app_root / "launcher.vbs"
+        if old_launcher_vbs.exists():
+            old_launcher_vbs.unlink()
+    except OSError:
+        pass
 
     icon_path = app_root / "src" / "ui" / "assets" / "icon.ico"
     icon_str = str(icon_path) if icon_path.exists() else ""
 
     def create_shortcut(target_path: Path, name: str):
+        target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
         ps = f'''
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{target_path}\\{name}.lnk")
-$Shortcut.TargetPath = "wscript.exe"
-$Shortcut.Arguments = '"{launcher_vbs}"'
+$Shortcut.TargetPath = "{target_exe}"
+$Shortcut.Arguments = '"{launcher_pyw}"'
 $Shortcut.WorkingDirectory = "{app_root}"
 $Shortcut.Description = "ChronoArchiver"
 ''' + (f'$Shortcut.IconLocation = "{icon_str.replace(chr(92), chr(92)*2)}"\n' if icon_str else "") + '''
 $Shortcut.Save()
-'''.replace("{target_path}", str(target_path)).replace("{name}", name).replace("{launcher_vbs}", str(launcher_vbs)).replace("{app_root}", str(app_root))
+'''.replace("{target_path}", str(target_path)).replace("{name}", name).replace("{launcher_pyw}", str(launcher_pyw)).replace("{app_root}", str(app_root))
         try:
             subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=10)
         except Exception:
@@ -296,18 +297,49 @@ $Shortcut.Save()
     create_shortcut(desktop, "ChronoArchiver")
     create_shortcut(folder, "ChronoArchiver")
 
-    # Uninstaller VBS: removes install dir and all contents
-    install_dir = str(_app_dir()).replace("\\", "\\\\")
-    uninstall_vbs = folder / "Uninstall ChronoArchiver.vbs"
-    uninstall_vbs.write_text(f'''result = MsgBox("Remove ChronoArchiver and all its data?", vbYesNo + vbQuestion, "Uninstall ChronoArchiver")
-If result = vbYes Then
-    Set FSO = CreateObject("Scripting.FileSystemObject")
-    On Error Resume Next
-    FSO.DeleteFolder "{install_dir}", True
-    On Error Goto 0
-    MsgBox "ChronoArchiver has been uninstalled.", vbInformation, "Uninstall Complete"
-End If
-''', encoding="utf-8")
+    # Remove legacy VBS uninstaller shortcut if present
+    try:
+        old_uninstall_vbs = folder / "Uninstall ChronoArchiver.vbs"
+        if old_uninstall_vbs.exists():
+            old_uninstall_vbs.unlink()
+    except OSError:
+        pass
+
+    # Uninstaller CMD: no VBS dependency
+    install_dir = str(_app_dir())
+    uninstall_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+    uninstall_cmd = folder / "Uninstall ChronoArchiver.cmd"
+    uninstall_cmd.write_text(
+        f'''@echo off
+setlocal
+set "TARGET={install_dir}"
+set "UNKEY={uninstall_key}"
+echo Remove ChronoArchiver and all its data?
+choice /M "Continue"
+if errorlevel 2 goto :eof
+rmdir /S /Q "%TARGET%"
+reg delete "%UNKEY%" /f >nul 2>&1
+echo ChronoArchiver has been uninstalled.
+pause
+''',
+        encoding="utf-8",
+    )
+
+    # Register in Windows Installed Apps (no admin required, HKCU)
+    try:
+        uninstall_cmd_path = str(uninstall_cmd)
+        display_icon = str(icon_path) if icon_path.exists() else str(launcher_pyw)
+        reg = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+        subprocess.run(["reg", "add", reg, "/v", "DisplayName", "/t", "REG_SZ", "/d", "ChronoArchiver", "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", VERSION, "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "Publisher", "/t", "REG_SZ", "/d", "ChronoArchiver", "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "InstallLocation", "/t", "REG_SZ", "/d", str(app_root), "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", display_icon, "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "UninstallString", "/t", "REG_SZ", "/d", uninstall_cmd_path, "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "NoModify", "/t", "REG_DWORD", "/d", "1", "/f"], capture_output=True, timeout=8)
+        subprocess.run(["reg", "add", reg, "/v", "NoRepair", "/t", "REG_DWORD", "/d", "1", "/f"], capture_output=True, timeout=8)
+    except Exception:
+        pass
 
 
 def _create_macos_app_and_uninstaller(app_root: Path):
@@ -351,24 +383,40 @@ echo "Done."
 ''')
     uninstall.chmod(0o755)
 
+    # Also create an app-style uninstaller entry
+    uninstall_app = app_root / "Uninstall ChronoArchiver.app"
+    u_contents = uninstall_app / "Contents"
+    u_macos = u_contents / "MacOS"
+    u_macos.mkdir(parents=True, exist_ok=True)
+    u_exec = u_macos / "Uninstall ChronoArchiver"
+    u_exec.write_text(f'''#!/bin/bash
+osascript -e 'display dialog "Remove ChronoArchiver and all data?" buttons {{"Cancel","Remove"}} default button "Remove"'
+if [ $? -ne 0 ]; then
+  exit 0
+fi
+rm -rf "{install_dir}"
+osascript -e 'display dialog "ChronoArchiver has been uninstalled." buttons {{"OK"}} default button "OK"'
+''')
+    u_exec.chmod(0o755)
+    (u_contents / "Info.plist").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>Uninstall ChronoArchiver</string>
+<key>CFBundleIdentifier</key><string>com.undadfeated.chronoarchiver.uninstall</string>
+<key>CFBundleName</key><string>Uninstall ChronoArchiver</string>
+<key>CFBundleVersion</key><string>{VERSION}</string>
+</dict></plist>
+''')
+
 
 def _run_app(app_root: Path):
     """Launch the installed Python app (no console window)."""
     if platform.system() == "Windows":
-        launcher_vbs = app_root / "launcher.vbs"
-        if launcher_vbs.exists():
-            subprocess.Popen(
-                ["wscript.exe", str(launcher_vbs)],
-                cwd=str(app_root),
-                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS", 0) | getattr(subprocess, "DETACHED_PROCESS", 0),
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        else:
-            pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
-            launcher = app_root / "chronoarchiver.pyw"
-            cmd = [str(pyw), str(launcher)] if pyw.exists() else ["pythonw", str(launcher)]
-            flags = getattr(subprocess, "CREATE_NEW_PROCESS", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-            subprocess.Popen(cmd, cwd=str(app_root), creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
+        launcher = app_root / "chronoarchiver.pyw"
+        cmd = [str(pyw), str(launcher)] if pyw.exists() else ["pythonw", str(launcher)]
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        subprocess.Popen(cmd, cwd=str(app_root), creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         app_bundle = app_root / "ChronoArchiver.app"
         if app_bundle.exists():
@@ -409,12 +457,12 @@ def _do_setup_gui():
     lbl_detail.pack(pady=2)
     lbl_speed = tk.Label(root, text="", fg="#10b981", bg="#0d0d0d")
     lbl_speed.pack(pady=2)
-    tk.Label(root, text="Current component", fg="#9ca3af", bg="#0d0d0d", font=("", 8)).pack(pady=(8, 0))
+    tk.Label(root, text="Current Component", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
     prog_step = ttk.Progressbar(root, length=500, mode="determinate")
     prog_step.pack(pady=4)
     lbl_pct_step = tk.Label(root, text="0%", fg="#6b7280", bg="#0d0d0d")
     lbl_pct_step.pack(pady=2)
-    tk.Label(root, text="Overall progress", fg="#9ca3af", bg="#0d0d0d", font=("", 8)).pack(pady=(8, 0))
+    tk.Label(root, text="Overall Progress", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
     prog_overall = ttk.Progressbar(root, length=500, mode="determinate")
     prog_overall.pack(pady=4)
     lbl_pct_overall = tk.Label(root, text="0%", fg="#6b7280", bg="#0d0d0d")

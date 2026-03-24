@@ -101,9 +101,19 @@ def _find_app_py() -> Path:
     return _SCRIPT_DIR / "ui" / "app.py"  # fallback for error msg
 
 
+def _get_gui_python_exe() -> Path:
+    """Use pythonw on Windows to avoid opening a console window."""
+    py = get_python_exe()
+    if platform.system() == "Windows":
+        pyw = py.with_name("pythonw.exe")
+        if pyw.exists():
+            return pyw
+    return py
+
+
 def main():
     get_venv_path()
-    py = get_python_exe()
+    py = _get_gui_python_exe()
     app_py = _find_app_py()
     app_root = str(app_py.parent.parent.parent)
 
