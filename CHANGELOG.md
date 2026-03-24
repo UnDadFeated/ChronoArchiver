@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.7.9] - 2026-03-24
+### Changed
+- **Windows / macOS setup (bootstrap)**: Updates no longer delete the entire install directory. The source zip is **merged** over the existing tree: `venv/` is never removed, and files whose size already matches the archive entry are **not rewritten** (faster re-runs and upgrades).
+- **Setup**: If `src/version.py`, `chronoarchiver.pyw`, and `requirements.txt` already match this setup’s version, the **source zip is not downloaded** again.
+- **Setup**: When a working venv already exists, setup runs **`pip install -r requirements.txt`** so new or changed dependencies are applied; it no longer exits early without syncing after an app upgrade.
+
+### Note
+- The **in-app updater** still downloads the small **Setup** executable (~6 MB) for each upgrade; that is separate from the large **source** zip, which setup now reuses or merges as above.
+
 ## [3.7.8] - 2026-03-24
 ### Changed
 - **UI**: Taller path rows and Browse buttons (28px, 60px wide) aligned across Media Organizer, Mass AV1 Encoder, and AI Media Scanner; checkbox and option labels slightly larger; scanner Engine Status buttons match Browse height.
