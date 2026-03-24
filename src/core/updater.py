@@ -308,8 +308,10 @@ class ApplicationUpdater:
         version_clean = (version or "").replace("v", "").strip()
         if not version_clean:
             return None
-        suffix = "-win64.exe" if platform.system() == "Windows" else "-mac64.dmg"
-        expected_name = f"ChronoArchiver-{version_clean}{suffix}"
+        if platform.system() == "Windows":
+            expected_name = f"ChronoArchiver-Setup-{version_clean}-win64.exe"
+        else:
+            expected_name = f"ChronoArchiver-Setup-{version_clean}-mac64.zip"
         try:
             url = RELEASES_BY_TAG_URL.format(version=version_clean)
             req = urllib.request.Request(
@@ -380,32 +382,25 @@ class ApplicationUpdater:
         """
         launch_cmd = _find_app_launch_cmd("installer")
         if platform.system() == "Windows":
-            exe_quoted = '"%s"' % str(launch_cmd[0]).replace('"', "")
+            # Setup exe downloads full app on first run, then launches it; we just run setup
+            inst_esc = str(installer_path).replace("\\", "\\\\").replace('"', '\\"')
             script = f'''@echo off
 ping -n 3 127.0.0.1 > nul
-"{installer_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-start "" {exe_quoted}
+start /wait "" "{inst_esc}"
 '''
             ext = ".bat"
         else:
-            # macOS: mount DMG, copy .app, unmount
-            dmg_esc = str(installer_path).replace("\\", "\\\\").replace('"', '\\"')
+            # macOS: extract setup zip, run ChronoArchiver-Setup.app (it downloads full app)
+            inst_esc = str(installer_path).replace("\\", "\\\\").replace('"', '\\"')
             script = f'''#!/bin/sh
 sleep 2
-DMG="{dmg_esc}"
-TMP_MOUNT=$(mktemp -d)
-hdiutil attach "$DMG" -mountpoint "$TMP_MOUNT" -nobrowse -quiet
-APP_SRC="$TMP_MOUNT/ChronoArchiver.app"
-APP_DEST="/Applications/ChronoArchiver.app"
-if [ -d "$APP_SRC" ]; then
-  rm -rf "$APP_DEST.new"
-  cp -R "$APP_SRC" "$APP_DEST.new"
-  hdiutil detach "$TMP_MOUNT" -quiet
-  rm -rf "$APP_DEST"
-  mv "$APP_DEST.new" "$APP_DEST"
-  open "$APP_DEST"
+ZIP="{inst_esc}"
+TMP=$(mktemp -d)
+unzip -q "$ZIP" -d "$TMP"
+SETUP_APP=$(echo "$TMP"/*.app)
+if [ -d "$SETUP_APP" ]; then
+  open "$SETUP_APP"
 fi
-rm -rf "$TMP_MOUNT"
 '''
             ext = ".sh"
         fd, path = tempfile.mkstemp(suffix=ext)

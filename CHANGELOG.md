@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.6.0] - 2026-03-23
+### Added
+- **Small setup launcher (~6MB)**: Windows and macOS installers are now minimal bootstrap executables. On first run, a progress window downloads the full app (component name, download speed MB/s, % progress bar), extracts it, then launches. Subsequent runs start instantly.
+
+### Changed
+- **Release format**: `ChronoArchiver-Setup-3.6.0-win64.exe` (small) and `ChronoArchiver-Setup-3.6.0-mac64.zip` replace the previous 70MB+ installers. Full app zips are downloaded on demand.
+- **In-app updater**: Fetches the setup launcher; running it performs the update.
+
 ## [3.5.6] - 2026-03-23
 ### Fixed
 - **Windows crash on launch**: QSS f-string parsed CSS braces as Python expressions (`NameError: name 'border' is not defined`). Switched to `.format()` with escaped braces.

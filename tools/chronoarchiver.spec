@@ -86,8 +86,8 @@ if is_mac:
         info_plist={
             'CFBundleName': 'ChronoArchiver',
             'CFBundleDisplayName': 'ChronoArchiver',
-            'CFBundleVersion': '3.5.6',
-            'CFBundleShortVersionString': '3.5.6',
+            'CFBundleVersion': '3.6.0',
+            'CFBundleShortVersionString': '3.6.0',
             'NSHighResolutionCapable': True,
         },
     )

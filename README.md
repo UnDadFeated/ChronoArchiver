@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-3.5.6-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -119,10 +119,10 @@ Download the installer from the [Releases](https://github.com/UnDadFeated/Chrono
 
 | Platform | File |
 |----------|------|
-| **Windows x64** | `ChronoArchiver-3.5.6-win64.exe` |
-| **macOS** | `ChronoArchiver-3.5.6-mac64.dmg` |
+| **Windows x64** | `ChronoArchiver-Setup-3.6.0-win64.exe` |
+| **macOS** | `ChronoArchiver-Setup-3.6.0-mac64.zip` |
 
-The installer lets you choose the installation directory. On macOS, drag the app to Applications or your preferred location.
+The setup (~6MB) downloads the full app on first run with a progress bar. Extract the zip and run the setup app. The app installs to `%LOCALAPPDATA%\ChronoArchiver\app` (Windows) or `~/Library/Application Support/ChronoArchiver/app` (macOS).
 
 ### From Source
 
