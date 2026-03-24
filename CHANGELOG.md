@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.5.4] - 2026-03-24
+### Added
+- **Single-instance lock**: Only one ChronoArchiver instance can run; second launch shows a message and exits.
+- **Prerequisites popup**: FFmpeg download moved to manual popup. App boots immediately; user clicks "Download" when ready. Progress bar shows % and MB/s (OpenCV-style).
+- **Bundled Inter font**: Packed for consistent rendering on Windows. Windows font stack: Segoe UI, Consolas.
+
+### Changed
+- **Boot speed**: No more auto-download blocking startup. GUI shows instantly; pre-req popup lets user download when ready.
+- **Fonts**: Platform-specific stacks for readability (Segoe UI/Consolas on Windows).
+
 ## [3.5.3] - 2026-03-24
 ### Fixed
 - **Mass AV1 Encoder**: On FFmpeg return codes 183 or 218 (hw decode failure, input issues), retry once with software decode. Common when source/target on NAS. Log FFmpeg stderr on failure. Console hint when both paths on network.

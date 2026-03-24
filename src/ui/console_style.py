@@ -151,7 +151,7 @@ PANEL_CONSOLE_TEXTEDIT_STYLE = (
     "QTextEdit#panelConsole {"
     " background-color: #080808;"
     " border: 1px solid #141414;"
-    " font-family: 'JetBrains Mono', 'Consolas', 'DejaVu Sans Mono', monospace;"
+    " font-family: 'Inter', 'JetBrains Mono', 'Consolas', 'Cascadia Code', 'DejaVu Sans Mono', monospace;"
     " font-size: 9px;"
     " selection-background-color: #44475a;"
     " color: #e5e7eb;"

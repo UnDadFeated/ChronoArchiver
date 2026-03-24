@@ -28,8 +28,8 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QStackedWidget, QFrame, QMessageBox, QProgressBar,
     QDialog, QTextEdit, QDialogButtonBox,
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QIcon, QFontDatabase
 
 from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
@@ -39,10 +39,14 @@ from core.updater import ApplicationUpdater
 from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP
 from core.logger import setup_logger
 
+# Font stack: Inter if bundled, else Windows-native for readability
+_FONT_SANS = "'Inter', 'Segoe UI', 'Lucida Grande', sans-serif" if platform.system() == "Windows" else "'Inter', 'Ubuntu', sans-serif"
+_FONT_MONO = "'JetBrains Mono', 'Consolas', 'Cascadia Code', monospace" if platform.system() == "Windows" else "'JetBrains Mono', 'DejaVu Sans Mono', monospace"
+
 # Global Stylesheet (Mass AV1 Encoder QSS)
-QSS = """
-QMainWindow { background-color: #0c0c0c; }
-QWidget { color: #e5e7eb; font-family: 'Inter', sans-serif; }
+QSS = f"""
+QMainWindow {{ background-color: #0c0c0c; }}
+QWidget {{ color: #e5e7eb; font-family: {_FONT_SANS}; }}
 
 QGroupBox {
     border: 1px solid #1a1a1a;
@@ -114,13 +118,13 @@ QProgressBar {
 QProgressBar::chunk { background-color: #3b82f6; width: 1px; }
 QProgressBar#masterBar::chunk { background-color: #10b981; }
 
-QListWidget, QTextEdit {
+QListWidget, QTextEdit {{
     background-color: #080808;
     border: 1px solid #141414;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: {_FONT_MONO};
     font-size: 9px;
     color: #e5e7eb;
-}
+}}
 
 QScrollBar:vertical {
     border: none;
@@ -149,6 +153,117 @@ QPushButton#navBtn[active="true"] {
     border-left: 2px solid #3b82f6;
 }
 """
+
+
+def _load_bundled_fonts():
+    """Register bundled Inter font for consistent rendering on all platforms."""
+    _base = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+    for name in ("Inter-Regular.ttf",):
+        path = os.path.join(_base, name)
+        if os.path.isfile(path):
+            QFontDatabase.addApplicationFont(path)
+
+
+class PreReqDialog(QDialog):
+    """Popup to download prerequisites (FFmpeg). User clicks Download to start."""
+    download_complete = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Prerequisites")
+        self.setModal(False)
+        self.setFixedSize(420, 200)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(12, 12, 12, 12)
+        self._lbl_intro = QLabel("Some components need to be downloaded before encoding/organizing.")
+        self._lbl_intro.setStyleSheet("font-size: 10px; color: #9ca3af;")
+        self._lbl_intro.setWordWrap(True)
+        v.addWidget(self._lbl_intro)
+        h_ffmpeg = QHBoxLayout()
+        self._lbl_ffmpeg = QLabel("FFmpeg:")
+        self._lbl_ffmpeg.setStyleSheet("font-size: 10px; font-weight: 600; color: #e5e7eb; min-width: 70px;")
+        h_ffmpeg.addWidget(self._lbl_ffmpeg)
+        self._lbl_ffmpeg_status = QLabel("Not installed")
+        self._lbl_ffmpeg_status.setStyleSheet("font-size: 10px; color: #ef4444;")
+        h_ffmpeg.addWidget(self._lbl_ffmpeg_status, 1)
+        self._btn_download = QPushButton("Download")
+        self._btn_download.setStyleSheet("font-size: 9px; font-weight: 700; padding: 4px 12px;")
+        self._btn_download.clicked.connect(self._on_download)
+        h_ffmpeg.addWidget(self._btn_download)
+        v.addLayout(h_ffmpeg)
+        self._lbl_phase = QLabel("")
+        self._lbl_phase.setStyleSheet("font-size: 10px; font-weight: 600; color: #10b981;")
+        v.addWidget(self._lbl_phase)
+        self._lbl_detail = QLabel("")
+        self._lbl_detail.setStyleSheet("font-size: 9px; color: #6b7280;")
+        v.addWidget(self._lbl_detail)
+        self._bar = QProgressBar()
+        self._bar.setRange(0, 100)
+        self._bar.setValue(0)
+        self._bar.setFixedHeight(14)
+        self._bar.setFormat("%p%")
+        self._bar.hide()
+        v.addWidget(self._bar)
+        v.addStretch()
+        self.setStyleSheet("QDialog { background: #0d0d0d; }")
+        self._downloading = False
+
+    def _on_download(self):
+        if self._downloading:
+            return
+        self._downloading = True
+        self._btn_download.setEnabled(False)
+        self._lbl_phase.setText("Preparing...")
+        self._lbl_phase.show()
+        self._lbl_detail.show()
+        self._bar.show()
+        self._bar.setValue(0)
+        ffmpeg_queue = queue.Queue()
+
+        def _on_progress(phase: str, pct: int, detail: str):
+            try:
+                ffmpeg_queue.put_nowait((phase, pct, detail))
+            except queue.Full:
+                pass
+
+        def _poll():
+            try:
+                while True:
+                    phase, pct, detail = ffmpeg_queue.get_nowait()
+                    self._lbl_phase.setText(phase.replace("downloading", "Downloading").replace("extracting", "Extracting"))
+                    self._bar.setValue(min(100, pct))
+                    self._bar.setFormat("%p%")
+                    self._lbl_detail.setText(detail[:120] if detail else "")
+                    if phase == "done":
+                        timer.stop()
+                        self._btn_download.setEnabled(True)
+                        self._btn_download.hide()
+                        self._lbl_ffmpeg_status.setText("Ready")
+                        self._lbl_ffmpeg_status.setStyleSheet("font-size: 10px; color: #10b981;")
+                        self._lbl_phase.hide()
+                        self._lbl_detail.hide()
+                        self._bar.hide()
+                        self.download_complete.emit()
+                        return
+            except queue.Empty:
+                pass
+
+        def _worker():
+            ok = ensure_ffmpeg_in_venv_with_progress(_on_progress)
+            if not ok:
+                self._lbl_ffmpeg_status.setText("Failed")
+                self._lbl_phase.setText("Install failed. Check debug log.")
+                self._btn_download.setEnabled(True)
+            if not self._downloading:
+                return
+            _on_progress("done", 100, "")
+
+        timer = QTimer(self)
+        timer.timeout.connect(_poll)
+        timer.start(80)
+        threading.Thread(target=_worker, daemon=True).start()
+
 
 class ChronoArchiverApp(QMainWindow):
     def __init__(self):
@@ -380,59 +495,15 @@ class ChronoArchiverApp(QMainWindow):
                 step2()
                 return
             if pip.exists() or frozen:
-                _install_ffmpeg_async(step2)
+                # Don't auto-download — show popup, user clicks Download when ready. Boot fast.
+                step2()
+                self._prereq_dlg = PreReqDialog(self)
+                self._prereq_dlg.download_complete.connect(lambda: (add_ffmpeg_to_path(), self._refresh_footer()))
+                self._prereq_dlg.show()
                 return
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
             debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'} (no venv)")
             step2()
-
-        def _install_ffmpeg_async(on_done):
-            self.lbl_status.setText("INSTALLING FFMPEG…")
-            self._bar_ffmpeg.setValue(0)
-            self._bar_ffmpeg.show()
-            self._lbl_ffmpeg_speed.setText("")
-            self._lbl_ffmpeg_speed.show()
-            self._ffmpeg_done_handled = False
-            ffmpeg_queue = queue.Queue()
-
-            def _on_progress(phase: str, pct: int, detail: str):
-                try:
-                    ffmpeg_queue.put_nowait((phase, pct, detail))
-                except queue.Full:
-                    pass
-
-            def _poll_ffmpeg():
-                try:
-                    while True:
-                        phase, pct, detail = ffmpeg_queue.get_nowait()
-                        self._bar_ffmpeg.setValue(min(100, pct))
-                        self._lbl_ffmpeg_speed.setText(detail if detail else "")
-                        if phase == "done":
-                            self._ffmpeg_poll_timer.stop()
-                            self._ffmpeg_poll_timer = None
-                            if not self._ffmpeg_done_handled:
-                                self._ffmpeg_done_handled = True
-                                self._bar_ffmpeg.setValue(100)
-                                self._bar_ffmpeg.hide()
-                                self._lbl_ffmpeg_speed.hide()
-                                add_ffmpeg_to_path()
-                                self._refresh_footer()
-                                on_done()
-                            return
-                except queue.Empty:
-                    pass
-
-            def _worker():
-                ok = ensure_ffmpeg_in_venv_with_progress(_on_progress)
-                if not ok:
-                    debug(UTILITY_APP, "Pre-reqs: FFmpeg install failed")
-                if not self._ffmpeg_done_handled:
-                    _on_progress("done", 100, "")
-
-            self._ffmpeg_poll_timer = QTimer(self)
-            self._ffmpeg_poll_timer.timeout.connect(_poll_ffmpeg)
-            self._ffmpeg_poll_timer.start(80)
-            threading.Thread(target=_worker, daemon=True).start()
 
         step1()
 
@@ -647,8 +718,15 @@ class ChronoArchiverApp(QMainWindow):
         QApplication.instance().quit()
 
 if __name__ == "__main__":
+    from core.single_instance import ensure_single_instance, release_single_instance
+    if not ensure_single_instance():
+        app = QApplication(sys.argv)
+        QMessageBox.warning(None, "ChronoArchiver", "Another instance is already running.")
+        sys.exit(1)
     app = QApplication(sys.argv)
     app.setApplicationName("ChronoArchiver")
+    app.aboutToQuit.connect(release_single_instance)
+    _load_bundled_fonts()
     _icon = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
     if os.path.isfile(_icon):
         app.setWindowIcon(QIcon(_icon))

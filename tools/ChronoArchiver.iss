@@ -3,7 +3,7 @@
 ; Requires: dist/ChronoArchiver/ folder from PyInstaller
 
 #define MyAppName "ChronoArchiver"
-#define MyAppVersion "3.5.2"
+#define MyAppVersion "3.5.4"
 #define MyAppPublisher "UnDadFeated"
 #define MyAppURL "https://github.com/UnDadFeated/ChronoArchiver"
 #define MyAppExeName "ChronoArchiver.exe"
