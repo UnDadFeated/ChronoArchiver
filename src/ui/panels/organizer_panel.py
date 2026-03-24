@@ -10,13 +10,15 @@ import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox,
-    QProgressBar, QFileDialog, QListWidget, QSizePolicy,
+    QProgressBar, QFileDialog, QListWidget, QListWidgetItem, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
+from PySide6.QtGui import QColor
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
+from ui.console_style import log_color_for_message
 from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
 
@@ -390,7 +392,9 @@ class MediaOrganizerPanel(QWidget):
     def _add_log(self, msg):
         sb = self._log_list.verticalScrollBar()
         at_bot = sb.value() >= sb.maximum() - 4
-        self._log_list.addItem(msg)
+        item = QListWidgetItem(msg)
+        item.setForeground(QColor(log_color_for_message(msg)))
+        self._log_list.addItem(item)
         if at_bot:
             self._log_list.scrollToBottom()
         if self._log_list.count() > 1000:

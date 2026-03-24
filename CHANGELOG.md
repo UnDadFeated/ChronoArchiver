@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.24] - 2026-03-24
+### Fixed
+- **AUR updater**: App now restarts after update. Use `setsid` + `disown` for robust detach; increase kill delay to 2.5s so app can connect to display before terminal closes.
+
+### Changed
+- **Console (all panels)**: Bright white base text (#e5e7eb); semantic coloring: errors red, warnings amber, success/done green, action tags ([MOVE], [COPY]) green, skip/duplicate slate, scanning/starting blue. Shared `console_style.py` helper.
+
 ## [3.3.23] - 2026-03-24
 ### Changed
 - **Code audit**: Ruff + Bandit. Fixed unused imports/vars; MD5 usedforsecurity=False for dedup; pyproject.toml ruff config; nosec for updater chmod/urlopen.

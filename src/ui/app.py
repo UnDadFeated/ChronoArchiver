@@ -118,7 +118,7 @@ QListWidget {
     border: 1px solid #141414;
     font-family: 'JetBrains Mono', monospace;
     font-size: 9px;
-    color: #6b7280;
+    color: #e5e7eb;
 }
 
 QScrollBar:vertical {

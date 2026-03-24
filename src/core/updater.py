@@ -430,9 +430,10 @@ else:
         script_body = f"""#!/bin/bash
 sleep 2
 if {update_cmd}; then
-  nohup {launch_str} </dev/null >/dev/null 2>&1 &
+  setsid nohup {launch_str} </dev/null >/dev/null 2>&1 &
+  disown -a 2>/dev/null || true
   parent_pid=$PPID
-  nohup bash -c "sleep 0.5; kill $parent_pid 2>/dev/null" </dev/null &>/dev/null &
+  nohup bash -c "sleep 2.5; kill $parent_pid 2>/dev/null" </dev/null &>/dev/null &
   exit 0
 else
   echo "Update failed. Press Enter to close."
