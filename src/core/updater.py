@@ -387,22 +387,22 @@ else:
 
     def _spawn_aur_updater(self, helper: str | None, term: str | None, launch_cmd: list):
         """Spawn process that runs AUR update then restarts app."""
+        try:
+            from core.debug_logger import debug, UTILITY_APP
+            debug(UTILITY_APP, f"AUR updater: spawning terminal={term or 'none'}, helper={helper or 'pkexec pacman'}")
+        except Exception:
+            pass
         if helper:
             update_cmd = f"{helper} -Sy chronoarchiver"
         else:
             update_cmd = "pkexec pacman -Sy chronoarchiver"
         launch_str = " ".join(repr(c) for c in launch_cmd)
-        close_term = "1" if term else "0"
         script_body = f"""#!/bin/bash
-CLOSE_TERMINAL={close_term}
 sleep 2
 if {update_cmd}; then
   nohup {launch_str} </dev/null >/dev/null 2>&1 &
-  if [ "$CLOSE_TERMINAL" = "1" ]; then
-    sleep 0.5
-    term_pid=$(ps -o ppid= -p $PPID 2>/dev/null | tr -d ' ')
-    [ -n "$term_pid" ] && kill "$term_pid" 2>/dev/null
-  fi
+  echo "Update complete. Close this window or press Enter."
+  read -r
   exit 0
 else
   echo "Update failed. Press Enter to close."

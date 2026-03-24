@@ -93,9 +93,13 @@ class MediaOrganizerPanel(QWidget):
         h_tgt.addWidget(self._btn_browse_target)
         v_paths.addLayout(h_tgt)
 
-        # Photos/Videos row — below target, right aligned
+        # Row 3: Date hint (was row 4)
+        v_paths.addWidget(QLabel("Date from EXIF/ffprobe. Blank target = in-place.", styleSheet=_shint))
+
+        # Row 4: Content to organize + Photos/Videos (was row 3)
         h_media = QHBoxLayout()
-        h_media.addStretch(1)
+        lbl_media = QLabel("Content to organize:", styleSheet=_shint)
+        h_media.addWidget(lbl_media)
         self._chk_photos = QCheckBox("Photos")
         self._chk_photos.setChecked(True)
         self._chk_videos = QCheckBox("Videos")
@@ -103,8 +107,8 @@ class MediaOrganizerPanel(QWidget):
         for cb in [self._chk_photos, self._chk_videos]:
             cb.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
             h_media.addWidget(cb)
+        h_media.addStretch(1)
         v_paths.addLayout(h_media)
-        v_paths.addWidget(QLabel("Date from EXIF/ffprobe. Blank target = in-place.", styleSheet=_shint))
         h_strip.addWidget(grp_paths, 1)
 
         # 2. Execution Mode — shrunk horizontally

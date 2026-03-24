@@ -268,7 +268,7 @@ class ChronoArchiverApp(QMainWindow):
 
         self.btn_debug = QPushButton("DEBUG")
         self.btn_debug.setStyleSheet("font-size: 7px; color: #6b7280; border:none; background:transparent;")
-        self.btn_debug.setToolTip("Open debug log folder")
+        self.btn_debug.setToolTip(f"Open debug log folder\n{os.path.dirname(get_log_path())}")
         self.btn_debug.clicked.connect(self._open_debug_folder)
         self.status_layout.addWidget(self.btn_debug)
 
@@ -622,7 +622,9 @@ class ChronoArchiverApp(QMainWindow):
 
         self._update_pulse_timer.stop()
         self.btn_update.setText("UPDATING...")
+        debug(UTILITY_APP, f"Update initiated: closing app for {method_desc} to v{latest}")
         self.updater.perform_update_and_restart(on_error=on_error)
+        debug(UTILITY_APP, "Update spawn done, quitting app")
         QApplication.instance().quit()
 
 if __name__ == "__main__":

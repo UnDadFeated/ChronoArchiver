@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.16] - 2026-03-23
+### Changed
+- **Media Organizer**: Swapped rows — "Date from EXIF/ffprobe" hint now above; "Content to organize:" label + Photos/Videos checkboxes below.
+
+## [3.3.15] - 2026-03-23
+### Fixed
+- **AUR updater**: Removed terminal kill after update — was potentially causing system instability on CachyOS. Terminal now stays open with "Update complete. Press Enter." On failure, still shows "Update failed. Press Enter."
+- **Debug logging**: Update flow (initiated, spawn, quit) logged to debug file for post-crash diagnosis.
+
 ## [3.3.14] - 2026-03-23
 ### Changed
 - **Media Organizer**: Execution Mode box shrunk horizontally (max 220px). Paths box stretches to fill; Source and Target inputs matched width with aligned Browse buttons. Photos/Videos moved below Target row, right aligned.
