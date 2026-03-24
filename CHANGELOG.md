@@ -1,6 +1,11 @@
 # Changelog
 
 ## [3.7.11] - 2026-03-24
+### Added
+- **Windows / macOS — FFmpeg during setup**: After `pip` completes, the installer downloads **static-ffmpeg** binaries (same mechanism as the app) so first launch does not open the FFmpeg pre-req dialog. **Quick-launch** (when source already matches the setup version) also ensures FFmpeg before starting the app.
+- **Component manifest**: `docs/components_manifest.json` on `main` defines `ffmpeg_revision`; the app and installer compare it to `Settings/ffmpeg_revision.txt` and only re-fetch FFmpeg when the published revision increases (no redundant re-download on every app update). Offline installs seed revision `1` when FFmpeg is already present.
+- **Updates**: After a successful GitHub connectivity check from the in-app updater, setup-type installs refresh bundled FFmpeg when the manifest revision changes.
+
 ### Changed
 - **Windows / macOS setup**: Optional `ChronoArchiver_installer.log` **appends** each run (session separator + header) instead of replacing the file, so troubleshooting history is preserved.
 - **Windows / macOS setup**: Welcome screen shows the **hourglass logo** (PNG, ~half the README inline width, proportional) above the title; setup window uses bundled **icon.ico** / **icon.png** for the taskbar/dock when available.

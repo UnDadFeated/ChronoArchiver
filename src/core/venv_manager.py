@@ -3,6 +3,7 @@ venv_manager.py — App-private venv for ChronoArchiver (no sudo).
 Ensures all Python deps run from ~/.local/share/ChronoArchiver/venv.
 """
 
+import json
 import os
 import platform
 import re
@@ -23,6 +24,8 @@ try:
     import requests
 except ImportError:
     requests = None
+
+import urllib.request
 
 try:
     from .debug_logger import debug, UTILITY_OPENCV_INSTALL
@@ -214,7 +217,7 @@ def ensure_ffmpeg_in_venv() -> bool:
     Ensure FFmpeg/ffprobe binaries are available via static-ffmpeg. Downloads on first run.
     Call add_ffmpeg_to_path() after this returns True.
     """
-    return ensure_ffmpeg_in_venv_with_progress(None)
+    return ensure_bundled_ffmpeg(None)
 
 
 def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
@@ -335,6 +338,129 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
                 lock.release()
             except Exception:
                 pass
+
+
+COMPONENTS_MANIFEST_URL = (
+    "https://raw.githubusercontent.com/UnDadFeated/ChronoArchiver/main/docs/components_manifest.json"
+)
+
+
+def get_settings_dir() -> Path:
+    """Install root Settings/ (installer + dev with CHRONOARCHIVER_INSTALL_ROOT)."""
+    p = _data_dir() / "Settings"
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return p
+
+
+def fetch_components_manifest() -> dict | None:
+    """Remote JSON from main branch; None on failure (offline)."""
+    try:
+        req = urllib.request.Request(
+            COMPONENTS_MANIFEST_URL,
+            headers={"User-Agent": "ChronoArchiver-Components/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def get_local_ffmpeg_revision() -> int:
+    p = get_settings_dir() / "ffmpeg_revision.txt"
+    try:
+        if not p.is_file():
+            return 0
+        line = (p.read_text(encoding="utf-8").strip() or "0").split()[0]
+        return int(line)
+    except (ValueError, OSError):
+        return 0
+
+
+def set_local_ffmpeg_revision(rev: int) -> None:
+    try:
+        p = get_settings_dir() / "ffmpeg_revision.txt"
+        p.write_text(str(int(rev)) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _remove_ffmpeg_installed_crumb() -> None:
+    try:
+        from static_ffmpeg.run import get_platform_dir
+        exe_dir = get_platform_dir()
+        crumb = os.path.join(exe_dir, "installed.crumb")
+        if os.path.isfile(crumb):
+            os.remove(crumb)
+        z = exe_dir + ".zip"
+        if os.path.isfile(z):
+            os.remove(z)
+    except Exception:
+        pass
+
+
+def apply_ffmpeg_manifest_policy() -> None:
+    """
+    If manifest ffmpeg_revision increased, remove installed.crumb so binaries refetch.
+    If FFmpeg already present but no revision file (legacy), seed revision without re-download.
+    """
+    if _is_frozen():
+        return
+    m = fetch_components_manifest()
+    if not m:
+        # Offline: pin revision so we do not treat legacy installs as "behind" once manifest is reachable.
+        if get_local_ffmpeg_revision() == 0 and check_ffmpeg_in_venv():
+            set_local_ffmpeg_revision(1)
+        return
+    try:
+        remote = int(m.get("ffmpeg_revision", 0))
+    except (TypeError, ValueError):
+        return
+    local = get_local_ffmpeg_revision()
+    if local == 0 and check_ffmpeg_in_venv():
+        set_local_ffmpeg_revision(remote)
+        return
+    if remote > local:
+        _remove_ffmpeg_installed_crumb()
+
+
+def _sync_ffmpeg_revision_from_manifest() -> None:
+    m = fetch_components_manifest()
+    if not m:
+        return
+    try:
+        remote = int(m.get("ffmpeg_revision", 0))
+    except (TypeError, ValueError):
+        return
+    if remote > 0:
+        set_local_ffmpeg_revision(remote)
+
+
+def ensure_bundled_ffmpeg(progress_callback=None) -> bool:
+    """
+    Apply online component manifest, ensure static-ffmpeg binaries, persist revision, add to PATH.
+    Prefer this over ensure_ffmpeg_in_venv_with_progress alone (setup + app + Pre-req).
+    """
+    if _is_frozen():
+        try:
+            add_ffmpeg_to_path()
+        except Exception:
+            pass
+        return check_ffmpeg_in_venv()
+    apply_ffmpeg_manifest_policy()
+    if check_ffmpeg_in_venv():
+        _sync_ffmpeg_revision_from_manifest()
+        add_ffmpeg_to_path()
+        return True
+    ok = ensure_ffmpeg_in_venv_with_progress(progress_callback)
+    if not ok:
+        return False
+    _sync_ffmpeg_revision_from_manifest()
+    add_ffmpeg_to_path()
+    return True
 
 
 def add_ffmpeg_to_path() -> bool:

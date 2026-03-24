@@ -19,7 +19,7 @@ import psutil
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.venv_manager import (
     add_venv_to_path, add_ffmpeg_to_path,
-    check_opencv_in_venv, check_ffmpeg_in_venv, ensure_ffmpeg_in_venv_with_progress,
+    check_opencv_in_venv, check_ffmpeg_in_venv, ensure_bundled_ffmpeg,
     get_pip_exe, _is_frozen,
 )
 add_venv_to_path()
@@ -277,7 +277,7 @@ class PreReqDialog(QDialog):
                 pass
 
         def _worker():
-            ok = ensure_ffmpeg_in_venv_with_progress(_on_progress)
+            ok = ensure_bundled_ffmpeg(_on_progress)
             if not ok:
                 self._lbl_ffmpeg_status.setText("Failed")
                 self._lbl_phase.setText("Install failed. Check debug log.")
@@ -419,6 +419,7 @@ class ChronoArchiverApp(QMainWindow):
         self.updater = ApplicationUpdater()
         self._update_result_queue = queue.Queue()
         self._update_poll_timer = None
+        self._component_sync_started = False
         self._metrics_gpu_cache = "  0%"
         self._metrics_gpu_counter = 0
 
@@ -625,16 +626,13 @@ class ChronoArchiverApp(QMainWindow):
             self.lbl_status.setText("CHECKING FFMPEG…")
             QTimer.singleShot(200, _do_ffmpeg_check)
 
-        def _do_ffmpeg_check():
-            pip = get_pip_exe()
-            frozen = _is_frozen()
-            if (pip.exists() or frozen) and check_ffmpeg_in_venv():
+        def _finish_ffmpeg(ok: bool):
+            if ok and check_ffmpeg_in_venv():
                 add_ffmpeg_to_path()
-                debug(UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)" if not frozen else "Pre-reqs: FFmpeg=ok (bundled)")
+                debug(UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)" if not _is_frozen() else "Pre-reqs: FFmpeg=ok (bundled)")
                 step2()
                 return
-            if pip.exists() or frozen:
-                # Don't auto-download — show popup, user clicks Download when ready. Boot fast.
+            if get_pip_exe().exists() or _is_frozen():
                 step2()
                 self._prereq_dlg = PreReqDialog(self)
                 self._prereq_dlg.download_complete.connect(lambda: (add_ffmpeg_to_path(), self._refresh_footer()))
@@ -643,6 +641,51 @@ class ChronoArchiverApp(QMainWindow):
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
             debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'} (no venv)")
             step2()
+
+        def _do_ffmpeg_check():
+            pip = get_pip_exe()
+            frozen = _is_frozen()
+            if not (pip.exists() or frozen):
+                ffmpeg_ok = bool(shutil.which("ffmpeg"))
+                debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'} (no venv)")
+                step2()
+                return
+            ff_q = queue.Queue()
+
+            def _footer_cb(phase: str, pct: int, detail: str):
+                try:
+                    ff_q.put_nowait(("progress", phase, pct, detail))
+                except queue.Full:
+                    pass
+
+            def _poll_ff():
+                try:
+                    while True:
+                        item = ff_q.get_nowait()
+                        if item[0] == "done":
+                            ok = item[1]
+                            _ff_timer.stop()
+                            _finish_ffmpeg(ok)
+                            return
+                        _, phase, pct, detail = item
+                        self.lbl_status.setText(f"FFMPEG {phase.upper()} {pct}% {detail[:40]}".strip())
+                except queue.Empty:
+                    pass
+
+            def _worker():
+                try:
+                    ok = bool(ensure_bundled_ffmpeg(_footer_cb))
+                except Exception:
+                    ok = False
+                try:
+                    ff_q.put_nowait(("done", ok))
+                except queue.Full:
+                    pass
+
+            _ff_timer = QTimer(self)
+            _ff_timer.timeout.connect(_poll_ff)
+            _ff_timer.start(80)
+            threading.Thread(target=_worker, daemon=True).start()
 
         step1()
 
@@ -796,6 +839,26 @@ class ChronoArchiverApp(QMainWindow):
             self._update_pulse_timer.stop()
             self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
             self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
+        if latest is not None:
+            self._maybe_sync_bundled_components_after_online_check()
+
+    def _maybe_sync_bundled_components_after_online_check(self):
+        """After GitHub is reachable, refresh bundled FFmpeg if docs/components_manifest.json revision increased."""
+        if self._component_sync_started:
+            return
+        if not os.environ.get("CHRONOARCHIVER_INSTALL_ROOT"):
+            return
+        if platform.system() not in ("Windows", "Darwin"):
+            return
+        self._component_sync_started = True
+
+        def _bg():
+            try:
+                ensure_bundled_ffmpeg(None)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg, daemon=True).start()
 
     def _pulse_update_button(self):
         """Flash green text when update available (like guide pulse)."""

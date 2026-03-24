@@ -1,0 +1,4 @@
+{
+  "ffmpeg_revision": 1,
+  "_comment": "Increment when static-ffmpeg upstream bundles change; installer and app refetch only when remote revision is greater than the value stored under Settings/ffmpeg_revision.txt."
+}

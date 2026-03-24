@@ -591,6 +591,82 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
     return True, ""
 
 
+def _bootstrap_ffmpeg(app_root: Path, py_exe: Path, progress_cb) -> tuple[bool, str]:
+    """Download FFmpeg via static-ffmpeg into the venv (after pip). Full setup + quick-launch."""
+    if not py_exe.is_file():
+        return False, "venv Python not found"
+    _install_log(f"ffmpeg bootstrap: app_root={app_root}")
+    env = os.environ.copy()
+    env["CHRONOARCHIVER_INSTALL_ROOT"] = str(app_root)
+    env["PYTHONPATH"] = str(app_root / "src")
+    worker = """import os, sys
+root = os.environ["CHRONOARCHIVER_INSTALL_ROOT"]
+sys.path.insert(0, os.path.join(root, "src"))
+os.chdir(root)
+from core.venv_manager import ensure_bundled_ffmpeg
+
+def cb(phase, pct, detail):
+    d = (detail or "").replace(chr(10), " ")
+    sys.stdout.write(("CA_PROGRESS:%s:%s:%s" + chr(10)) % (phase, pct, d))
+    sys.stdout.flush()
+raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
+"""
+    path = None
+    proc = None
+    try:
+        fd, path = tempfile.mkstemp(suffix="_ffboot.py", text=True)
+        os.close(fd)
+        Path(path).write_text(worker, encoding="utf-8")
+        proc = subprocess.Popen(
+            [str(py_exe), "-u", path],
+            env=env,
+            cwd=str(app_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        if proc.stdout:
+            for line in iter(proc.stdout.readline, ""):
+                line = (line or "").rstrip("\n")
+                if line.startswith("CA_PROGRESS:"):
+                    rest = line[len("CA_PROGRESS:") :]
+                    parts = rest.split(":", 2)
+                    if len(parts) >= 2:
+                        phase, pct_s = parts[0], parts[1]
+                        detail = parts[2] if len(parts) > 2 else ""
+                        try:
+                            pct = float(pct_s)
+                        except ValueError:
+                            pct = 0.0
+                        progress_cb("FFmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
+                if line and not line.startswith("CA_PROGRESS:"):
+                    _install_log(line[:240])
+        proc.wait(timeout=900)
+        if proc.returncode != 0:
+            _install_log(f"ffmpeg bootstrap: exit {proc.returncode}")
+            return False, "FFmpeg download failed (see log)."
+        progress_cb("FFmpeg", 100.0, 0.0, 0.0, "OK")
+        return True, ""
+    except subprocess.TimeoutExpired:
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        _install_log("ffmpeg bootstrap: timed out")
+        return False, "FFmpeg bootstrap timed out."
+    except Exception as e:
+        _install_log(f"ffmpeg bootstrap: EXCEPTION {type(e).__name__}: {e!r}")
+        return False, str(e)
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
 def _reg_sz_quoted_path(p: str) -> str:
     """REG_SZ value for paths that may contain spaces (e.g. Start Menu, user name)."""
     p = p.strip()
@@ -985,7 +1061,15 @@ def _do_setup_gui(download_url: str) -> bool:
     lbl_pct_overall.pack(pady=2)
     checklist = [
         tk.Label(root, text=f"  [ ] {name}", fg="#6b7280", bg="#0d0d0d", anchor="w")
-        for name in ("Download source", "Extract files", "Create environment", "Install dependencies", "Verify install", "Create shortcuts")
+        for name in (
+            "Download source",
+            "Extract files",
+            "Create environment",
+            "Install dependencies",
+            "FFmpeg tools",
+            "Verify install",
+            "Create shortcuts",
+        )
     ]
     for lbl in checklist:
         lbl.pack(fill="x", padx=26)
@@ -996,12 +1080,13 @@ def _do_setup_gui(download_url: str) -> bool:
 
     stage = {"index": 0, "base": 0.0, "span": 100.0}
     stage_plan = [
-        (0, 35.0),   # Download
-        (35.0, 5.0), # Extract
-        (40.0, 10.0),# Create environment
-        (50.0, 40.0),# Install dependencies
-        (90.0, 5.0), # Verify
-        (95.0, 5.0), # Shortcuts/finalize
+        (0, 35.0),    # Download
+        (35.0, 5.0),  # Extract
+        (40.0, 10.0), # Create environment
+        (50.0, 27.0), # Install dependencies
+        (77.0, 8.0),  # FFmpeg
+        (85.0, 10.0), # Verify
+        (95.0, 5.0),  # Shortcuts/finalize
     ]
 
     def _set_stage(idx: int, title: str):
@@ -1084,9 +1169,22 @@ def _do_setup_gui(download_url: str) -> bool:
                 done[0] = True
                 return
             _install_log("task: bootstrap OK")
-            _set_stage(4, "Verifying installation…")
+            win = platform.system() == "Windows"
+            py_exe_setup = app_dir / "venv" / "Scripts" / "python.exe" if win else app_dir / "venv" / "bin" / "python"
+            _set_stage(4, "FFmpeg tools…")
+            progress_cb("FFmpeg", 0, 0, 0, "")
+            ok_ff, err_ff = _bootstrap_ffmpeg(app_dir, py_exe_setup, progress_cb)
+            if not ok_ff:
+                _install_log(f"task: FFmpeg FAILED {err_ff!r}")
+                _install_log_footer(False, "ffmpeg")
+                result[0] = False
+                result_error[0] = err_ff or "FFmpeg download failed."
+                done[0] = True
+                return
+            _install_log("task: FFmpeg OK")
+            _set_stage(5, "Verifying installation…")
             progress_cb("Verifying…", 100, 0, 0)
-            _set_stage(5, "Creating shortcuts…")
+            _set_stage(6, "Creating shortcuts…")
             progress_cb("Creating shortcuts…", 0, 0, 0)
             if platform.system() == "Windows":
                 _create_windows_shortcuts(app_dir)
@@ -1152,6 +1250,10 @@ def main():
                 _create_windows_shortcuts(app_dir)
             except Exception:
                 pass
+        _pyq = app_dir / "venv" / "Scripts" / "python.exe" if platform.system() == "Windows" else app_dir / "venv" / "bin" / "python"
+        if _pyq.is_file():
+            _ok_ff, _err_ff = _bootstrap_ffmpeg(app_dir, _pyq, lambda *a, **k: None)
+            _install_log(f"main: quick-launch ffmpeg ok={_ok_ff} err={_err_ff!r}")
         _run_app(app_dir)
         return
 
