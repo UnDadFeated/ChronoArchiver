@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.1] - 2026-03-24
+### Fixed
+- **PyInstaller / Windows & macOS**: Frozen app failed on launch (`runpy` could not load `__main__` from bundled `app.py`). Bootstrap now resolves `src/ui/app.py` under `sys._MEIPASS` and loads the GUI with `importlib` so the installed `.exe` / `.app` starts correctly.
+
+### Changed
+- **UI**: Browse buttons unified to 48×22 px (AI Scanner reference) on Media Organizer and Mass AV1 Encoder. Encoder directory rows use full horizontal stretch (no max-width cap), 6 px spacing, line edits aligned with Organizer styling.
+- **Console**: Shared `PANEL_CONSOLE_TEXTEDIT_STYLE` on all three internal apps for consistent monospace and colors with Organizer.
+
 ## [3.5.0] - 2026-03-24
 ### Added
 - **Professional installers**: Windows x64 (Inno Setup) and macOS (DMG) installers built via GitHub Actions on release tag push. User-selectable install path. Artifacts: `ChronoArchiver-3.5.0-win64.exe`, `ChronoArchiver-3.5.0-mac64.dmg` on Releases page.

@@ -1,5 +1,5 @@
 # Build Windows x64 and macOS installers on release tag push.
-# Creates GitHub Release with: ChronoArchiver-3.5.0-win64.exe, ChronoArchiver-3.5.0-mac64.dmg
+# Creates GitHub Release with: ChronoArchiver-<tag>-win64.exe, ChronoArchiver-<tag>-mac64.dmg
 
 name: Release Installers
 

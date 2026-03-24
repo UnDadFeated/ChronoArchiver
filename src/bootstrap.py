@@ -67,14 +67,36 @@ def _run_headless():
     return ensure_venv(progress_callback=progress, skip_opencv=True)
 
 
+def _run_frozen_app():
+    """Load app.py with importlib; runpy.run_path fails on frozen bundles (no __main__)."""
+    import importlib.util
+
+    base = Path(getattr(sys, "_MEIPASS", str(_SCRIPT_DIR)))
+    app_py = base / "src" / "ui" / "app.py"
+    if not app_py.is_file():
+        app_py = base / "ui" / "app.py"
+    if not app_py.is_file():
+        print(f"ChronoArchiver: missing app (looked under {base})", file=sys.stderr)
+        sys.exit(1)
+    os.chdir(str(base))
+    src_root = str(base / "src")
+    if os.path.isdir(src_root) and src_root not in sys.path:
+        sys.path.insert(0, src_root)
+    add_venv_to_path()
+    spec = importlib.util.spec_from_file_location("__main__", app_py)
+    if spec is None or spec.loader is None:
+        print("ChronoArchiver: cannot load app", file=sys.stderr)
+        sys.exit(1)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["__main__"] = mod
+    spec.loader.exec_module(mod)
+
+
 def main():
     get_venv_path()
     # When frozen (PyInstaller), run app directly without venv
     if _is_frozen():
-        add_venv_to_path()
-        os.chdir(str(_SCRIPT_DIR))
-        import runpy
-        runpy.run_path(str(_SCRIPT_DIR / "ui" / "app.py"), run_name="__main__")
+        _run_frozen_app()
         return
     py = get_python_exe()
     app_py = _SCRIPT_DIR / "ui" / "app.py"

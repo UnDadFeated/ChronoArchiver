@@ -32,7 +32,7 @@ import platformdirs
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.scanner import ScannerEngine, OPENCV_AVAILABLE
-from ui.console_style import message_to_html
+from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from core.model_manager import ModelManager
 from core.venv_manager import (
     get_pip_exe, ensure_venv,
@@ -217,7 +217,7 @@ class AIScannerPanel(QWidget):
         v_dir.setContentsMargins(6, 2, 6, 2)
         v_dir.setSpacing(0)
         h_src = QHBoxLayout()
-        h_src.setSpacing(4)
+        h_src.setSpacing(6)
         self._edit_path = QLineEdit()
         self._edit_path.setPlaceholderText("SELECT PHOTO LIBRARY...")
         self._edit_path.textChanged.connect(self._update_start_enabled)
@@ -226,8 +226,8 @@ class AIScannerPanel(QWidget):
             "background:#121212; border:1px solid #1a1a1a;")
         h_src.addWidget(self._edit_path, 1)
         self._btn_browse = QPushButton("Browse")
-        self._btn_browse.setFixedWidth(48)
-        self._btn_browse.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:22px;")
+        self._btn_browse.setFixedSize(48, 22)
+        self._btn_browse.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse.clicked.connect(self._browse)
         h_src.addWidget(self._btn_browse)
         v_dir.addLayout(h_src)
@@ -388,17 +388,18 @@ class AIScannerPanel(QWidget):
         h_res.addWidget(frm_preview, 1)
         v_res.addLayout(h_res)
         h_btns = QHBoxLayout()
+        h_btns.setSpacing(6)
         h_btns.addWidget(QLabel("Target:", styleSheet="font-size:8px; color:#888;"))
         self._edit_target = QLineEdit()
         self._edit_target.setPlaceholderText("Select target folder...")
         self._edit_target.setStyleSheet(
-            "color:#fff; font-size:10px; min-height:20px; "
+            "color:#fff; font-size:11px; font-weight:500; min-height:22px; "
             "background:#121212; border:1px solid #1a1a1a;")
         self._edit_target.textChanged.connect(self._update_move_start)
         h_btns.addWidget(self._edit_target, 1)
         self._btn_browse_target = QPushButton("Browse")
-        self._btn_browse_target.setFixedWidth(52)
-        self._btn_browse_target.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent; min-height:20px;")
+        self._btn_browse_target.setFixedSize(48, 22)
+        self._btn_browse_target.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_target.clicked.connect(self._browse_target)
         h_btns.addWidget(self._btn_browse_target)
         self._combo_action = QComboBox()
@@ -430,6 +431,8 @@ class AIScannerPanel(QWidget):
         v_log.setContentsMargins(6, 4, 6, 4)
         v_log.setSpacing(0)
         self._log_edit = QTextEdit()
+        self._log_edit.setObjectName("panelConsole")
+        self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
         self._log_edit.setMaximumHeight(100)
