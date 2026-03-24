@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.5.3] - 2026-03-24
+### Fixed
+- **Mass AV1 Encoder**: On FFmpeg return codes 183 or 218 (hw decode failure, input issues), retry once with software decode. Common when source/target on NAS. Log FFmpeg stderr on failure. Console hint when both paths on network.
+
 ## [3.5.2] - 2026-03-24
 ### Fixed
 - **Windows uninstaller**: Add `[UninstallDelete]` to remove entire install dir, including runtime-created `static_ffmpeg` files (win32.zip, bin/win32/).

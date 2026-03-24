@@ -800,6 +800,9 @@ class AV1EncoderPanel(QWidget):
         self._btn_pause.setEnabled(True)
 
         self._add_log(f"Starting encode — {self._total_count} files.")
+        # Hint when both paths appear to be on network (NAS) — can cause failures; retry with software decode helps
+        if any(x in src.lower() for x in ("/mnt/", "smb://", "//", "\\\\")) and any(x in dst.lower() for x in ("/mnt/", "smb://", "//", "\\\\")):
+            self._add_log("TIP: Source and target on network — if some files fail, try fewer concurrent jobs or use local copy.")
         debug(UTILITY_MASS_AV1_ENCODER, f"Encode start: {self._total_count} files, src={src}, dst={dst}")
         if self._log_cb:
             self._log_cb(f"AV1 Encoder: {self._total_count} files queued.")
