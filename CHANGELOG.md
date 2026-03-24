@@ -1,6 +1,9 @@
 # Changelog
 
 ## [3.8.1] - 2026-03-25
+### Fixed
+- **Windows/macOS setup — Setup output console**: **Autoscroll** now follows every new pip/FFmpeg line (`see(END)` + `update_idletasks()` after inserts; prior `yview()` “at bottom” check failed on empty/short content on Windows).
+
 ### Changed
 - Semver **3.8.1** (installers, PKGBUILD, PyPI metadata).
 - **Qt application identity**: `setOrganizationName` / `setApplicationName` use **`APP_AUTHOR`** and **`APP_NAME`** from `app_paths`.

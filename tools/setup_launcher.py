@@ -1162,15 +1162,13 @@ def _do_setup_gui(download_url: str) -> bool:
     console_q: queue.Queue = queue.Queue(maxsize=12000)
 
     def poll_console():
+        inserted = 0
         try:
-            y0, y1 = console_text.yview()
-            stick_bottom = y1 >= 0.999 or (y1 - y0) >= 0.999
             for _ in range(120):
                 ln = console_q.get_nowait()
                 ts = datetime.now().strftime("%H:%M:%S")
                 console_text.insert(tk.END, f"[{ts}] {ln}\n")
-            if stick_bottom:
-                console_text.see(tk.END)
+                inserted += 1
         except queue.Empty:
             pass
         try:
@@ -1179,6 +1177,11 @@ def _do_setup_gui(download_url: str) -> bool:
                 console_text.delete("1.0", f"{int(idx - 3000)}.0")
         except (tk.TclError, ValueError):
             pass
+        # Installer console: always follow new output (yview "at bottom" is unreliable on Windows when empty / short content).
+        if inserted:
+            console_text.mark_set(tk.INSERT, tk.END)
+            console_text.see(tk.END)
+            console_text.update_idletasks()
         root.after(45, poll_console)
 
     stage = {"index": 0, "base": 0.0, "span": 100.0}
