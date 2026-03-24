@@ -10,7 +10,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from core.venv_manager import get_venv_path, get_python_exe, ensure_venv, is_venv_runnable, add_venv_to_path
+from core.venv_manager import get_venv_path, get_python_exe, ensure_venv, is_venv_runnable, add_venv_to_path, _is_frozen
 
 
 def _run_with_ui():
@@ -69,6 +69,13 @@ def _run_headless():
 
 def main():
     get_venv_path()
+    # When frozen (PyInstaller), run app directly without venv
+    if _is_frozen():
+        add_venv_to_path()
+        os.chdir(str(_SCRIPT_DIR))
+        import runpy
+        runpy.run_path(str(_SCRIPT_DIR / "ui" / "app.py"), run_name="__main__")
+        return
     py = get_python_exe()
     app_py = _SCRIPT_DIR / "ui" / "app.py"
     app_root = str(_SCRIPT_DIR)

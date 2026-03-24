@@ -31,6 +31,11 @@ except ImportError:
 
 APP_NAME = "ChronoArchiver"
 APP_AUTHOR = "UnDadFeated"
+
+
+def _is_frozen() -> bool:
+    """True when running as PyInstaller bundle (no venv)."""
+    return getattr(sys, "frozen", False)
 OPENCV_CUDA_API = "https://api.github.com/repos/cudawarped/opencv-python-cuda-wheels/releases/latest"
 OPENCV_STANDARD_APPROX_BYTES = 90 * 1024 * 1024  # ~90 MB
 # Fallback when API unavailable: cudawarped wheel ~500 MB
@@ -126,6 +131,8 @@ def _data_dir() -> Path:
 
 
 def get_venv_path() -> Path:
+    if _is_frozen():
+        return Path(os.devnull)  # No venv when frozen
     return _data_dir() / "venv"
 
 
@@ -150,11 +157,16 @@ def check_opencv_in_venv() -> bool:
     except ImportError:
         debug = lambda *a: None
         UTILITY_OPENCV_INSTALL = "OpenCV"
+    if _is_frozen():
+        try:
+            import cv2  # noqa: F401
+            return True
+        except ImportError:
+            return False
     py = get_python_exe()
     if not py.exists():
         debug(UTILITY_OPENCV_INSTALL, "check_opencv_in_venv: python exe not found")
         return False
-    # Ensure nvidia lib paths are in LD_LIBRARY_PATH for CUDA OpenCV wheel (libcufft, libcudnn)
     _add_nvidia_libs_to_ld_path()
     env = os.environ.copy()
     try:
@@ -169,6 +181,14 @@ def check_opencv_in_venv() -> bool:
 
 def check_ffmpeg_in_venv() -> bool:
     """True if venv has static-ffmpeg with binaries installed (installed.crumb exists). No download triggered."""
+    if _is_frozen():
+        try:
+            import os as _os
+            from static_ffmpeg.run import get_platform_dir
+            crumb = _os.path.join(get_platform_dir(), "installed.crumb")
+            return _os.path.isfile(crumb)
+        except Exception:
+            return False
     py = get_python_exe()
     if not py.exists():
         return False
@@ -327,6 +347,8 @@ def add_ffmpeg_to_path() -> bool:
 
 def is_venv_runnable() -> bool:
     """True if venv exists and can run the app (PySide6, PIL, requests). Does NOT require OpenCV."""
+    if _is_frozen():
+        return True
     py = get_python_exe()
     if not py.exists():
         return False
@@ -359,8 +381,10 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
     """
     Create venv and install packages. progress_callback(phase: str, detail: str).
     skip_opencv: if True, do not install opencv (caller will install separately).
-    Returns True on success.
+    Returns True on success. No-op when frozen.
     """
+    if _is_frozen():
+        return True
     data = _data_dir()
     venv = get_venv_path()
     data.mkdir(parents=True, exist_ok=True)
@@ -837,7 +861,10 @@ def _add_nvidia_libs_to_ld_path():
 
 
 def add_venv_to_path():
-    """Add venv site-packages to sys.path (call before importing app deps)."""
+    """Add venv site-packages to sys.path (call before importing app deps). No-op when frozen."""
+    if _is_frozen():
+        add_ffmpeg_to_path()
+        return
     venv = get_venv_path()
     lib = venv / ("Lib" if platform.system() == "Windows" else "lib")
     if not lib.exists():
