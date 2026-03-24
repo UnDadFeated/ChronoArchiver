@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+### Changed
+- **Windows / macOS setup**: Welcome screen hourglass logo scaled to **half** the previous display size (same aspect ratio).
+
 ## [3.7.11] - 2026-03-24
 ### Changed
 - **Windows / macOS setup**: Optional `ChronoArchiver_installer.log` **appends** each run (session separator + header) instead of replacing the file, so troubleshooting history is preserved.
