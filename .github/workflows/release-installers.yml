@@ -99,17 +99,14 @@ jobs:
         run: |
           cd dist && zip -r "ChronoArchiver-${{ steps.ver.outputs.VERSION }}-mac64.zip" ChronoArchiver.app && cd ..
 
-      - name: Build minimal setup launcher
+      - name: Build minimal setup launcher and zip
         env:
           CHRONOARCHIVER_VERSION: ${{ steps.ver.outputs.VERSION }}
         run: |
           pip install pyinstaller
           pyinstaller --noconfirm tools/chronoarchiver_setup.spec
-          ls -la dist/ChronoArchiver-Setup.app
-
-      - name: Create setup launcher zip
-        run: |
-          cd dist && ditto -c -k --sequesterRsrc --keepParent ChronoArchiver-Setup.app "ChronoArchiver-Setup-${{ steps.ver.outputs.VERSION }}-mac64.zip" && cd ..
+          ls -la dist/
+          cd dist && zip -r "ChronoArchiver-Setup-${{ steps.ver.outputs.VERSION }}-mac64.zip" ChronoArchiver-Setup.app && cd ..
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
