@@ -166,7 +166,7 @@ class AV1EncoderEngine:
         except Exception:
             return None
 
-    def encode_file(self, input_path: str, output_path: str, quality: int, preset: str, reencode_audio: bool, hw_accel: bool = False) -> tuple:
+    def encode_file(self, input_path: str, output_path: str, quality: int, preset: str, reencode_audio: bool, hw_accel: bool = False, _retry_software: bool = False) -> tuple:
         """Encodes a single file and emits progress."""
         duration = self._get_video_duration(input_path)
         hdr_info = self._detect_hdr(input_path)
@@ -299,8 +299,14 @@ class AV1EncoderEngine:
                 self._current_process.wait()
                 success = self._current_process.returncode == 0
             if not success:
+                rc = self._current_process.returncode if self._current_process else None
                 self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
-                debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={self._current_process.returncode if self._current_process else '?'})")
+                debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={rc})")
+                # Log last FFmpeg stderr lines for diagnostics
+                if error_log:
+                    tail = list(error_log)[-8:]
+                    for ln in tail:
+                        debug(UTILITY_MASS_AV1_ENCODER, f"ffmpeg stderr: {ln[:200]}")
                 # Remove partial output on failure
                 if output_path and os.path.exists(output_path):
                     try:
@@ -308,6 +314,11 @@ class AV1EncoderEngine:
                         debug(UTILITY_MASS_AV1_ENCODER, f"Removed partial: {output_path}")
                     except OSError:
                         pass
+                # Retry with software decode on 183/218 (hw decode failure or input issues)
+                if not _retry_software and hw_accel and rc in (183, 218):
+                    self.logger.info(f"Retrying {os.path.basename(input_path)} with software decode (returncode={rc})")
+                    debug(UTILITY_MASS_AV1_ENCODER, f"Retry software decode: {input_path}")
+                    return self.encode_file(input_path, output_path, quality, preset, reencode_audio, hw_accel=False, _retry_software=True)
             else:
                 debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
             return success, input_path, output_path
