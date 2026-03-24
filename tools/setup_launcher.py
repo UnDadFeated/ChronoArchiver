@@ -610,12 +610,26 @@ def _windows_uninstall_registry_command(uninstall_bat: Path) -> str:
     return f'{_reg_sz_quoted_path(cmd_exe)} /c {_reg_sz_quoted_path(bat)}'
 
 
-def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, display_icon: str) -> None:
-    """Write HKCU Uninstall key via winreg (reliable Unicode); reg.exe /d often mangles quotes."""
+def _windows_delete_uninstall_registry() -> None:
+    """Remove stale Apps & features entry before reinstall; Settings caches old UninstallString otherwise."""
     try:
         import winreg
     except ImportError:
         return
+    sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, sub)
+    except OSError:
+        pass
+
+
+def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, display_icon: str) -> None:
+    """Write HKCU Uninstall key via winreg (reliable Unicode); always replace after delete."""
+    try:
+        import winreg
+    except ImportError:
+        return
+    _windows_delete_uninstall_registry()
     uninstall_cmd = _windows_uninstall_registry_command(uninstall_bat)
     sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
     try:
@@ -640,7 +654,11 @@ def _create_windows_shortcuts(app_root: Path):
     """Create desktop/start-menu shortcuts and uninstaller without VBS."""
     start_menu = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
     desktop = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
-    if not start_menu.exists():
+    try:
+        start_menu.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    if not start_menu.is_dir():
         return
     folder = start_menu / "ChronoArchiver"
     folder.mkdir(exist_ok=True)
@@ -705,6 +723,7 @@ $Shortcut.Save()
     uninstall_cmd = folder / "Uninstall_ChronoArchiver.cmd"
     _bs = chr(92)
     _extraud_line = f'set "EXTRAUD=%LOCALAPPDATA%{_bs}UnDadFeated{_bs}ChronoArchiver"'
+    install_ps = install_dir.replace("'", "''")
     uninstall_cmd.write_text(
         f'''@echo off
 setlocal
@@ -712,6 +731,9 @@ set "TARGET={install_dir}"
 set "UNKEY={uninstall_key}"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $r=[System.Windows.Forms.MessageBox]::Show('Remove ChronoArchiver and all data from this PC?','ChronoArchiver Uninstall','YesNo','Question'); if ($r -ne [System.Windows.Forms.DialogResult]::Yes) {{ exit 1 }}"
 if errorlevel 1 exit /b 0
+REM Close running app (match pythonw/python whose command line references this install dir)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root='{install_ps}'; Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {{ ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and $_.CommandLine -and ($_.CommandLine -like ('*'+$root+'*')) }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+timeout /t 2 /nobreak >nul
 if exist "%TARGET%" rmdir /S /Q "%TARGET%"
 REM Models / platformdirs user_data (outside install dir; same app id as src)
 {_extraud_line}
@@ -1124,6 +1146,12 @@ def main():
     if _can_launch_without_setup(app_dir):
         _install_log("main: quick-launch (source already matches VERSION); skipping setup GUI")
         _install_log_footer(True, "quick_launch")
+        if platform.system() == "Windows":
+            _install_log("main: refreshing Windows shortcuts + ARP (quick-launch skipped full setup)")
+            try:
+                _create_windows_shortcuts(app_dir)
+            except Exception:
+                pass
         _run_app(app_dir)
         return
 
