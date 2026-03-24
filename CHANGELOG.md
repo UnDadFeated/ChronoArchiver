@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.13] - 2026-03-23
+### Fixed
+- **AUR updater**: Only close terminal when update succeeds; on failure show message and wait for Enter so user sees error. Add 0.5s delay before close.
+
 ## [3.3.12] - 2026-03-23
 ### Fixed
 - **AUR updater**: Explicitly close terminal after update when launched from one; fixes console staying open on CachyOS/gnome-terminal.
