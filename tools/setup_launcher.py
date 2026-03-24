@@ -65,7 +65,7 @@ def _installer_asset_path(name: str) -> Path | None:
 
 def _welcome_logo_photo(master) -> object | None:
     """
-    Load PNG for welcome header at ~112px width (same proportion as README.md), not stretched.
+    Load PNG for welcome header at ~56px width (~half README inline size), aspect ratio preserved.
     Returns tk.PhotoImage or None; caller must keep a reference on the window to avoid GC.
     """
     path = _installer_asset_path("icon.png")
@@ -79,10 +79,11 @@ def _welcome_logo_photo(master) -> object | None:
         img = tk.PhotoImage(master=master, file=str(path))
     except tk.TclError:
         return None
-    tw = 112
+    # Target max width; subsample divides W/H equally — no stretching.
+    tw = 56
     w = img.width()
     if w > tw:
-        factor = max(1, w // tw)
+        factor = max(1, (w + tw - 1) // tw)
         img = img.subsample(factor, factor)
     return img
 
@@ -802,7 +803,7 @@ def _show_welcome_and_log_choice() -> tuple[bool, bool]:
     out = {"proceed": False, "log": False}
     root = tk.Tk()
     root.title("ChronoArchiver — Welcome")
-    root.geometry("500x400")
+    root.geometry("500x360")
     root.resizable(False, False)
     root.configure(bg="#0d0d0d")
     root.option_add("*Font", "TkDefaultFont 9")
