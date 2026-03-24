@@ -31,6 +31,10 @@ MANIFEST
 *.manifest
 *.spec
 !tools/chronoarchiver.spec
+!tools/chronoarchiver_setup.spec
+
+# Setup launcher build artifact
+tools/_setup_version.txt
 
 # Installer logs
 pip-log.txt
