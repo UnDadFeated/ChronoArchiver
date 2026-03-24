@@ -44,7 +44,7 @@ jobs:
           (Get-Content tools\ChronoArchiver.iss) -replace 'MyAppVersion "[^"]+"', 'MyAppVersion "${{ steps.ver.outputs.VERSION }}"' | Set-Content tools\ChronoArchiver.iss
 
       - name: Build Windows installer
-        run: & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" tools\ChronoArchiver.iss
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" tools\ChronoArchiver.iss'
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
