@@ -122,7 +122,7 @@ Download the setup from the [Releases](https://github.com/UnDadFeated/ChronoArch
 | **Windows x64** | `ChronoArchiver-Setup-3.7.7-win64.exe` |
 | **macOS** | `ChronoArchiver-Setup-3.7.7-mac64.zip` |
 
-The setup (~6MB) downloads Python source on first run. Requires Python 3.11+ installed. Creates venv during install; desktop shortcut runs `pythonw` (no command prompt). Install location: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS). Uninstall: Windows Settings → Installed apps → ChronoArchiver (or Start Menu → ChronoArchiver → Uninstall ChronoArchiver), macOS: `Uninstall ChronoArchiver.app` / `Uninstall ChronoArchiver.command`.
+The setup (~6MB) downloads Python source on first run. Requires Python 3.11+ installed. Creates venv during install; desktop shortcut runs `pythonw` (no command prompt). Install location: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS). Uninstall: Windows Settings → Installed apps → ChronoArchiver (or Start Menu → ChronoArchiver → `Uninstall_ChronoArchiver.cmd`), macOS: `Uninstall ChronoArchiver.app` / `Uninstall ChronoArchiver.command`.
 
 ### From Source
 
@@ -177,7 +177,7 @@ First launch creates an app-private virtual environment at `~/.local/share/Chron
 
 **AUR:** `pacman -R chronoarchiver` removes the application and all user data (models, config, logs).
 
-**Windows/macOS setup:** **Windows** — Settings → Apps → **ChronoArchiver** → Uninstall (or Start Menu → ChronoArchiver → **Uninstall ChronoArchiver**). Confirm in the dialog; the install folder under `%LOCALAPPDATA%\ChronoArchiver`, shortcuts, and the Installed Apps entry are removed. **macOS** — in the install folder, open **Uninstall ChronoArchiver.app** or run **Uninstall ChronoArchiver.command**.
+**Windows/macOS setup:** **Windows** — Settings → Apps → **ChronoArchiver** → Uninstall (or Start Menu → ChronoArchiver → **`Uninstall_ChronoArchiver.cmd`**). Confirm in the dialog; the install folder under `%LOCALAPPDATA%\ChronoArchiver`, shortcuts, and the Installed Apps entry are removed. **macOS** — in the install folder, open **Uninstall ChronoArchiver.app** or run **Uninstall ChronoArchiver.command**.
 
 **Source install:** Delete the following directories to remove all traces:
 
