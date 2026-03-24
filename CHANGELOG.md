@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.17] - 2026-03-23
+### Changed
+- **Media Organizer**: "Organize:" label; Photos/Videos row right-aligned in Paths box.
+
 ## [3.3.16] - 2026-03-23
 ### Changed
 - **Media Organizer**: Swapped rows — "Date from EXIF/ffprobe" hint now above; "Content to organize:" label + Photos/Videos checkboxes below.
