@@ -674,6 +674,9 @@ set "UNKEY={uninstall_key}"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $r=[System.Windows.Forms.MessageBox]::Show('Remove ChronoArchiver and all data from this PC?','ChronoArchiver Uninstall','YesNo','Question'); if ($r -ne [System.Windows.Forms.DialogResult]::Yes) {{ exit 1 }}"
 if errorlevel 1 exit /b 0
 if exist "%TARGET%" rmdir /S /Q "%TARGET%"
+REM Models / platformdirs user_data (outside install dir; same app id as src)
+set "EXTRAUD=%LOCALAPPDATA%\\UnDadFeated\\ChronoArchiver"
+if exist "%EXTRAUD%" rmdir /S /Q "%EXTRAUD%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath '{desk_ps}') {{ Remove-Item -LiteralPath '{desk_ps}' -Force }}"
 start "" /MIN powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; if (Test-Path -LiteralPath '{sm_ps}') {{ Remove-Item -LiteralPath '{sm_ps}' -Recurse -Force }}"
 reg delete "%UNKEY%" /f >nul 2>&1
