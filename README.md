@@ -202,6 +202,16 @@ Session logs: `chronoarchiver_YYYY-MM-DD_HH-MM-SS.log`
 
 The in-app "Debug" button in the footer opens the log folder. If the app crashes before the GUI loads, no log file is created.
 
+**Windows — ChronoArchiver stuck in Settings → Apps**  
+If you deleted the install folder by hand, the Apps list can still show ChronoArchiver until the **uninstall registry key** is updated. Run the **current** setup installer again (it removes and recreates that key), or delete it yourself in **cmd**:
+
+`reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver" /f`
+
+If the entry persists, sign out and back in or restart **Windows Explorer**.
+
+**Windows — Uninstall can’t delete files**  
+The uninstall script stops **pythonw.exe** / **python.exe** processes launched from your install directory. Close ChronoArchiver first if something still holds files open.
+
 ---
 
 ## Updates

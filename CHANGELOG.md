@@ -6,7 +6,7 @@
 - **Windows / macOS setup**: Welcome screen shows the **hourglass logo** (PNG, ~half the README inline width, proportional) above the title; setup window uses bundled **icon.ico** / **icon.png** for the taskbar/dock when available.
 
 ### Fixed
-- **Windows — Installed Apps uninstall**: Uninstaller script renamed to **`Uninstall_ChronoArchiver.cmd`** (no spaces). **`UninstallString`** is written with **`winreg`** so quotes are not mangled (unlike `reg.exe /d`). Value uses **`%SystemRoot%\System32\cmd.exe`** explicitly. Uninstall removes the install folder (`%LOCALAPPDATA%\ChronoArchiver`), the **AI models** folder under `%LOCALAPPDATA%\UnDadFeated\ChronoArchiver`, desktop shortcut, Start Menu **ChronoArchiver** folder (after a short delay), and the **HKCU** uninstall key. Re-run setup once to refresh. **GitHub Actions**: workflow **deletes the existing release** for that tag before upload so release assets are not mixed with stale files.
+- **Windows — Installed Apps uninstall**: Uninstaller script **`Uninstall_ChronoArchiver.cmd`**; **`UninstallString`** via **`winreg`**; **`%SystemRoot%\System32\cmd.exe`** in the command line. On **every** setup run (including **quick-launch** when source already matches), the installer **deletes then recreates** `HKCU\…\Uninstall\ChronoArchiver` so Settings → Apps is not left with a stale entry after reinstall. Uninstaller **terminates** `pythonw.exe` / `python.exe` processes whose **command line** includes the install path before deleting folders. Uninstall removes install dir, **UnDadFeated** models path, shortcuts, Start Menu folder, then registry. **GitHub Actions**: existing **release** for that tag is **deleted** before upload to avoid stale assets.
 
 ## [3.7.10] - 2026-03-24
 ### Changed
