@@ -406,6 +406,10 @@ class MediaOrganizerPanel(QWidget):
         self._add_log("Batch organization complete.")
         debug(UTILITY_MEDIA_ORGANIZER, f"Organization complete: moved={moved}, skipped={skipped}, duplicates={duplicates}")
 
+    def append_external_line(self, msg: str):
+        """Subprocess / bootstrap output (thread-safe when called from main thread)."""
+        self._add_log(msg)
+
     def _add_log(self, msg):
         sb = self._log_edit.verticalScrollBar()
         at_bot = sb.value() >= sb.maximum() - 4

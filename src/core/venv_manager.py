@@ -32,6 +32,11 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_OPENCV_INSTALL
 
+try:
+    from .subprocess_tee import tee_line, win_hide_kw
+except ImportError:
+    from core.subprocess_tee import tee_line, win_hide_kw
+
 APP_NAME = "ChronoArchiver"
 APP_AUTHOR = "UnDadFeated"
 
@@ -57,6 +62,7 @@ def detect_gpu() -> str:
     try:
         r = subprocess.run(
             ["nvidia-smi"], capture_output=True, timeout=3,
+            **win_hide_kw(),
         )
         if r.returncode == 0:
             return "nvidia"
@@ -175,7 +181,10 @@ def check_opencv_in_venv() -> bool:
     _add_nvidia_libs_to_ld_path()
     env = os.environ.copy()
     try:
-        r = subprocess.run([str(py), "-c", "import cv2"], capture_output=True, timeout=5, env=env)
+        r = subprocess.run(
+            [str(py), "-c", "import cv2"], capture_output=True, timeout=5, env=env,
+            **win_hide_kw(),
+        )
         ok = r.returncode == 0
         debug(UTILITY_OPENCV_INSTALL, f"check_opencv_in_venv: returncode={r.returncode} ok={ok}")
         return ok
@@ -206,6 +215,7 @@ def check_ffmpeg_in_venv() -> bool:
                 "exit(0 if os.path.isfile(crumb) else 1)"
             )],
             capture_output=True, timeout=10,
+            **win_hide_kw(),
         )
         return r.returncode == 0
     except Exception:
@@ -229,6 +239,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
     def prog(phase: str, pct: int, detail: str):
         if progress_callback:
             progress_callback(phase, pct, detail)
+        tee_line(f"[ffmpeg] {phase} {pct}% {detail}".strip())
 
     try:
         from static_ffmpeg.run import (
@@ -251,6 +262,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
                     "get_or_fetch_platform_executables_else_raise()"
                 )],
                 capture_output=True, timeout=600,
+                **win_hide_kw(),
             )
             return True
         except Exception:
@@ -484,6 +496,7 @@ def is_venv_runnable() -> bool:
         r = subprocess.run(
             [str(py), "-c", "import PySide6; import PIL; import requests"],
             capture_output=True, timeout=5,
+            **win_hide_kw(),
         )
         return r.returncode == 0
     except Exception:
@@ -499,6 +512,7 @@ def is_venv_ready() -> bool:
         r = subprocess.run(
             [str(py), "-c", "import PySide6; import numpy; import cv2; import PIL; import requests"],
             capture_output=True, timeout=5,
+            **win_hide_kw(),
         )
         return r.returncode == 0
     except Exception:
@@ -526,6 +540,7 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
         r = subprocess.run(
             [sys.executable, "-m", "venv", str(venv)],
             capture_output=True, text=True, timeout=60,
+            **win_hide_kw(),
         )
         if r.returncode != 0:
             prog("venv creation failed", (r.stderr or r.stdout or "")[:150], 0)
@@ -543,10 +558,12 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
         proc = subprocess.Popen(
             [str(pip), "install", pkg],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            **win_hide_kw(),
         )
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
             line = (line or "").strip()
             if line:
+                tee_line(f"[pip] {line[:500]}")
                 prog(f"Installing {pkg} ({i + 1}/{n})...", line[:100], 100.0 * (i + 0.5) / n)
         try:
             proc.wait(timeout=600)
@@ -598,6 +615,7 @@ def _is_cuda_cudnn_installed() -> bool:
         r = subprocess.run(
             [str(pip), "show", "nvidia-cudnn-cu13"],
             capture_output=True, text=True, timeout=5,
+            **win_hide_kw(),
         )
         return r.returncode == 0
     except Exception:
@@ -617,19 +635,37 @@ def _install_cuda_cudnn_venv(progress_callback=None) -> tuple[bool, str | None]:
 
     debug(UTILITY_OPENCV_INSTALL, "CUDA/cuDNN/cuFFT install: starting pip install (~775 MB, may take 2–5 min)")
     prog("Installing CUDA runtime, cuBLAS, cuFFT, and cuDNN...", "Downloading ~775 MB (may take 2–5 min)...")
+    proc = None
     try:
-        r = subprocess.run(
+        proc = subprocess.Popen(
             [str(pip), "install", *NVIDIA_CUDA_CUDNN_PIP_PACKAGES],
-            capture_output=True, text=True, timeout=600,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            **win_hide_kw(),
         )
-        if r.returncode == 0:
+        out_lines: list[str] = []
+        for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+            ln = (line or "").rstrip("\n")
+            if ln.strip():
+                out_lines.append(ln)
+                tee_line(f"[pip] {ln[:500]}")
+                prog("Installing CUDA stack...", ln[:120], 0, 0)
+        proc.wait(timeout=600)
+        if proc.returncode == 0:
             debug(UTILITY_OPENCV_INSTALL, "CUDA/cuDNN install: success")
             return True, None
-        err = (r.stderr or r.stdout or "Unknown error").strip()
+        err = "\n".join(out_lines[-40:]) or "Unknown error"
         debug(UTILITY_OPENCV_INSTALL, f"CUDA/cuDNN install FAILED: {err[:500]}")
         return False, err
     except subprocess.TimeoutExpired:
         debug(UTILITY_OPENCV_INSTALL, "CUDA/cuDNN install: timed out")
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
         return False, "Installation timed out"
     except Exception as e:
         debug(UTILITY_OPENCV_INSTALL, f"CUDA/cuDNN install ERROR: {e}")
@@ -800,6 +836,7 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
          "opencv-contrib-python", "opencv-contrib-python-headless",
          "opencv-openvino-contrib-python"],
         capture_output=True, timeout=60,
+        **win_hide_kw(),
     )
 
     wheel_path: Path | None = None
@@ -877,10 +914,19 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
 
         debug(UTILITY_OPENCV_INSTALL, f"install_opencv: pip install wheel {wheel_path}")
         prog("Installing...", "Setting up wheel (this may take a minute)", 1, 1)
-        result = subprocess.run(
+        proc_w = subprocess.Popen(
             [str(pip), "install", str(wheel_path)],
-            capture_output=True, text=True, timeout=300,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            **win_hide_kw(),
         )
+        acc_lines: list[str] = []
+        for line in iter(proc_w.stdout.readline, "") if proc_w.stdout else []:
+            ln = (line or "").rstrip("\n")
+            if ln.strip():
+                acc_lines.append(ln)
+                tee_line(f"[pip] {ln[:500]}")
+                prog("Installing...", ln[:100], 1, 1)
+        proc_w.wait(timeout=300)
         try:
             wheel_path.unlink()
             parent = wheel_path.parent
@@ -888,8 +934,8 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
                 shutil.rmtree(parent, ignore_errors=True)
         except OSError:
             pass
-        if result.returncode != 0:
-            err = (result.stderr or result.stdout or "Unknown error").strip()
+        if proc_w.returncode != 0:
+            err = "\n".join(acc_lines[-40:]) or "Unknown error"
             debug(UTILITY_OPENCV_INSTALL, f"install_opencv FAIL pip install wheel: {err[:800]}")
             prog("Failed", err[:80], 0, 0)
             return False, err
@@ -923,6 +969,7 @@ def uninstall_opencv(progress_callback=None) -> bool:
     r = subprocess.run(
         [str(pip), "uninstall", "-y", *packages],
         capture_output=True, text=True, timeout=120,
+        **win_hide_kw(),
     )
     ok = r.returncode == 0
     debug(UTILITY_OPENCV_INSTALL, f"uninstall_opencv: {'SUCCESS' if ok else f'FAIL rc={r.returncode}'}")
@@ -946,10 +993,12 @@ def install_package(pkg: str, progress_callback=None) -> bool:
     proc = subprocess.Popen(
         [str(pip), "install", pkg],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        **win_hide_kw(),
     )
     for line in iter(proc.stdout.readline, "") if proc.stdout else []:
         line = (line or "").strip()
         if line:
+            tee_line(f"[pip] {line[:500]}")
             prog(f"Installing {pkg}...", line[:100])
     proc.wait(timeout=300)
     return proc.returncode == 0
