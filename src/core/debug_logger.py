@@ -30,7 +30,11 @@ def _ensure_init():
     global _log_dir, _log_path, _file
     if _log_path is not None:
         return
-    _log_dir = platformdirs.user_log_dir(APP_NAME, "UnDadFeated")
+    install_root = os.environ.get("CHRONOARCHIVER_INSTALL_ROOT", "").strip()
+    if install_root:
+        _log_dir = os.path.join(install_root, "Logs")
+    else:
+        _log_dir = platformdirs.user_log_dir(APP_NAME, "UnDadFeated")
     os.makedirs(_log_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     _log_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}{LOG_SUFFIX}")
