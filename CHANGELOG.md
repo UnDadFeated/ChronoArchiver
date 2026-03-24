@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.3.12] - 2026-03-23
+### Fixed
+- **AUR updater**: Explicitly close terminal after update when launched from one; fixes console staying open on CachyOS/gnome-terminal.
+
 ## [3.3.11] - 2026-03-23
 ### Fixed
 - **Multi-GPU**: nvidia-smi parsing uses first line only; fixes 0% display on multi-GPU systems.

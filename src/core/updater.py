@@ -392,9 +392,16 @@ else:
         else:
             update_cmd = "pkexec pacman -Sy chronoarchiver"
         launch_str = " ".join(repr(c) for c in launch_cmd)
+        close_term = "1" if term else "0"
         script_body = f"""#!/bin/bash
+CLOSE_TERMINAL={close_term}
 sleep 2
 {update_cmd} && nohup {launch_str} </dev/null >/dev/null 2>&1 &
+# Close terminal when launched from one so it does not stay open
+if [ "$CLOSE_TERMINAL" = "1" ]; then
+  term_pid=$(ps -o ppid= -p $PPID 2>/dev/null | tr -d ' ')
+  [ -n "$term_pid" ] && kill "$term_pid" 2>/dev/null
+fi
 exit 0
 """
         fd, script_path = tempfile.mkstemp(suffix=".sh")
