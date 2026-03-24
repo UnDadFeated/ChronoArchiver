@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.3.11] - 2026-03-23
+### Fixed
+- **Multi-GPU**: nvidia-smi parsing uses first line only; fixes 0% display on multi-GPU systems.
+- **FFmpeg install lock**: On lock timeout, return False instead of proceeding; only release lock when acquired.
+- **Venv pip install**: On timeout, kill process and return False; avoid orphan pip processes.
+- **Scanner**: Handle grayscale images (convert to BGR); add null check in face detection; remove dead no-op block.
+- **Model download**: Use requests context manager for proper connection cleanup.
+- **av1_engine**: Catch OSError instead of Exception for getsize failures.
+- **Scanner copy/move**: Add .gif, .heif to IMAGE_EXTS for EXIF correction.
+- **Footer metrics**: Restore right-aligned position; text aligned right within label.
+
 ## [3.3.10] - 2026-03-23
 ### Fixed
 - **AUR updater**: Launch app in background with nohup and exit script so the terminal closes after update; no longer leaves console open.

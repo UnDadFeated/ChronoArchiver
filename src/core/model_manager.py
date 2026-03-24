@@ -120,31 +120,31 @@ class ModelManager:
                 if dest.exists():
                     dest.unlink()
 
-                response = requests.get(url, stream=True, timeout=(10, 60))
-                response.raise_for_status()
-                try:
-                    total_size = int(response.headers.get("content-length", 0) or 0)
-                except (TypeError, ValueError):
-                    total_size = 0
-                if total_size <= 0:
-                    total_size = model_size
+                with requests.get(url, stream=True, timeout=(10, 60)) as response:
+                    response.raise_for_status()
+                    try:
+                        total_size = int(response.headers.get("content-length", 0) or 0)
+                    except (TypeError, ValueError):
+                        total_size = 0
+                    if total_size <= 0:
+                        total_size = model_size
 
-                is_tar = "tar_extract" in info
-                dl_dest = dest if not is_tar else dest.with_suffix(".tar.gz")
+                    is_tar = "tar_extract" in info
+                    dl_dest = dest if not is_tar else dest.with_suffix(".tar.gz")
 
-                with open(dl_dest, "wb") as f:
-                    downloaded = 0
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if self.stop_event.is_set():
-                            break
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            overall = (done_bytes + downloaded) / max(total_bytes, 1) if total_bytes else 0
-                            overall = min(1.0, overall)
-                            if progress_callback:
-                                status = "Extracting... please wait..." if (is_tar and overall >= 0.99) else dl_dest.name
-                                progress_callback(downloaded, total_size, status, overall, label, url)
+                    with open(dl_dest, "wb") as f:
+                        downloaded = 0
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if self.stop_event.is_set():
+                                break
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                overall = (done_bytes + downloaded) / max(total_bytes, 1) if total_bytes else 0
+                                overall = min(1.0, overall)
+                                if progress_callback:
+                                    status = "Extracting... please wait..." if (is_tar and overall >= 0.99) else dl_dest.name
+                                    progress_callback(downloaded, total_size, status, overall, label, url)
 
                 if self.stop_event.is_set():
                     if dl_dest.exists():

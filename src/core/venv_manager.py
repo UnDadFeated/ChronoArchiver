@@ -244,10 +244,13 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
 
     TIMEOUT = 10 * 60
     lock = FileLock(LOCK_FILE, timeout=TIMEOUT)
+    acquired = False
     try:
         lock.acquire()
+        acquired = True
     except Timeout:
-        pass
+        debug(UTILITY_OPENCV_INSTALL, "FFmpeg install lock timeout; another instance may be installing")
+        return False
 
     try:
         install_dir = os.path.dirname(exe_dir)
@@ -301,13 +304,15 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
 
         prog("done", 100, "")
         return True
-    except Exception:
+    except Exception as e:
+        debug(UTILITY_OPENCV_INSTALL, f"FFmpeg install failed: {e}")
         return False
     finally:
-        try:
-            lock.release()
-        except Exception:
-            pass
+        if acquired:
+            try:
+                lock.release()
+            except Exception:
+                pass
 
 
 def add_ffmpeg_to_path() -> bool:
@@ -390,7 +395,13 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
             line = (line or "").strip()
             if line:
                 prog(f"Installing {pkg}...", line[:100])
-        proc.wait(timeout=300)
+        try:
+            proc.wait(timeout=300)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            prog("pip install timeout", "")
+            return False
         if proc.returncode != 0:
             prog(f"Failed: {pkg}", "")
             return False

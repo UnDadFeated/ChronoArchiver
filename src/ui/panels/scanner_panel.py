@@ -1056,7 +1056,7 @@ class AIScannerPanel(QWidget):
 
     def _copy_or_move_with_exif_correction(self, src: str, dest: str, action: str) -> bool:
         """Copy or move file with EXIF orientation correction for images. Returns True on success."""
-        IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", ".heic"}
+        IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", ".gif", ".heic", ".heif"}
         ext = os.path.splitext(src)[1].lower()
         if PIL_AVAILABLE and ext in IMAGE_EXTS:
             try:

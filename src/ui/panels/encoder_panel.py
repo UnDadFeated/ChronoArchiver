@@ -1111,7 +1111,8 @@ class AV1EncoderPanel(QWidget):
                 ["nvidia-smi", "--query-gpu=utilization.gpu",
                  "--format=csv,noheader,nounits"],
                 text=True, stderr=subprocess.DEVNULL).strip()
-            g = int(out) if out.strip().isdigit() else 0
+            line = out.strip().split("\n")[0].strip() if out else ""
+            g = int(line) if line.isdigit() else 0
             return f"{min(999, g):3d}%"
         except Exception:
             return "  0%"

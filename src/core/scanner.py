@@ -161,7 +161,9 @@ class ScannerEngine:
                 break
 
             f_path, size, image = item
-            
+            if image is not None and len(image.shape) == 2:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
             # 1. Face Detect (OpenCV)
             has_face = False
             try:
@@ -232,11 +234,6 @@ class ScannerEngine:
             bytes_done += size
             self._report_progress(bytes_done, total_bytes, start_time, fname_base)
 
-        # Cleanup
-        if face_engine: 
-             # FaceDetectorYN doesn't strictly need close, but good practice if wrapper changes
-             pass
-
         if self.stop_event.is_set():
             self.logger("Scan Cancelled.")
             debug(UTILITY_AI_MEDIA_SCANNER, "Scan cancelled by user")
@@ -271,7 +268,9 @@ class ScannerEngine:
         )
 
     def _detect_face_opencv(self, detector, image):
-        h, w, _ = image.shape
+        if image is None or image.size == 0:
+            return False
+        h, w = image.shape[:2]
         detector.setInputSize((w, h))
         _, faces = detector.detect(image)
         return faces is not None and len(faces) > 0

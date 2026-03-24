@@ -79,7 +79,7 @@ class AV1EncoderEngine:
                         full_path = os.path.join(root, filename)
                         try:
                             size = os.path.getsize(full_path)
-                        except Exception:
+                        except OSError:
                             size = 0
                         yield (full_path, size)
         except Exception as e:

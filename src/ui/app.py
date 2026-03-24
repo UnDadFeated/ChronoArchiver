@@ -223,20 +223,12 @@ class ChronoArchiverApp(QMainWindow):
         self.layout.addWidget(self.stack)
 
         # ── STATUS BAR ──
-        # Layout: [Left: metrics, activity] [Center: pre-req] [Right: buttons]
+        # Layout: [Left: activity] [Center: pre-req] [Right: buttons, metrics]
         self.status_bar = QFrame()
         self.status_bar.setFixedHeight(22)
         self.status_bar.setStyleSheet("background: #080808; border-top: 1px solid #141414;")
         self.status_layout = QHBoxLayout(self.status_bar)
         self.status_layout.setContentsMargins(10, 0, 10, 0)
-
-        self.lbl_metrics = QLabel("CPU   0% · GPU   0% · RAM   0%")
-        self.lbl_metrics.setStyleSheet(
-            "font-size: 8px; color: #6b7280; font-weight: 600; "
-            "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
-            "min-width: 155px;")
-        self.status_layout.addWidget(self.lbl_metrics)
-        self.status_layout.addSpacing(12)
 
         self.lbl_status = QLabel("CHECKING…")
         self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
@@ -279,6 +271,14 @@ class ChronoArchiverApp(QMainWindow):
         self.btn_debug.setToolTip("Open debug log folder")
         self.btn_debug.clicked.connect(self._open_debug_folder)
         self.status_layout.addWidget(self.btn_debug)
+
+        self.lbl_metrics = QLabel("CPU   0% · GPU   0% · RAM   0%")
+        self.lbl_metrics.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_metrics.setStyleSheet(
+            "font-size: 8px; color: #6b7280; font-weight: 600; "
+            "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
+            "min-width: 155px;")
+        self.status_layout.addWidget(self.lbl_metrics)
 
         self.layout.addWidget(self.status_bar)
 
@@ -518,7 +518,8 @@ class ChronoArchiverApp(QMainWindow):
                         ["nvidia-smi", "--query-gpu=utilization.gpu",
                          "--format=csv,noheader,nounits"],
                         text=True, stderr=subprocess.DEVNULL).strip()
-                    g = int(out) if out.strip().isdigit() else 0
+                    line = out.strip().split("\n")[0].strip() if out else ""
+                    g = int(line) if line.isdigit() else 0
                     self._metrics_gpu_cache = f"{min(999, g):3d}%"
                 except Exception:
                     self._metrics_gpu_cache = "  0%"
