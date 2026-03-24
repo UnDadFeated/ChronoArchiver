@@ -71,6 +71,11 @@ QLineEdit {{
 }}
 QLineEdit:focus {{ border: 1px solid #3b82f6; }}
 
+QCheckBox {{
+    font-size: 9px;
+    spacing: 4px;
+}}
+
 QPushButton {{
     background-color: #1a1a1a;
     border: 1px solid #262626;
@@ -406,7 +411,7 @@ class ChronoArchiverApp(QMainWindow):
 
         # ── NAVIGATION BAR ──
         self.nav_bar = QFrame()
-        self.nav_bar.setFixedHeight(34)
+        self.nav_bar.setFixedHeight(38)
         self.nav_bar.setStyleSheet("background: #080808; border-bottom: 1px solid #141414;")
         self.nav_layout = QHBoxLayout(self.nav_bar)
         self.nav_layout.setContentsMargins(10, 0, 10, 0)
@@ -425,7 +430,7 @@ class ChronoArchiverApp(QMainWindow):
         self.nav_layout.addStretch()
 
         self.btn_update = QPushButton("CHECKING FOR UPDATES...")
-        self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563; border:none; background:transparent;")
+        self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
         self.btn_update.clicked.connect(self._run_updater)
         self.nav_layout.addWidget(self.btn_update)
         self._update_pulse_timer = QTimer(self)
@@ -433,8 +438,8 @@ class ChronoArchiverApp(QMainWindow):
         self._update_pulse_timer.timeout.connect(self._pulse_update_button)
         self._update_pulse_phase = 0
 
-        self.btn_donate = QPushButton("☕ Buy me a coffee")
-        self.btn_donate.setStyleSheet("font-size: 8px; color: #6b7280; border:none; background:transparent;")
+        self.btn_donate = QPushButton("\u2665  Support development of our products")
+        self.btn_donate.setStyleSheet("font-size: 9px; color: #6b7280; border:none; background:transparent;")
         self.btn_donate.setCursor(Qt.PointingHandCursor)
         self.btn_donate.setToolTip("Support development via PayPal ($5 USD)")
         self.btn_donate.clicked.connect(self._open_donate)
@@ -458,13 +463,13 @@ class ChronoArchiverApp(QMainWindow):
         # ── STATUS BAR ──
         # Layout: [Left: activity] [Center: pre-req] [Right: buttons, metrics]
         self.status_bar = QFrame()
-        self.status_bar.setFixedHeight(22)
+        self.status_bar.setFixedHeight(28)
         self.status_bar.setStyleSheet("background: #080808; border-top: 1px solid #141414;")
         self.status_layout = QHBoxLayout(self.status_bar)
-        self.status_layout.setContentsMargins(10, 0, 10, 0)
+        self.status_layout.setContentsMargins(10, 2, 10, 2)
 
         self.lbl_status = QLabel("CHECKING…")
-        self.lbl_status.setStyleSheet("font-size: 8px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
+        self.lbl_status.setStyleSheet("font-size: 9px; color: #4b5563; text-transform: uppercase; min-width: 100px;")
         self.lbl_status.setToolTip("Current activity: Encoding, Organizing, Scanning, etc.")
         self._activity = "idle"
         self._activity_dot = 0
@@ -472,46 +477,46 @@ class ChronoArchiverApp(QMainWindow):
         self._activity_timer.setInterval(400)
         self._activity_timer.timeout.connect(self._animate_activity)
         self._precheck_done = False
-        self.status_layout.addWidget(self.lbl_status)
+        self.status_layout.addWidget(self.lbl_status, 0, Qt.AlignVCenter)
         self._bar_ffmpeg = QProgressBar()
-        self._bar_ffmpeg.setFixedSize(72, 12)
+        self._bar_ffmpeg.setFixedSize(72, 13)
         self._bar_ffmpeg.setRange(0, 100)
         self._bar_ffmpeg.setValue(0)
         self._bar_ffmpeg.setFormat("%p%")
-        self._bar_ffmpeg.setStyleSheet("font-size: 7px; font-weight: 700;")
+        self._bar_ffmpeg.setStyleSheet("font-size: 8px; font-weight: 700;")
         self._bar_ffmpeg.hide()
-        self.status_layout.addWidget(self._bar_ffmpeg)
+        self.status_layout.addWidget(self._bar_ffmpeg, 0, Qt.AlignVCenter)
         self._lbl_ffmpeg_speed = QLabel("")
-        self._lbl_ffmpeg_speed.setStyleSheet("font-size: 7px; color: #6b7280; min-width: 48px;")
+        self._lbl_ffmpeg_speed.setStyleSheet("font-size: 8px; color: #6b7280; min-width: 48px;")
         self._lbl_ffmpeg_speed.hide()
-        self.status_layout.addWidget(self._lbl_ffmpeg_speed)
+        self.status_layout.addWidget(self._lbl_ffmpeg_speed, 0, Qt.AlignVCenter)
         self.status_layout.addStretch()
 
         self.lbl_prereq = QLabel("CHECKING…")
-        self.lbl_prereq.setStyleSheet("font-size: 7px; color: #6b7280;")
+        self.lbl_prereq.setStyleSheet("font-size: 8px; color: #6b7280;")
         self.lbl_prereq.setAlignment(Qt.AlignCenter)
-        self.status_layout.addWidget(self.lbl_prereq)
+        self.status_layout.addWidget(self.lbl_prereq, 0, Qt.AlignVCenter)
         self.status_layout.addStretch()
 
         self.btn_copy_console = QPushButton("COPY CONSOLE")
-        self.btn_copy_console.setStyleSheet("font-size: 7px; color: #6b7280; border:none; background:transparent;")
+        self.btn_copy_console.setStyleSheet("font-size: 8px; color: #6b7280; border:none; background:transparent;")
         self.btn_copy_console.setToolTip("Copy current panel console to clipboard")
         self.btn_copy_console.clicked.connect(self._copy_console)
-        self.status_layout.addWidget(self.btn_copy_console)
+        self.status_layout.addWidget(self.btn_copy_console, 0, Qt.AlignVCenter)
 
         self.btn_debug = QPushButton("DEBUG")
-        self.btn_debug.setStyleSheet("font-size: 7px; color: #6b7280; border:none; background:transparent;")
+        self.btn_debug.setStyleSheet("font-size: 8px; color: #6b7280; border:none; background:transparent;")
         self.btn_debug.setToolTip(f"Open debug log folder\n{os.path.dirname(get_log_path())}")
         self.btn_debug.clicked.connect(self._open_debug_folder)
-        self.status_layout.addWidget(self.btn_debug)
+        self.status_layout.addWidget(self.btn_debug, 0, Qt.AlignVCenter)
 
         self.lbl_metrics = QLabel("CPU   0% · GPU   0% · RAM   0%")
         self.lbl_metrics.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_metrics.setStyleSheet(
-            "font-size: 8px; color: #6b7280; font-weight: 600; "
+            "font-size: 9px; color: #6b7280; font-weight: 600; "
             "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
             "min-width: 155px;")
-        self.status_layout.addWidget(self.lbl_metrics)
+        self.status_layout.addWidget(self.lbl_metrics, 0, Qt.AlignVCenter)
 
         self.layout.addWidget(self.status_bar)
 
@@ -766,11 +771,11 @@ class ChronoArchiverApp(QMainWindow):
         elif latest is None:
             self._update_pulse_timer.stop()
             self.btn_update.setText("UPDATE CHECK UNAVAILABLE")
-            self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563; border:none; background:transparent;")
+            self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
         else:
             self._update_pulse_timer.stop()
             self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
-            self.btn_update.setStyleSheet("font-size: 8px; color: #4b5563; border:none; background:transparent;")
+            self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
 
     def _pulse_update_button(self):
         """Flash green text when update available (like guide pulse)."""
@@ -778,7 +783,7 @@ class ChronoArchiverApp(QMainWindow):
             self._update_pulse_timer.stop()
             return
         self._update_pulse_phase = 1 - self._update_pulse_phase
-        base = "font-size: 8px; font-weight: bold; border:none; background:transparent;"
+        base = "font-size: 9px; font-weight: bold; border:none; background:transparent;"
         if self._update_pulse_phase:
             self.btn_update.setStyleSheet(f"{base} color: #10b981;")
         else:
