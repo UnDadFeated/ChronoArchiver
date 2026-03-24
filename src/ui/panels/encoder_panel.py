@@ -120,7 +120,7 @@ class AV1EncoderPanel(QWidget):
         self._is_scanning    = False
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
-        _slbl  = "font-size: 8px; font-weight: 700; color: #aaa;"
+        _slbl  = "font-size: 9px; font-weight: 700; color: #aaa;"
         _combo_style = (
             "QComboBox { font-size: 9px; padding: 0 4px; min-height: 12px; max-height: 16px; }"
             "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: right; width: 16px; }"
@@ -138,13 +138,13 @@ class AV1EncoderPanel(QWidget):
         grid_strip.setSpacing(6)
 
         # 1. Directories (top-left)
-        _bar_h = 24
-        _browse_w, _browse_h = 56, _bar_h
+        _bar_h = 28
+        _browse_w, _browse_h = 60, _bar_h
         _dir_edit_ss = (
             f"color:#fff; font-size:11px; font-weight:500; min-height:{_bar_h}px; "
             "background:#121212; border:1px solid #1a1a1a;"
         )
-        _dir_btn_ss = "font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;"
+        _dir_btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
 
         grp_dir = QGroupBox("Directories")
         v_dir = QVBoxLayout(grp_dir)
@@ -255,7 +255,7 @@ class AV1EncoderPanel(QWidget):
         # Audio
         h_a = QHBoxLayout(); h_a.setSpacing(4)
         self._chk_audio = QCheckBox("Optimize Audio")
-        self._chk_audio.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; spacing:4px;")
+        self._chk_audio.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
         self._chk_audio.setChecked(self._settings.get("reencode_audio"))
         self._chk_audio.stateChanged.connect(lambda v: self._settings.set("reencode_audio", bool(v)))
         h_a.addWidget(self._chk_audio)
@@ -272,8 +272,8 @@ class AV1EncoderPanel(QWidget):
         v_opts.setContentsMargins(6, 2, 6, 2)
         v_opts.setSpacing(0)
 
-        _hint_s  = "font-size:7px; color:#444; margin-left:14px; margin-top:-1px;"
-        _check_s = "font-size:8px; font-weight:700; color:#aaa; spacing:2px;"
+        _hint_s  = "font-size:8px; color:#444; margin-left:14px; margin-top:-1px;"
+        _check_s = "font-size:9px; font-weight:700; color:#aaa; spacing:2px;"
 
         def _mk_opt(cb, hint):
             w = QWidget(); vl = QVBoxLayout(w)
@@ -297,7 +297,7 @@ class AV1EncoderPanel(QWidget):
         self._combo_exist.setCurrentText(
             {"overwrite": "Overwrite", "skip": "Skip", "rename": "Rename"}.get(
                 self._settings.get("existing_output"), "Overwrite"))
-        self._combo_exist.setStyleSheet("font-size:8px; color:#aaa; min-height:18px;")
+        self._combo_exist.setStyleSheet("font-size:9px; color:#aaa; min-height:20px;")
         self._combo_exist.currentTextChanged.connect(
             lambda t: self._settings.set("existing_output", t.lower()))
         v_exist.addWidget(self._combo_exist)
@@ -329,7 +329,7 @@ class AV1EncoderPanel(QWidget):
         self._edit_rej = QLineEdit()
         self._edit_rej.setInputMask("99:99:99")
         self._edit_rej.setFixedWidth(50)
-        self._edit_rej.setStyleSheet("font-size:8px; color:#aaa; background:#121212; border:1px solid #1a1a1a; padding:1px;")
+        self._edit_rej.setStyleSheet("font-size:9px; color:#aaa; background:#121212; border:1px solid #1a1a1a; padding:1px;")
         h = self._settings.get("rejects_h"); m = self._settings.get("rejects_m"); s = self._settings.get("rejects_s")
         self._edit_rej.setText(f"{str(h).zfill(2)}:{str(m).zfill(2)}:{str(s).zfill(2)}")
         self._edit_rej.textChanged.connect(self._save_rej_time)
@@ -341,25 +341,24 @@ class AV1EncoderPanel(QWidget):
         vr.addWidget(QLabel("hh:mm:ss threshold", styleSheet=_hint_s))
         v_opts.addWidget(wrap_rej)
 
-        # Delete (dual verification: label on top, checkboxes right-aligned underneath)
-        lbl_del = QLabel("Delete Source on Success")
+        # Delete (dual verification — full-width labeled checkboxes; avoids edge overlap)
+        lbl_del = QLabel("Delete source on success")
         lbl_del.setStyleSheet(_check_s)
         v_opts.addWidget(lbl_del)
-        w_del_cbs = QWidget(); h_del_cbs = QHBoxLayout(w_del_cbs)
-        h_del_cbs.setContentsMargins(0, 0, 0, 0); h_del_cbs.setSpacing(8)
-        h_del_cbs.addStretch()
-        self._chk_del1 = QCheckBox()
-        self._chk_del1.setFixedWidth(18)
+        self._chk_del1 = QCheckBox("Confirm: delete source files after a successful encode")
+        self._chk_del1.setStyleSheet(_check_s)
         self._chk_del1.setChecked(self._settings.get("delete_on_success"))
         self._chk_del1.stateChanged.connect(lambda v: self._settings.set("delete_on_success", bool(v)))
-        h_del_cbs.addWidget(self._chk_del1)
-        self._chk_del2 = QCheckBox()
-        self._chk_del2.setFixedWidth(18)
+        v_opts.addWidget(self._chk_del1)
+        self._chk_del2 = QCheckBox("Confirm: I understand this cannot be undone")
+        self._chk_del2.setStyleSheet(_check_s)
         self._chk_del2.setChecked(self._settings.get("delete_on_success_confirm"))
         self._chk_del2.stateChanged.connect(lambda v: self._settings.set("delete_on_success_confirm", bool(v)))
-        h_del_cbs.addWidget(self._chk_del2)
-        v_opts.addWidget(w_del_cbs)
-        v_opts.addWidget(QLabel("Both boxes must be checked to enable", styleSheet="font-size:7px; color:#5a1a1a; margin-left:0; margin-top:-1px;"))
+        v_opts.addWidget(self._chk_del2)
+        _lbl_del_hint = QLabel("Both checkboxes must be checked to enable deletion.")
+        _lbl_del_hint.setWordWrap(True)
+        _lbl_del_hint.setStyleSheet("font-size:8px; color:#5a1a1a; margin-left:0; margin-top:2px;")
+        v_opts.addWidget(_lbl_del_hint)
         v_opts.addStretch()
 
         grp_opts.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
@@ -450,18 +449,13 @@ class AV1EncoderPanel(QWidget):
         self._btn_start.setObjectName("btnStart")
         self._btn_start.setMinimumHeight(35)
         self._btn_start.clicked.connect(self._toggle_encoding)
-        h_ctrl.addWidget(self._btn_start, 2)
+        h_ctrl.addWidget(self._btn_start, 3)
 
         self._btn_pause = QPushButton("PAUSE")
         self._btn_pause.setMinimumHeight(35)
         self._btn_pause.clicked.connect(self._toggle_pause)
         self._btn_pause.setEnabled(False)
         h_ctrl.addWidget(self._btn_pause, 1)
-
-        self._btn_logs = QPushButton("LOGS")
-        self._btn_logs.setMinimumHeight(35)
-        self._btn_logs.clicked.connect(self._open_logs)
-        h_ctrl.addWidget(self._btn_logs, 1)
 
         v_work.addLayout(h_ctrl)
         grp_work.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
@@ -569,7 +563,7 @@ class AV1EncoderPanel(QWidget):
         if w == self._btn_start:
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
         else:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:24px;")
+            w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:28px;")
 
     def _update_start_enabled(self):
         if self._btn_start.text() == "ENCODING COMPLETE":
@@ -594,7 +588,7 @@ class AV1EncoderPanel(QWidget):
             if target == self._btn_start:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
             else:
-                target.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:24px;")
+                target.setStyleSheet("font-size:9px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:28px;")
         else:
             self._clear_guide_glow(target)
 
@@ -1139,20 +1133,6 @@ class AV1EncoderPanel(QWidget):
             return f"{min(999, g):3d}%"
         except Exception:
             return "  0%"
-
-    def _open_logs(self):
-        from core.debug_logger import get_log_path
-        log_dir = os.path.dirname(get_log_path())
-        if os.path.exists(log_dir):
-            try:
-                if platform.system() == "Windows":
-                    os.startfile(log_dir)
-                elif platform.system() == "Darwin":
-                    subprocess.Popen(["open", log_dir])
-                else:
-                    subprocess.Popen(["xdg-open", log_dir])
-            except Exception:
-                pass
 
     def _add_log(self, msg):
         sb = self._log_edit.verticalScrollBar()

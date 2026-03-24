@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.7.8] - 2026-03-24
+### Changed
+- **UI**: Taller path rows and Browse buttons (28px, 60px wide) aligned across Media Organizer, Mass AV1 Encoder, and AI Media Scanner; checkbox and option labels slightly larger; scanner Engine Status buttons match Browse height.
+- **Header / footer**: Update status and donate link use 9px; footer bar taller with vertically centered content and slightly larger prerequisite and metrics text; global `QCheckBox` stylesheet at 9px.
+- **Donate**: Link text is now “Support development of our products” with a heart (♥) prefix; PayPal tooltip unchanged.
+- **Guide pulse**: Border-only highlight strings updated for new control metrics so layout does not shift.
+
+### Fixed
+- **Mass AV1 Encoder**: “Delete source on success” uses two full-width labeled checkboxes and a word-wrapped hint so controls no longer overlap the Options panel edge.
+- **Mass AV1 Encoder**: Removed redundant **LOGS** button (footer **DEBUG** opens the log folder).
+
 ## [3.7.7] - 2026-03-24
 ### Changed
 - **README**: Uninstall instructions updated for Windows Installed Apps and macOS `Uninstall ChronoArchiver.app`; troubleshooting log paths clarified for setup vs source installs.

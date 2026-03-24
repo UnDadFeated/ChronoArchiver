@@ -208,15 +208,15 @@ class AIScannerPanel(QWidget):
         # ── COMMAND STRIP ─────────────────────────────────────────────────────
         h_strip = QHBoxLayout()
         h_strip.setSpacing(6)
-        _strip_h = 100  # Same height for Directories, Options, Engine Status
+        _strip_h = 108  # Same height for Directories, Options, Engine Status
 
-        _bar_h = 24
-        _browse_w, _browse_h = 56, _bar_h
+        _bar_h = 28
+        _browse_w, _browse_h = 60, _bar_h
         _edit_ss = (
             f"color:#fff; font-size:11px; font-weight:500; min-height:{_bar_h}px; "
             "background:#121212; border:1px solid #1a1a1a;"
         )
-        _btn_ss = "font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;"
+        _btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
 
         # 1. Directories
         grp_dir = QGroupBox("Directories")
@@ -249,9 +249,9 @@ class AIScannerPanel(QWidget):
         v_opts.setSpacing(4)
         self._chk_recursive = QCheckBox("Recursive")
         self._chk_recursive.setChecked(True)
-        self._chk_recursive.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._chk_recursive.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         self._chk_animals = QCheckBox("Keep Animals")
-        self._chk_animals.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._chk_animals.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         self._chk_animals.setToolTip("Also keep photos with detected persons and animals")
         h_conf = QHBoxLayout()
         lbl_conf = QLabel("Conf:")
@@ -260,7 +260,7 @@ class AIScannerPanel(QWidget):
         self._spin_thresh.setRange(10, 90)
         self._spin_thresh.setValue(40)
         self._spin_thresh.setSuffix("%")
-        self._spin_thresh.setStyleSheet("font-size:8px;")
+        self._spin_thresh.setStyleSheet("font-size:9px;")
         self._spin_thresh.setFixedWidth(55)
         h_conf.addWidget(lbl_conf)
         h_conf.addWidget(self._spin_thresh)
@@ -287,11 +287,11 @@ class AIScannerPanel(QWidget):
         _btn_w = 100  # Equal width for all Engine Status buttons
         self._btn_install_cv = QPushButton("Install OpenCV")
         self._btn_install_cv.setFixedWidth(_btn_w)
-        self._btn_install_cv.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; border:2px solid transparent;")
+        self._btn_install_cv.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; border:2px solid transparent;")
         self._btn_install_cv.clicked.connect(self._on_install_opencv)
         self._btn_uninstall_cv = QPushButton("Uninstall OpenCV")
         self._btn_uninstall_cv.setFixedWidth(_btn_w)
-        self._btn_uninstall_cv.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; color:#6b7280; border:2px solid transparent;")
+        self._btn_uninstall_cv.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; color:#6b7280; border:2px solid transparent;")
         self._btn_uninstall_cv.clicked.connect(self._on_uninstall_opencv)
         h_cv.addWidget(self._btn_install_cv)
         h_cv.addWidget(self._btn_uninstall_cv)
@@ -304,16 +304,16 @@ class AIScannerPanel(QWidget):
         h_mod.addWidget(self._lbl_model, 1)
         self._btn_update = QPushButton("Update!")
         self._btn_update.setFixedWidth(_btn_w)
-        self._btn_update.setStyleSheet("font-size:7px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:16px;")
+        self._btn_update.setStyleSheet("font-size:8px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:28px;")
         self._btn_update.clicked.connect(self._setup_models_only)
         self._btn_update.hide()
         self._btn_setup = QPushButton("Setup Models")
         self._btn_setup.setFixedWidth(_btn_w)
-        self._btn_setup.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; border:2px solid transparent;")
+        self._btn_setup.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; border:2px solid transparent;")
         self._btn_setup.clicked.connect(self._on_setup_models)
         self._btn_uninstall_models = QPushButton("Uninstall Models")
         self._btn_uninstall_models.setFixedWidth(_btn_w)
-        self._btn_uninstall_models.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; color:#6b7280; border:2px solid transparent;")
+        self._btn_uninstall_models.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; color:#6b7280; border:2px solid transparent;")
         self._btn_uninstall_models.clicked.connect(self._remove_models_only)
         self._btn_uninstall_models.setToolTip("Remove AI model files only")
         h_mod.addWidget(self._btn_update)
@@ -346,13 +346,13 @@ class AIScannerPanel(QWidget):
         h_exec.addStretch()
         self._btn_start = QPushButton("START AI SCAN")
         self._btn_start.setObjectName("btnStart")
-        self._btn_start.setFixedHeight(28)
+        self._btn_start.setFixedHeight(32)
         self._btn_start.setEnabled(False)
         self._btn_start.clicked.connect(self._run_job)
         h_exec.addWidget(self._btn_start)
         self._btn_stop = QPushButton("STOP")
         self._btn_stop.setObjectName("btnStop")
-        self._btn_stop.setFixedHeight(28)
+        self._btn_stop.setFixedHeight(32)
         self._btn_stop.setEnabled(False)
         self._btn_stop.clicked.connect(self._stop_job)
         h_exec.addWidget(self._btn_stop)
@@ -614,24 +614,24 @@ class AIScannerPanel(QWidget):
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
         elif w == self._btn_start_move:
             if self._btn_start_move.isEnabled():
-                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:9px; font-weight:900; min-height:24px;")
+                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:9px; font-weight:900; min-height:28px;")
             else:
-                w.setStyleSheet("font-size:8px; font-weight:700; min-height:24px; background:#1a1a1a; color:#6b7280; border:2px solid #262626;")
+                w.setStyleSheet("font-size:9px; font-weight:700; min-height:28px; background:#1a1a1a; color:#6b7280; border:2px solid #262626;")
         elif w == self._btn_browse:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:24px;")
+            w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:28px;")
         elif w == self._btn_browse_target:
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:24px;")
+            w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626; min-height:28px;")
         elif w == self._btn_setup:
-            w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; border:2px solid #262626;")
+            w.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; border:2px solid #262626;")
         elif w == self._btn_uninstall_models:
-            w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; color:#6b7280; border:2px solid #262626;")
+            w.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; color:#6b7280; border:2px solid #262626;")
         elif w == self._btn_install_cv:
             if self._opencv_just_installed:
-                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:7px; font-weight:700; min-height:16px;")
+                w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:8px; font-weight:700; min-height:28px;")
             else:
-                w.setStyleSheet("font-size:7px; font-weight:700; min-height:16px; border:2px solid #262626;")
+                w.setStyleSheet("font-size:8px; font-weight:700; min-height:28px; border:2px solid #262626;")
         elif w == self._btn_update:
-            w.setStyleSheet("font-size:7px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:16px;")
+            w.setStyleSheet("font-size:8px; font-weight:700; color:#eab308; border:2px solid #eab308; min-height:28px;")
 
     def _pulse_guide(self):
         target = self._get_guide_target()
@@ -648,14 +648,14 @@ class AIScannerPanel(QWidget):
             if target == self._btn_start:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
             elif target == self._btn_start_move:
-                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:9px; font-weight:900; min-height:24px;")
+                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:9px; font-weight:900; min-height:28px;")
             elif target == self._btn_install_cv and self._opencv_just_installed:
-                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #34d399; font-size:7px; font-weight:700; min-height:16px;")
+                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #34d399; font-size:8px; font-weight:700; min-height:28px;")
             else:
                 if target == self._btn_browse or target == self._btn_browse_target:
-                    style = "font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:24px;"
+                    style = "font-size:9px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:28px;"
                 else:
-                    style = "font-size:7px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:16px;"
+                    style = "font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444; min-height:28px;"
                 target.setStyleSheet(style)
         else:
             self._clear_guide_glow(target)

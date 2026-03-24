@@ -48,10 +48,10 @@ class MediaOrganizerPanel(QWidget):
         self._last_stats = (0, 0, 0)
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
-        _bar_h = 24
-        _browse_w, _browse_h = 56, _bar_h
+        _bar_h = 28
+        _browse_w, _browse_h = 60, _bar_h
         _edit_ss = f"color:#fff; font-size:11px; font-weight:500; min-height:{_bar_h}px; background:#121212; border:1px solid #1a1a1a;"
-        _btn_ss = "font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;"
+        _btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 2, 6, 2)
@@ -60,7 +60,7 @@ class MediaOrganizerPanel(QWidget):
         # ── COMMAND STRIP ─────────────────────────────────────────────────────
         h_strip = QHBoxLayout()
         h_strip.setSpacing(6)
-        _box_height = 118
+        _box_height = 126
 
         # 1. Paths (Source, Target, Photos/Videos — merged)
         grp_paths = QGroupBox("Paths")
@@ -112,7 +112,7 @@ class MediaOrganizerPanel(QWidget):
         self._chk_videos = QCheckBox("Videos")
         self._chk_videos.setChecked(True)
         for cb in [self._chk_photos, self._chk_videos]:
-            cb.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;")
+            cb.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;")
             h_media.addWidget(cb)
         v_paths.addLayout(h_media)
         h_strip.addWidget(grp_paths, 1)
@@ -126,7 +126,7 @@ class MediaOrganizerPanel(QWidget):
         v_mode.setSpacing(2)
         self._chk_dry = QCheckBox("Dry Run (Simulation)")
         self._chk_dry.setChecked(True)
-        self._chk_dry.setStyleSheet("font-size:8px; font-weight:700; color:#aaa;")
+        self._chk_dry.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         v_mode.addWidget(self._chk_dry)
         lbl_struct = QLabel("Folder structure:")
         lbl_struct.setStyleSheet("font-size:7px; color:#888; margin-top:4px;")
@@ -175,7 +175,10 @@ class MediaOrganizerPanel(QWidget):
 
         self._lbl_status = QLabel("Ready to organize")
         self._lbl_status.setAlignment(Qt.AlignCenter)
-        self._lbl_status.setStyleSheet("color:#10b981; font-size:10px; font-weight:800; margin-top:2px;")
+        self._lbl_status.setStyleSheet(
+            "color:#10b981; font-size:10px; font-weight:800; margin-top:2px; "
+            "padding:0; margin-left:0; margin-right:0; margin-bottom:0;"
+        )
         v_exec.addWidget(self._lbl_status)
 
         h_ctrl = QHBoxLayout(); h_ctrl.setSpacing(8)
@@ -266,9 +269,9 @@ class MediaOrganizerPanel(QWidget):
         if w == self._btn_start:
             w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
         elif w in (self._btn_browse_src, self._btn_browse_target):
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;")
+            w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;")
         elif w in (self._chk_photos, self._chk_videos):
-            w.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid #262626;")
+            w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;")
 
     def _pulse_guide(self):
         target = self._get_guide_target()
@@ -285,9 +288,9 @@ class MediaOrganizerPanel(QWidget):
             if target == self._btn_start:
                 target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
             elif target in (self._btn_browse_src, self._btn_browse_target):
-                target.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
+                target.setStyleSheet("font-size:9px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
             else:
-                target.setStyleSheet("font-size:8px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
+                target.setStyleSheet("font-size:9px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
         else:
             self._clear_guide_glow(target)
 
