@@ -137,6 +137,19 @@ jobs:
           cp artifacts/ChronoArchiver-mac64/*.zip release/
           ls -la release/
 
+      - name: Delete existing GitHub release (no orphan / stale assets)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="v${{ steps.ver.outputs.VERSION }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Deleting existing release $TAG before upload"
+            gh release delete "$TAG" --yes
+          else
+            echo "No existing release for $TAG"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:

@@ -602,10 +602,38 @@ def _reg_sz_quoted_path(p: str) -> str:
 def _windows_uninstall_registry_command(uninstall_bat: Path) -> str:
     """
     Full command line for UninstallString so Settings → Apps works when paths contain spaces.
-    Using cmd.exe /c ensures the .bat runs reliably when invoked from the shell.
+    Prefer System32\\cmd.exe (explicit) so ComSpec misconfiguration cannot break uninstall.
     """
-    comspec = os.environ.get("ComSpec", r"C:\Windows\System32\cmd.exe")
-    return f'{_reg_sz_quoted_path(comspec)} /c {_reg_sz_quoted_path(str(uninstall_bat))}'
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    cmd_exe = os.path.join(system_root, "System32", "cmd.exe")
+    bat = str(uninstall_bat.resolve())
+    return f'{_reg_sz_quoted_path(cmd_exe)} /c {_reg_sz_quoted_path(bat)}'
+
+
+def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, display_icon: str) -> None:
+    """Write HKCU Uninstall key via winreg (reliable Unicode); reg.exe /d often mangles quotes."""
+    try:
+        import winreg
+    except ImportError:
+        return
+    uninstall_cmd = _windows_uninstall_registry_command(uninstall_bat)
+    sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub)
+        try:
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "ChronoArchiver")
+            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
+            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "ChronoArchiver")
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(app_root))
+            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, display_icon)
+            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)
+            winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "InstallDate", 0, winreg.REG_SZ, datetime.now().strftime("%Y%m%d"))
+        finally:
+            winreg.CloseKey(key)
+    except OSError:
+        pass
 
 
 def _create_windows_shortcuts(app_root: Path):
@@ -659,13 +687,24 @@ $Shortcut.Save()
     except OSError:
         pass
 
+    # Drop legacy uninstall filenames (spaces in name confuse some shell parsers).
+    for legacy in ("Uninstall ChronoArchiver.cmd", "Uninstall ChronoArchiver.bat"):
+        try:
+            lp = folder / legacy
+            if lp.is_file():
+                lp.unlink()
+        except OSError:
+            pass
+
     # Uninstaller CMD: lives under Start Menu (outside install dir so we can delete that tree first).
     # PowerShell confirm — works from Settings → Apps (no console; plain "choice" does not).
     install_dir = str(app_root.resolve())
     sm_ps = str(folder).replace("'", "''")
     desk_ps = str(desktop / "ChronoArchiver.lnk").replace("'", "''")
     uninstall_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
-    uninstall_cmd = folder / "Uninstall ChronoArchiver.cmd"
+    uninstall_cmd = folder / "Uninstall_ChronoArchiver.cmd"
+    _bs = chr(92)
+    _extraud_line = f'set "EXTRAUD=%LOCALAPPDATA%{_bs}UnDadFeated{_bs}ChronoArchiver"'
     uninstall_cmd.write_text(
         f'''@echo off
 setlocal
@@ -675,7 +714,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName S
 if errorlevel 1 exit /b 0
 if exist "%TARGET%" rmdir /S /Q "%TARGET%"
 REM Models / platformdirs user_data (outside install dir; same app id as src)
-set "EXTRAUD=%LOCALAPPDATA%\\UnDadFeated\\ChronoArchiver"
+{_extraud_line}
 if exist "%EXTRAUD%" rmdir /S /Q "%EXTRAUD%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path -LiteralPath '{desk_ps}') {{ Remove-Item -LiteralPath '{desk_ps}' -Force }}"
 start "" /MIN powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 2; if (Test-Path -LiteralPath '{sm_ps}') {{ Remove-Item -LiteralPath '{sm_ps}' -Recurse -Force }}"
@@ -686,26 +725,9 @@ exit /b 0
         encoding="utf-8",
     )
 
-    # Register in Windows Installed Apps (no admin required, HKCU)
-    try:
-        display_icon = str(icon_path) if icon_path.exists() else str(launcher_pyw)
-        reg = uninstall_key
-        uninstall_reg_cmd = _windows_uninstall_registry_command(uninstall_cmd)
-        subprocess.run(["reg", "add", reg, "/v", "DisplayName", "/t", "REG_SZ", "/d", "ChronoArchiver", "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", VERSION, "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "Publisher", "/t", "REG_SZ", "/d", "ChronoArchiver", "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "InstallLocation", "/t", "REG_SZ", "/d", str(app_root), "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", display_icon, "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "UninstallString", "/t", "REG_SZ", "/d", uninstall_reg_cmd, "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "NoModify", "/t", "REG_DWORD", "/d", "1", "/f"], capture_output=True, timeout=8)
-        subprocess.run(["reg", "add", reg, "/v", "NoRepair", "/t", "REG_DWORD", "/d", "1", "/f"], capture_output=True, timeout=8)
-        subprocess.run(
-            ["reg", "add", reg, "/v", "InstallDate", "/t", "REG_SZ", "/d", datetime.now().strftime("%Y%m%d"), "/f"],
-            capture_output=True,
-            timeout=8,
-        )
-    except Exception:
-        pass
+    # Register in Windows Installed Apps (HKCU) — winreg preserves UninstallString exactly.
+    display_icon = str(icon_path) if icon_path.exists() else str(launcher_pyw)
+    _windows_write_uninstall_registry(uninstall_cmd, app_root, display_icon)
 
 
 def _create_macos_app_and_uninstaller(app_root: Path):
