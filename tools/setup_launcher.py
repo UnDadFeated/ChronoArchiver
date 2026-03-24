@@ -11,6 +11,7 @@ Welcome screen with logo; optional ChronoArchiver_installer.log beside the setup
 import hashlib
 import json
 import os
+import queue
 import platform
 import re
 import traceback
@@ -35,7 +36,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.11")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "3.8.0")
 
 
 VERSION = _read_version()
@@ -162,6 +163,27 @@ def _install_log_footer(ok: bool, detail: str = "") -> None:
             f.write("=" * 72 + "\n")
     except OSError:
         pass
+
+
+def _win_sp_kw() -> dict:
+    if platform.system() == "Windows":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {}
+
+
+def _setup_console_line(line: str, console_q: queue.Queue | None) -> None:
+    """Live setup console + optional installer log (when log file enabled)."""
+    s = (line or "").rstrip("\n")
+    if not s.strip():
+        return
+    s = s[:2000]
+    if console_q is not None:
+        try:
+            console_q.put_nowait(s)
+        except queue.Full:
+            pass
+    if _INSTALL_LOG_FILE:
+        _install_log(f"[setup-output] {s[:480]}")
 
 
 def _md5_digest_stream(fobj) -> bytes:
@@ -356,13 +378,14 @@ def _venv_import_ok(py_exe: Path) -> bool:
             [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
             capture_output=True,
             timeout=15,
+            **_win_sp_kw(),
         )
         return r.returncode == 0
     except Exception:
         return False
 
 
-def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb) -> tuple[bool, str]:
+def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
     """pip install -r requirements.txt — idempotent; picks up new deps on upgrade."""
     req = app_root / "requirements.txt"
     if not req.exists():
@@ -374,6 +397,7 @@ def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb) -> tuple[
         text=True,
         bufsize=1,
         cwd=str(app_root),
+        **_win_sp_kw(),
     )
     pip_capture: list[str] = []
     last_update = [0.0]
@@ -381,6 +405,7 @@ def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb) -> tuple[
     prev_time = [time.time()]
     for line in iter(proc.stdout.readline, "") if proc.stdout else []:
         pip_capture.append((line or "").rstrip("\n"))
+        _setup_console_line(line, console_q)
         line = (line or "").strip()
         if not line:
             continue
@@ -442,7 +467,10 @@ def _find_system_python() -> list[str] | None:
         candidates.extend([["python3"], ["python"]])
     for cmd in candidates:
         try:
-            r = subprocess.run(cmd + ["-c", "import sys; print(sys.version_info[:2])"], capture_output=True, timeout=8)
+            r = subprocess.run(
+                cmd + ["-c", "import sys; print(sys.version_info[:2])"],
+                capture_output=True, timeout=8, **_win_sp_kw(),
+            )
             if r.returncode == 0:
                 return cmd
         except Exception:
@@ -450,7 +478,7 @@ def _find_system_python() -> list[str] | None:
     return None
 
 
-def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
+def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
     """Ensure venv exists and requirements are satisfied; reuse healthy venv and sync via pip -r."""
     _install_log(f"bootstrap: app_root={app_root}")
     venv = app_root / "venv"
@@ -464,9 +492,9 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
 
     if py_exe.exists() and pip_exe.exists() and _venv_import_ok(py_exe):
         progress_cb("Syncing dependencies…", 0, 0, 0, "pip install -r requirements.txt")
-        ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb)
+        ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb, console_q)
         if ok and _venv_import_ok(py_exe):
-            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb)
+            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q)
             if not fin_ok:
                 return False, fin_err
             progress_cb("Done", 100, 0, 0)
@@ -493,7 +521,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
 
     progress_cb("Creating virtual environment…", 0, 0, 0)
     try:
-        subprocess.run(py_cmd + ["-m", "venv", str(venv)], capture_output=True, timeout=120, check=True)
+        subprocess.run(py_cmd + ["-m", "venv", str(venv)], capture_output=True, timeout=120, check=True, **_win_sp_kw())
     except subprocess.CalledProcessError as e:
         msg = (e.stderr or e.stdout or "venv failed").decode("utf-8", errors="ignore") if isinstance((e.stderr or e.stdout), bytes) else (e.stderr or e.stdout or "venv failed")
         progress_cb("venv creation failed", 0, 0, 0, str(msg)[:120])
@@ -527,6 +555,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
             [str(pip_exe), "install", pkg, "--disable-pip-version-check"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
             cwd=str(app_root),
+            **_win_sp_kw(),
         )
         pkg_lines: list[str] = []
         last_update = [0.0]
@@ -534,6 +563,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
         prev_time = [time.time()]
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
             pkg_lines.append((line or "").rstrip("\n"))
+            _setup_console_line(line, console_q)
             line = (line or "").strip()
             if not line:
                 continue
@@ -579,6 +609,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
             [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
             capture_output=True,
             timeout=15,
+            **_win_sp_kw(),
         )
         if r.returncode != 0:
             progress_cb("Verification failed", 0, 0, 0)
@@ -590,14 +621,14 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
     except Exception as e:
         _install_log(f"bootstrap verify: EXCEPTION {type(e).__name__}: {e!r}")
         return False, f"Verification exception: {e}"
-    fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb)
+    fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q)
     if not fin_ok:
         return False, fin_err
     progress_cb("Done", 100, 0, 0)
     return True, ""
 
 
-def _bootstrap_ffmpeg(app_root: Path, py_exe: Path, progress_cb) -> tuple[bool, str]:
+def _bootstrap_ffmpeg(app_root: Path, py_exe: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
     """Download FFmpeg via static-ffmpeg into the venv (after pip). Full setup + quick-launch."""
     if not py_exe.is_file():
         return False, "venv Python not found"
@@ -631,6 +662,7 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            **_win_sp_kw(),
         )
         if proc.stdout:
             for line in iter(proc.stdout.readline, ""):
@@ -646,8 +678,8 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
                         except ValueError:
                             pct = 0.0
                         progress_cb("FFmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
-                if line and not line.startswith("CA_PROGRESS:"):
-                    _install_log(line[:240])
+                else:
+                    _setup_console_line(line, console_q)
         proc.wait(timeout=900)
         if proc.returncode != 0:
             _install_log(f"ffmpeg bootstrap: exit {proc.returncode}")
@@ -673,11 +705,13 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
                 pass
 
 
-def _finalize_bootstrap_with_ffmpeg(app_root: Path, py_exe: Path, progress_cb) -> tuple[bool, str]:
+def _finalize_bootstrap_with_ffmpeg(
+    app_root: Path, py_exe: Path, progress_cb, console_q: queue.Queue | None = None
+) -> tuple[bool, str]:
     """Run after pip/verify so FFmpeg always installs (not only when setup GUI task() includes a separate step)."""
     _install_log("bootstrap: FFmpeg (static-ffmpeg) starting")
     progress_cb("FFmpeg", 0, 0, 0, "")
-    ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb)
+    ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb, console_q)
     if not ok_ff:
         _install_log(f"bootstrap: FFmpeg FAILED {err_ff!r}")
         return False, err_ff or "FFmpeg download failed."
@@ -1053,32 +1087,40 @@ def _do_setup_gui(download_url: str) -> bool:
 
     root = tk.Tk()
     root.title("ChronoArchiver — Setup")
-    root.geometry("560x460")
-    root.resizable(False, False)
+    root.geometry("1020x500")
+    root.minsize(760, 400)
+    root.resizable(True, True)
     root.configure(bg="#0d0d0d")
     root.option_add("*Font", "TkDefaultFont 9")
     _apply_setup_window_icon(root)
 
-    lbl_title = tk.Label(root, text="Installing ChronoArchiver…", fg="#e5e7eb", bg="#0d0d0d", font=("", 11, "bold"))
+    main_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL, bg="#0d0d0d", sashwidth=5, sashrelief=tk.FLAT)
+    main_pane.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+    left = tk.Frame(main_pane, bg="#0d0d0d")
+    main_pane.add(left, minsize=420)
+    right = tk.Frame(main_pane, bg="#0d0d0d", width=320)
+    main_pane.add(right, minsize=200)
+
+    lbl_title = tk.Label(left, text="Installing ChronoArchiver…", fg="#e5e7eb", bg="#0d0d0d", font=("", 11, "bold"))
     lbl_title.pack(pady=(16, 6))
-    lbl_component = tk.Label(root, text="Preparing…", fg="#9ca3af", bg="#0d0d0d", wraplength=520)
+    lbl_component = tk.Label(left, text="Preparing…", fg="#9ca3af", bg="#0d0d0d", wraplength=480)
     lbl_component.pack(pady=2)
-    lbl_detail = tk.Label(root, text="", fg="#6b7280", bg="#0d0d0d", font=("", 8), wraplength=480)
+    lbl_detail = tk.Label(left, text="", fg="#6b7280", bg="#0d0d0d", font=("", 8), wraplength=440)
     lbl_detail.pack(pady=2)
-    lbl_speed = tk.Label(root, text="", fg="#10b981", bg="#0d0d0d")
+    lbl_speed = tk.Label(left, text="", fg="#10b981", bg="#0d0d0d")
     lbl_speed.pack(pady=2)
-    tk.Label(root, text="Current Component", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
-    prog_step = ttk.Progressbar(root, length=500, mode="determinate")
+    tk.Label(left, text="Current Component", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
+    prog_step = ttk.Progressbar(left, length=420, mode="determinate")
     prog_step.pack(pady=4)
-    lbl_pct_step = tk.Label(root, text="0%", fg="#6b7280", bg="#0d0d0d")
+    lbl_pct_step = tk.Label(left, text="0%", fg="#6b7280", bg="#0d0d0d")
     lbl_pct_step.pack(pady=2)
-    tk.Label(root, text="Overall Progress", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
-    prog_overall = ttk.Progressbar(root, length=500, mode="determinate")
+    tk.Label(left, text="Overall Progress", fg="#9ca3af", bg="#0d0d0d", font=("", 8, "bold")).pack(pady=(8, 0))
+    prog_overall = ttk.Progressbar(left, length=420, mode="determinate")
     prog_overall.pack(pady=4)
-    lbl_pct_overall = tk.Label(root, text="0%", fg="#6b7280", bg="#0d0d0d")
+    lbl_pct_overall = tk.Label(left, text="0%", fg="#6b7280", bg="#0d0d0d")
     lbl_pct_overall.pack(pady=2)
     checklist = [
-        tk.Label(root, text=f"  [ ] {name}", fg="#6b7280", bg="#0d0d0d", anchor="w")
+        tk.Label(left, text=f"  [ ] {name}", fg="#6b7280", bg="#0d0d0d", anchor="w")
         for name in (
             "Download source",
             "Extract files",
@@ -1091,9 +1133,46 @@ def _do_setup_gui(download_url: str) -> bool:
     for lbl in checklist:
         lbl.pack(fill="x", padx=26)
 
+    tk.Label(right, text="Setup output (pip / FFmpeg)", fg="#9ca3af", bg="#0d0d0d", font=("", 9)).pack(anchor="w", pady=(8, 4))
+    tf = tk.Frame(right, bg="#0d0d0d")
+    tf.pack(fill=tk.BOTH, expand=True)
+    sb = tk.Scrollbar(tf, bg="#1a1a1a")
+    sb.pack(side=tk.RIGHT, fill=tk.Y)
+    console_text = tk.Text(
+        tf,
+        width=40,
+        height=22,
+        bg="#111111",
+        fg="#d1d5db",
+        font=("Consolas", 8),
+        wrap=tk.WORD,
+        relief=tk.FLAT,
+        insertbackground="#e5e7eb",
+    )
+    console_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    sb.config(command=console_text.yview)
+    console_text.config(yscrollcommand=sb.set)
+
     result = [False]
     result_error = [""]
     done = [False]
+    console_q: queue.Queue = queue.Queue(maxsize=12000)
+
+    def poll_console():
+        try:
+            for _ in range(120):
+                ln = console_q.get_nowait()
+                console_text.insert(tk.END, ln + "\n")
+            console_text.see(tk.END)
+        except queue.Empty:
+            pass
+        try:
+            idx = float(console_text.index("end-1c").split(".")[0])
+            if idx > 4000:
+                console_text.delete("1.0", f"{int(idx - 3000)}.0")
+        except (tk.TclError, ValueError):
+            pass
+        root.after(45, poll_console)
 
     stage = {"index": 0, "base": 0.0, "span": 100.0}
     stage_plan = [
@@ -1176,7 +1255,7 @@ def _do_setup_gui(download_url: str) -> bool:
             progress_cb("Virtual environment…", 0, 0, 0)
             _set_stage(3, "Installing dependencies…")
             _install_log("task: starting venv / pip bootstrap")
-            ok, err = _run_setup_bootstrap(app_dir, progress_cb)
+            ok, err = _run_setup_bootstrap(app_dir, progress_cb, console_q)
             if not ok:
                 _install_log(f"task: bootstrap FAILED {err!r}")
                 _install_log_footer(False, "bootstrap")
@@ -1215,6 +1294,7 @@ def _do_setup_gui(download_url: str) -> bool:
         root.after(100, poll)
 
     threading.Thread(target=task, daemon=True).start()
+    root.after(50, poll_console)
     root.after(100, poll)
     root.mainloop()
     root.destroy()

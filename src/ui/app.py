@@ -37,6 +37,11 @@ from ui.panels.organizer_panel import MediaOrganizerPanel
 from ui.panels.encoder_panel import AV1EncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
 from core.updater import ApplicationUpdater
+from core.subprocess_tee import (
+    set_subprocess_tee_callback,
+    set_subprocess_channel,
+    win_hide_kw,
+)
 from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP
 from core.logger import setup_logger
 
@@ -479,6 +484,11 @@ class ChronoArchiverApp(QMainWindow):
         self.stack.addWidget(self.panel_scn)
         self.panel_scn._sig.prereqs_changed.connect(self._refresh_footer)
 
+        def _tee_cb(channel: str, line: str):
+            QTimer.singleShot(0, lambda: self._route_subprocess_line(channel, line))
+
+        set_subprocess_tee_callback(_tee_cb)
+
         self.layout.addWidget(self.stack)
 
         # ── STATUS BAR ──
@@ -674,6 +684,7 @@ class ChronoArchiverApp(QMainWindow):
 
             def _worker():
                 try:
+                    set_subprocess_channel("organizer")
                     ok = bool(ensure_bundled_ffmpeg(_footer_cb))
                 except Exception:
                     ok = False
@@ -741,6 +752,14 @@ class ChronoArchiverApp(QMainWindow):
                 opencv_ok = False
             _apply(opencv_ok)
 
+    def _route_subprocess_line(self, channel: str, line: str):
+        """Tee venv pip/ffmpeg lines to Organizer or Scanner console."""
+        text = f"[{channel}] {line}" if channel else line
+        if channel == "scanner":
+            self.panel_scn.append_external_line(text)
+        else:
+            self.panel_org.append_external_line(text)
+
     def _copy_console(self):
         panel = self.stack.currentWidget()
         if hasattr(panel, "_log_edit"):
@@ -777,7 +796,9 @@ class ChronoArchiverApp(QMainWindow):
                     out = subprocess.check_output(
                         ["nvidia-smi", "--query-gpu=utilization.gpu",
                          "--format=csv,noheader,nounits"],
-                        text=True, stderr=subprocess.DEVNULL).strip()
+                        text=True, stderr=subprocess.DEVNULL,
+                        **win_hide_kw(),
+                    ).strip()
                     line = out.strip().split("\n")[0].strip() if out else ""
                     g = int(line) if line.isdigit() else 0
                     self._metrics_gpu_cache = f"{min(999, g):3d}%"
@@ -854,6 +875,7 @@ class ChronoArchiverApp(QMainWindow):
 
         def _bg():
             try:
+                set_subprocess_channel("organizer")
                 ensure_bundled_ffmpeg(None)
             except Exception:
                 pass

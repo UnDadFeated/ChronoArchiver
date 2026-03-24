@@ -5,6 +5,7 @@ Visual style exactly matches Mass AV1 Encoder v12.
 
 import csv
 import os
+import platform
 import queue
 import shutil
 import subprocess
@@ -42,6 +43,7 @@ from core.venv_manager import (
 )
 from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_OPENCV_INSTALL, UTILITY_MODEL_SETUP
 from core.updater import restart_app
+from core.subprocess_tee import set_subprocess_channel
 
 
 class _Signals(QObject):
@@ -558,6 +560,7 @@ class AIScannerPanel(QWidget):
         self._version_check_started = True
 
         def _task():
+            set_subprocess_channel("scanner")
             models_up = False
             opencv_up = False
             try:
@@ -567,9 +570,13 @@ class AIScannerPanel(QWidget):
             try:
                 pip_exe = get_pip_exe()
                 if pip_exe.exists():
+                    _wh = {}
+                    if platform.system() == "Windows":
+                        _wh = {"creationflags": subprocess.CREATE_NO_WINDOW}
                     r = subprocess.run(
                         [str(pip_exe), "list", "--outdated"],
-                        capture_output=True, text=True, timeout=10
+                        capture_output=True, text=True, timeout=10,
+                        **_wh,
                     )
                     if r.returncode == 0 and "opencv-python" in (r.stdout or ""):
                         opencv_up = True
@@ -706,6 +713,7 @@ class AIScannerPanel(QWidget):
             dlg.phase_update.emit(phase, detail, downloaded, total)
 
         def _task():
+            set_subprocess_channel("scanner")
             try:
                 debug(UTILITY_OPENCV_INSTALL, "OpenCV install _task START")
                 pip = get_pip_exe()
@@ -1177,6 +1185,10 @@ class AIScannerPanel(QWidget):
         except Exception as e:
             self._add_log(f"Export failed: {e}")
             debug(UTILITY_AI_MEDIA_SCANNER, f"Export CSV failed: {e}")
+
+    def append_external_line(self, msg: str):
+        """Subprocess / pip output (main thread)."""
+        self._add_log(msg)
 
     def _add_log(self, msg):
         sb = self._log_edit.verticalScrollBar()

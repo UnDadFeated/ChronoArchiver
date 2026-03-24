@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.8.0] - 2026-03-24
+### Added
+- **Windows setup**: Right-hand **Setup output** pane streams **pip** and **FFmpeg** subprocess lines live; when detailed install logging is enabled, the same lines are prefixed with `[setup-output]` in `ChronoArchiver_installer.log`.
+- **`core/subprocess_tee`**: Optional tee of pip/FFmpeg lines to the app UI; **Windows** `CREATE_NO_WINDOW` on venv subprocesses to stop brief **console flashes** (including `nvidia-smi` in the footer metrics loop).
+- **Media Organizer / AI Scanner consoles**: Subprocess output from first-run FFmpeg/pip and from **AI Scanner** pip work (OpenCV install, `pip list --outdated`) is shown in the **Organizer** console on startup (`organizer` channel) and in the **Scanner** console when those operations run with the `scanner` channel.
+
+### Changed
+- Semver **3.8.0** (installers, PKGBUILD, PyPI metadata).
+
 ## [3.7.11] - 2026-03-24
 ### Added
 - **Windows / macOS — FFmpeg during setup**: After `pip` completes, the installer downloads **static-ffmpeg** binaries (same mechanism as the app) so first launch does not open the FFmpeg pre-req dialog. **Quick-launch** (when source already matches the setup version) also ensures FFmpeg before starting the app.
