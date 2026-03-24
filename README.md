@@ -113,6 +113,17 @@ paru -S chronoarchiver
 yay -S chronoarchiver
 ```
 
+### Windows (x64) / macOS
+
+Download the installer from the [Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) page:
+
+| Platform | File |
+|----------|------|
+| **Windows x64** | `ChronoArchiver-3.5.0-win64.exe` |
+| **macOS** | `ChronoArchiver-3.5.0-mac64.dmg` |
+
+The installer lets you choose the installation directory. On macOS, drag the app to Applications or your preferred location.
+
 ### From Source
 
 **Requirements:** Python 3.10 or later. FFmpeg is bundled; no system installation required.

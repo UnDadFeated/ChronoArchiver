@@ -30,6 +30,7 @@ MANIFEST
 #  Usually these files are written by a python script, but may be useful to exclude
 *.manifest
 *.spec
+!tools/chronoarchiver.spec
 
 # Installer logs
 pip-log.txt

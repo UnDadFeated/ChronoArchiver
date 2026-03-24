@@ -1,0 +1,121 @@
+# Build Windows x64 and macOS installers on release tag push.
+# Creates GitHub Release with: ChronoArchiver-3.5.0-win64.exe, ChronoArchiver-3.5.0-mac64.dmg
+
+name: Release Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller static-ffmpeg opencv-python GitPython
+          pip install Inno-Setup-Command-Line-Builder 2>nul || echo "Will use iscc if available"
+
+      - name: Get version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller tools/chronoarchiver.spec
+          dir dist\ChronoArchiver
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup -y
+
+      - name: Set version in Inno Setup script
+        run: |
+          (Get-Content tools\ChronoArchiver.iss) -replace 'MyAppVersion "[^"]+"', 'MyAppVersion "${{ steps.ver.outputs.VERSION }}"' | Set-Content tools\ChronoArchiver.iss
+
+      - name: Build Windows installer
+        run: iscc tools/ChronoArchiver.iss
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChronoArchiver-win64
+          path: dist/ChronoArchiver-*-win64.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller static-ffmpeg opencv-python GitPython
+
+      - name: Get version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller tools/chronoarchiver.spec
+          ls -la dist/
+
+      - name: Create DMG
+        run: |
+          mkdir -p dmg_build
+          cp -R dist/ChronoArchiver.app dmg_build/
+          ln -s /Applications dmg_build/Applications
+          hdiutil create -volname "ChronoArchiver" -srcfolder dmg_build -ov -format UDZO "dist/ChronoArchiver-${{ steps.ver.outputs.VERSION }}-mac64.dmg"
+
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChronoArchiver-mac64
+          path: dist/ChronoArchiver-*-mac64.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ChronoArchiver ${{ steps.ver.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          replace_artifacts: true
+          files: |
+            artifacts/ChronoArchiver-win64/ChronoArchiver-*.exe
+            artifacts/ChronoArchiver-mac64/ChronoArchiver-*.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

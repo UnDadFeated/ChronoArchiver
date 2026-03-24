@@ -1,6 +1,9 @@
 # Changelog
 
 ## [3.5.0] - 2026-03-24
+### Added
+- **Professional installers**: Windows x64 (Inno Setup) and macOS (DMG) installers built via GitHub Actions on release tag push. User-selectable install path. Artifacts: `ChronoArchiver-3.5.0-win64.exe`, `ChronoArchiver-3.5.0-mac64.dmg` on Releases page.
+
 ### Changed
 - **Milestone release**: Cross-platform audit (Windows, Linux, Arch, macOS). README refreshed: encoding backends (NVENC, VAAPI, AMF, SVT-AV1), I/O throughput, uninstall paths for all platforms. All modules verified; no breaking changes.
 

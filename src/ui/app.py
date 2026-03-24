@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.venv_manager import (
     add_venv_to_path, add_ffmpeg_to_path,
     check_opencv_in_venv, check_ffmpeg_in_venv, ensure_ffmpeg_in_venv_with_progress,
-    get_pip_exe,
+    get_pip_exe, _is_frozen,
 )
 add_venv_to_path()
 
@@ -373,12 +373,13 @@ class ChronoArchiverApp(QMainWindow):
 
         def _do_ffmpeg_check():
             pip = get_pip_exe()
-            if pip.exists() and check_ffmpeg_in_venv():
+            frozen = _is_frozen()
+            if (pip.exists() or frozen) and check_ffmpeg_in_venv():
                 add_ffmpeg_to_path()
-                debug(UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)")
+                debug(UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)" if not frozen else "Pre-reqs: FFmpeg=ok (bundled)")
                 step2()
                 return
-            if pip.exists():
+            if pip.exists() or frozen:
                 _install_ffmpeg_async(step2)
                 return
             ffmpeg_ok = bool(shutil.which("ffmpeg"))
