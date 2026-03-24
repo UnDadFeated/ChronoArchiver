@@ -22,11 +22,21 @@ with open(_version_txt, "w") as f:
 # Bundle as version.txt so setup_launcher finds it
 _datas_version = [(_version_txt, ".")]
 
+# Collect tkinter Tcl/Tk data files (fixes init.tcl error on Windows onefile)
+try:
+    from PyInstaller.utils.hooks import collect_all
+    _tk_datas, _tk_binaries, _tk_hidden = collect_all("tkinter")
+    _datas_all = _datas_version + _tk_datas
+    _binaries_all = _tk_binaries
+except Exception:
+    _datas_all = _datas_version
+    _binaries_all = []
+
 a = Analysis(
     [os.path.join(_spec_dir, "setup_launcher.py")],
     pathex=[_spec_dir],
-    binaries=[],
-    datas=_datas_version,
+    binaries=_binaries_all,
+    datas=_datas_all,
     hiddenimports=["tkinter"],
     hookspath=[],
     hooksconfig={},

@@ -34,16 +34,20 @@ def _run_with_ui():
     lbl_phase.pack(pady=4)
     lbl_detail = tk.Label(root, text="", font=("", 8), fg="#6b7280", bg="#1a1a1a", wraplength=440)
     lbl_detail.pack(pady=4, padx=20)
-    prog = ttk.Progressbar(root, mode="indeterminate", length=400)
+    prog = ttk.Progressbar(root, mode="determinate", length=400)
     prog.pack(pady=16)
-    prog.start(10)
+    lbl_pct = tk.Label(root, text="0%", font=("", 8), fg="#6b7280", bg="#1a1a1a")
+    lbl_pct.pack(pady=2)
 
     done = [False]
     result = [False]
 
-    def progress(phase, detail):
+    def progress(phase, detail="", pct=None):
         lbl_phase.config(text=phase)
-        lbl_detail.config(text=detail)
+        lbl_detail.config(text=detail[:100] if detail else "")
+        if pct is not None:
+            prog["value"] = min(100, max(0, pct))
+            lbl_pct.config(text=f"{pct:.0f}%")
         root.update_idletasks()
 
     def task():
@@ -55,14 +59,13 @@ def _run_with_ui():
     t = threading.Thread(target=task, daemon=True)
     t.start()
     root.mainloop()
-    prog.stop()
     root.destroy()
     return result[0]
 
 
 def _run_headless():
     """No UI — print to stdout."""
-    def progress(phase, detail):
+    def progress(phase, detail="", pct=None):
         print(f"  {phase}  {detail}")
 
     return ensure_venv(progress_callback=progress, skip_opencv=True)
