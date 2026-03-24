@@ -42,8 +42,9 @@ OPENCV_STANDARD_APPROX_BYTES = 90 * 1024 * 1024  # ~90 MB
 OPENCV_CUDA_FALLBACK_BYTES = 506 * 1024 * 1024
 
 # Base packages (opencv chosen by get_opencv_package())
+# numpy required by scanner; PySide6-Essentials sufficient but PySide6 ensures compatibility
 VENV_PACKAGES_BASE = [
-    "PySide6", "psutil", "requests", "Pillow", "platformdirs",
+    "PySide6", "numpy", "psutil", "requests", "Pillow", "platformdirs",
     "piexif", "static-ffmpeg", "GitPython",
 ]
 
@@ -370,7 +371,7 @@ def is_venv_ready() -> bool:
         return False
     try:
         r = subprocess.run(
-            [str(py), "-c", "import PySide6; import cv2; import PIL; import requests"],
+            [str(py), "-c", "import PySide6; import numpy; import cv2; import PIL; import requests"],
             capture_output=True, timeout=5,
         )
         return r.returncode == 0
@@ -380,7 +381,7 @@ def is_venv_ready() -> bool:
 
 def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
     """
-    Create venv and install packages. progress_callback(phase: str, detail: str).
+    Create venv and install packages. progress_callback(phase, detail, pct=None).
     skip_opencv: if True, do not install opencv (caller will install separately).
     Returns True on success. No-op when frozen.
     """
@@ -390,28 +391,29 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
     venv = get_venv_path()
     data.mkdir(parents=True, exist_ok=True)
 
-    def prog(phase, detail=""):
+    def prog(phase, detail="", pct=None):
         if progress_callback:
-            progress_callback(phase, detail)
+            progress_callback(phase, detail, pct)
 
     if not (venv / "bin" / "python").exists() and not (venv / "Scripts" / "python.exe").exists():
-        prog("Creating virtual environment...", "")
+        prog("Creating virtual environment...", "", 0)
         r = subprocess.run(
             [sys.executable, "-m", "venv", str(venv)],
             capture_output=True, text=True, timeout=60,
         )
         if r.returncode != 0:
-            prog("venv creation failed", (r.stderr or r.stdout or "")[:150])
+            prog("venv creation failed", (r.stderr or r.stdout or "")[:150], 0)
             return False
 
     pip = get_pip_exe()
     if not pip.exists():
-        prog("venv pip not found", "")
+        prog("venv pip not found", "", 0)
         return False
 
     packages = VENV_PACKAGES_BASE + ([] if skip_opencv else [get_opencv_package()])
-    for pkg in packages:
-        prog(f"Installing {pkg}...", "")
+    n = len(packages)
+    for i, pkg in enumerate(packages):
+        prog(f"Installing {pkg} ({i + 1}/{n})...", "", 100.0 * i / n)
         proc = subprocess.Popen(
             [str(pip), "install", pkg],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -419,19 +421,20 @@ def ensure_venv(progress_callback=None, skip_opencv: bool = False) -> bool:
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
             line = (line or "").strip()
             if line:
-                prog(f"Installing {pkg}...", line[:100])
+                prog(f"Installing {pkg} ({i + 1}/{n})...", line[:100], 100.0 * (i + 0.5) / n)
         try:
-            proc.wait(timeout=300)
+            proc.wait(timeout=600)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-            prog("pip install timeout", "")
+            prog("pip install timeout", "", 0)
             return False
         if proc.returncode != 0:
-            prog(f"Failed: {pkg}", "")
+            prog(f"Failed: {pkg}", "", 0)
             return False
+        prog(f"Installed {pkg} ({i + 1}/{n})", "", 100.0 * (i + 1) / n)
 
-    prog("Setup complete.", "Restart ChronoArchiver.")
+    prog("Setup complete.", "Restart ChronoArchiver.", 100)
     return True
 
 

@@ -25,7 +25,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.2")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.3")
 
 
 VERSION = _read_version()
@@ -104,8 +104,24 @@ def _download_with_progress(url: str, dest_path: str, progress_cb) -> bool:
         return False
 
 
+def _parse_requirements(req_path: Path) -> list[str]:
+    """Parse requirements.txt into list of package names (strip comments, -r, empty)."""
+    if not req_path.exists():
+        return []
+    packages = []
+    for line in req_path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#")[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        pkg = line.split("==")[0].split("[")[0].strip()
+        if pkg:
+            packages.append(pkg)
+    return packages
+
+
 def _run_setup_bootstrap(app_root: Path, progress_cb) -> bool:
-    """Create venv and install deps during setup so shortcut uses app-internal pythonw."""
+    """Create venv, install each package with progress, verify before returning."""
+    import re
     venv = app_root / "venv"
     if platform.system() == "Windows":
         py_exe = venv / "Scripts" / "python.exe"
@@ -113,22 +129,100 @@ def _run_setup_bootstrap(app_root: Path, progress_cb) -> bool:
     else:
         py_exe = venv / "bin" / "python"
         pip_exe = venv / "bin" / "pip"
+
+    # Skip only if venv exists and passes import check
     if py_exe.exists():
-        return True
+        try:
+            r = subprocess.run(
+                [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
+                capture_output=True, timeout=10,
+            )
+            if r.returncode == 0:
+                return True
+        except Exception:
+            pass
+
     py_sys = shutil.which("python3") or shutil.which("python")
     if not py_sys:
+        progress_cb("Python not found", 0, 0, 0)
         return False
+
+    progress_cb("Creating virtual environment…", 0, 0, 0)
     try:
         subprocess.run([py_sys, "-m", "venv", str(venv)], capture_output=True, timeout=90, check=True)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        progress_cb("venv creation failed", 0, 0, 0)
         return False
-    req = app_root / "requirements.txt"
-    if req.exists() and pip_exe.exists():
+
+    if not pip_exe.exists():
+        progress_cb("pip not found in venv", 0, 0, 0)
+        return False
+
+    packages = _parse_requirements(app_root / "requirements.txt")
+    if not packages:
+        progress_cb("No packages in requirements.txt", 0, 0, 0)
+        return False
+
+    n = len(packages)
+    for i, pkg in enumerate(packages):
+        base_pct = 100.0 * i / n
+        pkg_display = f"{pkg} ({i + 1}/{n})"
+
+        def _update(detail: str = "", sub_pct: float = 0):
+            pct = base_pct + (100.0 / n) * sub_pct / 100
+            progress_cb(pkg_display, pct, 0, 0, detail)
+
+        _update("Installing…", 0)
+        proc = subprocess.Popen(
+            [str(pip_exe), "install", pkg, "--disable-pip-version-check"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            cwd=str(app_root),
+        )
+        start = time.time()
+        last_update = [0]
+        for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+            line = (line or "").strip()
+            if not line:
+                continue
+            # Parse "  Downloading X (Y MB)" or "     -------- 12.3/45.6 MB 1.2 MB/s"
+            m = re.search(r"(\d+\.?\d*)\s*/\s*(\d+\.?\d*)\s*MB", line)
+            if m:
+                a, b = float(m.group(1)), float(m.group(2))
+                sub_pct = (a / b * 100) if b > 0 else 0
+                speed_m = re.search(r"(\d+\.?\d*)\s*MB/s", line)
+                speed = float(speed_m.group(1)) if speed_m else 0
+                now = time.time()
+                if now - last_update[0] >= 0.3:
+                    last_update[0] = now
+                    progress_cb(pkg_display, base_pct + (100.0 / n) * sub_pct / 100, speed, a, line[:80])
+            elif "Downloading" in line or "Collecting" in line:
+                progress_cb(pkg_display, base_pct, 0, 0, line[:80])
+
         try:
-            subprocess.run([str(pip_exe), "install", "-r", str(req)], capture_output=True, timeout=300)
-        except Exception:
-            pass
-    return py_exe.exists()
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            progress_cb(f"Timeout: {pkg}", 0, 0, 0)
+            return False
+        if proc.returncode != 0:
+            progress_cb(f"Failed: {pkg}", 0, 0, 0)
+            return False
+        progress_cb(pkg_display, base_pct + 100.0 / n, 0, 0, "OK")
+
+    progress_cb("Verifying…", 98, 0, 0)
+    try:
+        r = subprocess.run(
+            [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
+            capture_output=True, timeout=15,
+        )
+        if r.returncode != 0:
+            progress_cb("Verification failed", 0, 0, 0)
+            return False
+    except Exception:
+        return False
+    progress_cb("Done", 100, 0, 0)
+    return True
 
 
 def _create_windows_shortcuts(app_root: Path):
@@ -282,32 +376,37 @@ def _do_setup_gui():
 
     root = tk.Tk()
     root.title("ChronoArchiver — Setup")
-    root.geometry("480x220")
+    root.geometry("520x380")
     root.resizable(False, False)
     root.configure(bg="#0d0d0d")
     root.option_add("*Font", "TkDefaultFont 9")
 
     lbl_title = tk.Label(root, text="Downloading ChronoArchiver…", fg="#e5e7eb", bg="#0d0d0d", font=("", 11, "bold"))
-    lbl_title.pack(pady=(20, 8))
-    lbl_component = tk.Label(root, text="ChronoArchiver (Python source)", fg="#9ca3af", bg="#0d0d0d")
+    lbl_title.pack(pady=(16, 6))
+    lbl_component = tk.Label(root, text="ChronoArchiver (Python source)", fg="#9ca3af", bg="#0d0d0d", wraplength=480)
     lbl_component.pack(pady=2)
+    lbl_detail = tk.Label(root, text="", fg="#6b7280", bg="#0d0d0d", font=("", 8), wraplength=480)
+    lbl_detail.pack(pady=2)
     lbl_speed = tk.Label(root, text="", fg="#10b981", bg="#0d0d0d")
     lbl_speed.pack(pady=2)
-    prog = ttk.Progressbar(root, length=420, mode="determinate")
-    prog.pack(pady=12)
+    prog = ttk.Progressbar(root, length=460, mode="determinate")
+    prog.pack(pady=8)
     lbl_pct = tk.Label(root, text="0%", fg="#6b7280", bg="#0d0d0d")
     lbl_pct.pack(pady=2)
 
     result = [False]
     done = [False]
 
-    def progress_cb(component, pct, speed_mbps, size_mb):
+    def progress_cb(component, pct, speed_mbps, size_mb, detail=""):
         def update():
             lbl_component.config(text=component)
-            prog["value"] = min(100, pct)
+            lbl_detail.config(text=detail[:100] if detail else "")
+            prog["value"] = min(100, max(0, pct))
             lbl_pct.config(text=f"{pct:.1f}%")
             if speed_mbps >= 0.01:
                 lbl_speed.config(text=f"{speed_mbps:.2f} MB/s  ·  {size_mb:.1f} MB")
+            else:
+                lbl_speed.config(text="")
             root.update_idletasks()
         root.after(0, update)
 
@@ -341,9 +440,11 @@ def _do_setup_gui():
                 os.remove(zip_path)
             except OSError:
                 pass
-            progress_cb("Creating environment…", 92, 0, 0)
-            _run_setup_bootstrap(app_dir, progress_cb)
-            progress_cb("Creating shortcuts…", 95, 0, 0)
+            if not _run_setup_bootstrap(app_dir, progress_cb):
+                result[0] = False
+                done[0] = True
+                return
+            progress_cb("Creating shortcuts…", 98, 0, 0)
             if platform.system() == "Windows":
                 _create_windows_shortcuts(app_dir)
             else:
@@ -369,7 +470,7 @@ def _do_setup_gui():
     if not result[0]:
         root2 = tk.Tk()
         root2.withdraw()
-        tk.messagebox.showerror("ChronoArchiver", "Download or extraction failed. Check your connection.")
+        tk.messagebox.showerror("ChronoArchiver", "Setup failed. Check your internet connection and that Python 3.11+ is installed.")
         root2.destroy()
         return False
     return True

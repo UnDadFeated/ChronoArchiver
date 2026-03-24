@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.7.3] - 2026-03-24
+### Fixed
+- **Windows setup init.tcl error**: PyInstaller spec collects tkinter Tcl/Tk data via `collect_all("tkinter")` so bundled setup exe finds init.tcl.
+- **numpy ModuleNotFoundError**: Added numpy to requirements.txt and VENV_PACKAGES_BASE; is_venv_runnable verifies numpy.
+- **Setup creates shortcut before deps installed**: Setup now installs all packages with per-package progress, verifies imports, and only creates shortcuts after success.
+
+### Changed
+- **Setup installs all deps during setup**: Pip install moved from deferred "first-time setup" to setup.exe. Installer shows determinate progress bar, %, download speed, and component checklist. No second setup window on first launch.
+- **Bootstrap progress**: First-time setup (fallback) uses determinate progress bar with package X of N.
+
 ## [3.7.2] - 2026-03-24
 ### Fixed
 - **Windows .pyw silent launch**: Launcher now calls `bootstrap.main()` (was never invoked). Bootstrap uses setup UI on Windows/macOS instead of headless-only (DISPLAY check). Errors shown via MessageBox when running under pythonw (no console).
