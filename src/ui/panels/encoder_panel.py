@@ -25,7 +25,7 @@ from PySide6.QtGui import QTextCursor
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
-from ui.console_style import message_to_html
+from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from core.av1_settings import AV1Settings
 from core.debug_logger import debug, UTILITY_MASS_AV1_ENCODER
 
@@ -143,19 +143,20 @@ class AV1EncoderPanel(QWidget):
         v_dir.setContentsMargins(6, 8, 6, 2)
         v_dir.setSpacing(1)
 
+        _dir_edit_ss = (
+            "color:#fff; font-size:11px; font-weight:500; min-height:22px; "
+            "background:#121212; border:1px solid #1a1a1a;"
+        )
         self._edit_src = QLineEdit()
         self._edit_src.setPlaceholderText("SOURCE PATH (local or smb://)")
-        self._edit_src.setStyleSheet(
-            "color:#fff; font-size:12px; font-weight:500; "
-            "background:#121212; border:1px solid #1a1a1a;")
+        self._edit_src.setStyleSheet(_dir_edit_ss)
         self._edit_src.setText("")
 
-        h_src = QHBoxLayout(); h_src.setSpacing(4)
-        self._edit_src.setMinimumWidth(150)
-        self._edit_src.setMaximumWidth(600)
+        h_src = QHBoxLayout()
+        h_src.setSpacing(6)
         h_src.addWidget(self._edit_src, 1)
         self._btn_browse_src = QPushButton("Browse")
-        self._btn_browse_src.setFixedSize(52, 22)
+        self._btn_browse_src.setFixedSize(48, 22)
         self._btn_browse_src.setStyleSheet("font-size:8px; font-weight:700; color:#aaa; border:2px solid transparent;")
         self._btn_browse_src.clicked.connect(self._browse_src)
         h_src.addWidget(self._btn_browse_src)
@@ -468,6 +469,8 @@ class AV1EncoderPanel(QWidget):
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 4, 6, 4); v_log.setSpacing(0)
         self._log_edit = QTextEdit()
+        self._log_edit.setObjectName("panelConsole")
+        self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
         self._log_edit.document().setMaximumBlockCount(1000)

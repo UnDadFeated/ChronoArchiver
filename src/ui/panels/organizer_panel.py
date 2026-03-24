@@ -18,7 +18,7 @@ from PySide6.QtGui import QTextCursor
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
-from ui.console_style import message_to_html
+from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
 
@@ -75,7 +75,7 @@ class MediaOrganizerPanel(QWidget):
         self._edit_path.setStyleSheet(_edit_ss)
         h_src.addWidget(self._edit_path, 1)
         self._btn_browse_src = QPushButton("Browse")
-        self._btn_browse_src.setFixedSize(52, 22)
+        self._btn_browse_src.setFixedSize(48, 22)
         self._btn_browse_src.setStyleSheet(_btn_ss)
         self._btn_browse_src.clicked.connect(self._browse)
         h_src.addWidget(self._btn_browse_src)
@@ -89,7 +89,7 @@ class MediaOrganizerPanel(QWidget):
         self._edit_target.setStyleSheet(_edit_ss)
         h_tgt.addWidget(self._edit_target, 1)
         self._btn_browse_target = QPushButton("Browse")
-        self._btn_browse_target.setFixedSize(52, 22)
+        self._btn_browse_target.setFixedSize(48, 22)
         self._btn_browse_target.setStyleSheet(_btn_ss)
         self._btn_browse_target.clicked.connect(self._browse_target)
         h_tgt.addWidget(self._btn_browse_target)
@@ -208,6 +208,8 @@ class MediaOrganizerPanel(QWidget):
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 4, 6, 4); v_log.setSpacing(0)
         self._log_edit = QTextEdit()
+        self._log_edit.setObjectName("panelConsole")
+        self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
         self._log_edit.document().setMaximumBlockCount(1000)
