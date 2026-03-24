@@ -5,7 +5,7 @@ import re
 import subprocess
 import pathlib
 from datetime import datetime
-from typing import List, Callable, Optional, Tuple
+from typing import Callable, Optional
 import piexif
 
 try:
@@ -127,7 +127,7 @@ class OrganizerEngine:
 
     def _quick_hash(self, file_path: str, chunk_size: int = 1024 * 1024) -> str:
         """Read the first 1MB of a file and return its MD5 hash."""
-        hasher = hashlib.md5()
+        hasher = hashlib.md5(usedforsecurity=False)
         try:
             with open(file_path, 'rb') as f:
                 chunk = f.read(chunk_size)

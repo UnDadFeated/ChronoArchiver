@@ -149,7 +149,6 @@ class AV1EncoderEngine:
             color_transfer = stream.get("color_transfer", "")
             color_primaries = stream.get("color_primaries", "")
             color_space = stream.get("color_space", "")
-            pix_fmt = stream.get("pix_fmt", "")
 
             HDR_TRANSFERS = {"smpte2084", "arib-std-b67", "smpte428"}
             HDR_PRIMARIES = {"bt2020"}

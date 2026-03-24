@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import threading
 import webbrowser
-from pathlib import Path
 
 import psutil
 
@@ -26,7 +25,8 @@ add_venv_to_path()
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QStackedWidget, QFrame, QMessageBox, QProgressBar
+    QPushButton, QLabel, QStackedWidget, QFrame, QMessageBox, QProgressBar,
+    QDialog, QTextEdit, QDialogButtonBox,
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -607,14 +607,26 @@ class ChronoArchiverApp(QMainWindow):
                 webbrowser.open("https://github.com/UnDadFeated/ChronoArchiver/releases")
             return
         method_desc = "git pull" if method == "git" else "AUR (paru/yay)"
-        r = QMessageBox.question(
-            self,
-            "Update ChronoArchiver",
-            f"Update to v{latest}? The app will close, perform the update ({method_desc}), and restart.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if r != QMessageBox.Yes:
+        changelog_text = self.updater.fetch_changelog_since(__version__)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Update Available — v{latest}")
+        dlg.setMinimumSize(440, 320)
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel(f"The app will close, run {method_desc}, then restart."))
+        te = QTextEdit()
+        te.setReadOnly(True)
+        te.setPlainText(changelog_text)
+        te.setStyleSheet("background:#121212; color:#e5e7eb; font-size:10px; font-family: monospace;")
+        te.setMinimumHeight(140)
+        te.setMaximumHeight(340)
+        v.addWidget(te)
+        btns = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        btns.setCenterButtons(True)
+        btns.button(QDialogButtonBox.Ok).setText("Update")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        v.addWidget(btns)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         def on_error(msg):

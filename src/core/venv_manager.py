@@ -777,7 +777,7 @@ def uninstall_opencv(progress_callback=None) -> bool:
 
 def install_package(pkg: str, progress_callback=None) -> bool:
     """Install a single package into app venv."""
-    venv = get_venv_path()
+    get_venv_path()
     pip = get_pip_exe()
     if not pip.exists():
         if progress_callback:

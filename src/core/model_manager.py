@@ -1,4 +1,3 @@
-import os
 import time
 import requests
 import pathlib
@@ -8,9 +7,9 @@ import hashlib
 import tarfile
 
 try:
-    from .debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_MODEL_SETUP
+    from .debug_logger import debug, UTILITY_MODEL_SETUP
 except ImportError:
-    from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER, UTILITY_MODEL_SETUP
+    from core.debug_logger import debug, UTILITY_MODEL_SETUP
 
 class ModelManager:
     """Handles checking and downloading AI models for the scanner."""

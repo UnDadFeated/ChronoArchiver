@@ -109,6 +109,9 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Audit venv (ruff, bandit)
+.audit_venv/
+
 # Environments
 .env
 .venv

@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.3.23] - 2026-03-24
+### Changed
+- **Code audit**: Ruff + Bandit. Fixed unused imports/vars; MD5 usedforsecurity=False for dedup; pyproject.toml ruff config; nosec for updater chmod/urlopen.
+
+## [3.3.22] - 2026-03-23
+### Changed
+- **Update changelog popup**: Shows all changelog entries since current version (e.g. v3.3.19 through v3.3.21 if updating from 3.3.18). Text area has fixed max height with scrolling.
+
+## [3.3.21] - 2026-03-23
+### Changed
+- **Update flow**: When user clicks the blinking update button, show a popup with the new version's changelog; user must acknowledge before the update process (terminal/bash) starts.
+
 ## [3.3.20] - 2026-03-23
 ### Changed
 - **Media Organizer**: Rename on collision now uses _1, _2, … instead of timestamp suffix.

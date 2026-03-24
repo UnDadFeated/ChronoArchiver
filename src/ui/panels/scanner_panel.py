@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.model_manager import ModelManager
 from core.venv_manager import (
-    get_pip_exe, install_package, ensure_venv,
+    get_pip_exe, ensure_venv,
     get_opencv_variant, get_opencv_variant_label,
     get_opencv_install_components, install_opencv, uninstall_opencv,
     check_opencv_in_venv,

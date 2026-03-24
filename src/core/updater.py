@@ -7,6 +7,7 @@ performs update-and-restart: close app → run update → restart app.
 import json
 import os
 import platform
+import re
 import time
 import queue
 import shutil
@@ -26,6 +27,7 @@ from version import __version__
 
 # Use tags API — releases/latest 404s when no GitHub Releases exist (only tags are pushed)
 TAGS_API_URL = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/tags?per_page=30"
+CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchiver/main/CHANGELOG.md"
 
 
 def _parse_version(v: str) -> tuple:
@@ -138,7 +140,7 @@ cd "{src_dir}" && exec {cmd_str}
                     os.close(fd)
                 except OSError:
                     pass
-            os.chmod(path, 0o755)
+            os.chmod(path, 0o755)  # nosec B103 — temp script needs execute
             subprocess.Popen(
                 [path],
                 stdin=subprocess.DEVNULL,
@@ -232,7 +234,7 @@ class ApplicationUpdater:
                 data = None
                 for attempt in range(3):
                     try:
-                        with urllib.request.urlopen(req, timeout=10) as resp:
+                        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310 — GitHub API
                             data = json.loads(resp.read().decode("utf-8"))
                         break
                     except urllib.error.HTTPError as e:
@@ -282,6 +284,34 @@ class ApplicationUpdater:
 
     def get_changelog(self):
         return self._changelog
+
+    def fetch_changelog_since(self, current_version: str) -> str:
+        """Fetch CHANGELOG.md and return all sections from (current, latest], oldest first. Falls back on single latest on failure."""
+        current = (current_version or "").replace("v", "").strip()
+        latest = (self._latest_version or "").replace("v", "").strip()
+        if not latest or not _version_gt(latest, current):
+            return "Changelog unavailable."
+        try:
+            req = urllib.request.Request(
+                CHANGELOG_RAW_URL,
+                headers={"User-Agent": "ChronoArchiver-Updater"},
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:  # nosec B310 — GitHub raw
+                text = resp.read().decode("utf-8", errors="replace")
+        except Exception:
+            return f"Changelog for v{latest} — see CHANGELOG.md on GitHub."
+        sections = []
+        for m in re.finditer(r"^## \[([^\]]+)\].*$", text, re.MULTILINE):
+            v = m.group(1).strip()
+            if not _version_gt(v, current) or _version_gt(v, latest):
+                continue
+            start = m.start()
+            next_m = re.search(r"\n## \[", text[m.end() :])
+            end = m.end() + next_m.start() if next_m else len(text)
+            sections.append((v, text[start:end].strip()))
+        sections.sort(key=lambda x: _parse_version(x[0]))
+        result = "\n\n".join(s for _, s in sections) if sections else f"Changelog for v{latest} — see CHANGELOG.md on GitHub."
+        return result
 
     def perform_update_and_restart(self, on_error=None):
         """
@@ -419,7 +449,7 @@ fi
                     os.close(fd)
                 except OSError:
                     pass
-            os.chmod(script_path, 0o755)
+            os.chmod(script_path, 0o755)  # nosec B103 — update script needs execute
             if term:
                 if "gnome-terminal" in term:
                     cmd = [term, "--", "bash", script_path]

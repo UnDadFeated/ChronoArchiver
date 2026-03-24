@@ -3,7 +3,6 @@ bootstrap.py — First-run venv setup (stdlib + optional tkinter).
 Run before main app when venv does not exist.
 """
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 
-from core.venv_manager import get_venv_path, get_python_exe, get_pip_exe, ensure_venv, is_venv_runnable, add_venv_to_path
+from core.venv_manager import get_venv_path, get_python_exe, ensure_venv, is_venv_runnable, add_venv_to_path
 
 
 def _run_with_ui():
@@ -69,7 +68,7 @@ def _run_headless():
 
 
 def main():
-    venv = get_venv_path()
+    get_venv_path()
     py = get_python_exe()
     app_py = _SCRIPT_DIR / "ui" / "app.py"
     app_root = str(_SCRIPT_DIR)

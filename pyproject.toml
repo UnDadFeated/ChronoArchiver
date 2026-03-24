@@ -1,0 +1,19 @@
+[project]
+name = "chronoarchiver"
+version = "3.3.23"
+description = "Unified media management: organizer, AV1 encoder, AI scanner"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+exclude = [".audit_venv", ".git", "__pycache__"]
+
+[tool.ruff.lint]
+ignore = [
+    "E402",  # Module level import not at top (intentional: path setup before imports)
+    "E701",  # Multiple statements on one line (colon)
+    "E702",  # Multiple statements on one line (semicolon)
+    "E731",  # Lambda assignment (legacy)
+]
