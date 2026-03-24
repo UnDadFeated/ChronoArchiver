@@ -1,10 +1,15 @@
 """
 ChronoArchiver Setup Launcher — Minimal bootstrap (~6MB) that downloads Python source on first run.
 Installs as .pyw/pythonw (no native compile). Uses stdlib: tkinter, urllib, zipfile.
+
+Updates: merge-extract into the install dir (preserves venv), skip re-downloading the source zip when
+installed src/version.py already matches this setup's version, and run pip install -r on existing
+venvs so new requirements are applied without wiping site-packages.
 """
 import json
 import os
 import platform
+import re
 from datetime import datetime
 import shutil
 import subprocess
@@ -26,7 +31,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.8")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "3.7.9")
 
 
 VERSION = _read_version()
@@ -105,6 +110,130 @@ def _download_with_progress(url: str, dest_path: str, progress_cb) -> bool:
         return False
 
 
+def _read_source_version(app_root: Path) -> str | None:
+    """Parse __version__ from installed src/version.py (if present)."""
+    vp = app_root / "src" / "version.py"
+    if not vp.is_file():
+        return None
+    try:
+        txt = vp.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', txt, re.MULTILINE)
+    return m.group(1).strip() if m else None
+
+
+def _should_skip_source_zip(app_root: Path) -> bool:
+    """True when install tree already contains this release's source — skip GitHub zip download."""
+    if not (app_root / "chronoarchiver.pyw").is_file():
+        return False
+    if not (app_root / "requirements.txt").is_file():
+        return False
+    return _read_source_version(app_root) == VERSION
+
+
+def _zip_relative_dest(member: str) -> str | None:
+    """Map zip entry to path under install root, or None to skip."""
+    if member.startswith("ChronoArchiver/") and len(member) > len("ChronoArchiver/"):
+        rel = member[len("ChronoArchiver/") :].rstrip("/")
+    else:
+        rel = member.rstrip("/")
+    if not rel or rel.startswith(".") or "__MACOSX" in rel:
+        return None
+    if rel.startswith("tools/"):
+        return None
+    if rel == "venv" or rel.startswith("venv/"):
+        return None
+    return rel
+
+
+def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> None:
+    """Unpack source zip over existing install without deleting venv; skip files that already match size."""
+    app_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        infos = [zi for zi in zf.infolist() if _zip_relative_dest(zi.filename) is not None]
+        n = max(1, len(infos))
+        for i, info in enumerate(infos):
+            rel = _zip_relative_dest(info.filename)
+            if rel is None:
+                continue
+            dest = app_dir / rel
+            pct = 100.0 * (i + 1) / n
+            if info.is_dir() or info.filename.endswith("/"):
+                dest.mkdir(parents=True, exist_ok=True)
+                progress_cb("Extracting…", pct, 0, 0, rel[:72])
+                continue
+            if dest.is_file() and dest.stat().st_size == info.file_size:
+                progress_cb("Extracting…", pct, 0, 0, f"skip {rel[:48]}")
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(dest, "wb") as out_f:
+                shutil.copyfileobj(src, out_f)
+            progress_cb("Extracting…", pct, 0, 0, rel[:72])
+
+
+def _venv_import_ok(py_exe: Path) -> bool:
+    try:
+        r = subprocess.run(
+            [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
+            capture_output=True,
+            timeout=15,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb) -> tuple[bool, str]:
+    """pip install -r requirements.txt — idempotent; picks up new deps on upgrade."""
+    req = app_root / "requirements.txt"
+    if not req.exists():
+        return False, "requirements.txt missing"
+    proc = subprocess.Popen(
+        [str(pip_exe), "install", "-r", str(req), "--disable-pip-version-check"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        cwd=str(app_root),
+    )
+    last_update = [0.0]
+    prev_bytes = [0.0]
+    prev_time = [time.time()]
+    for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+        line = (line or "").strip()
+        if not line:
+            continue
+        m = re.search(r"(\d+\.?\d*)\s*/\s*(\d+\.?\d*)\s*MB", line)
+        if m:
+            a, b = float(m.group(1)), float(m.group(2))
+            sub_pct = (a / b * 100) if b > 0 else 50
+            speed_m = re.search(r"(\d+\.?\d*)\s*MB/s", line)
+            speed = float(speed_m.group(1)) if speed_m else 0.0
+            if speed < 0.01:
+                now = time.time()
+                dt = max(0.001, now - prev_time[0])
+                speed = max(0.0, (a - prev_bytes[0]) / dt)
+                prev_time[0] = now
+                prev_bytes[0] = a
+            now = time.time()
+            if now - last_update[0] >= 0.25:
+                last_update[0] = now
+                progress_cb("requirements.txt", min(99.0, sub_pct), speed, a, line[:100])
+        elif "Downloading" in line or "Collecting" in line or "Installing" in line:
+            progress_cb("requirements.txt", 5, 0, 0, line[:100])
+    try:
+        proc.wait(timeout=1200)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        return False, "pip install -r timed out."
+    if proc.returncode != 0:
+        return False, "pip install -r failed (see log)."
+    progress_cb("requirements.txt", 100, 0, 0, "OK")
+    return True, ""
+
+
 def _parse_requirements(req_path: Path) -> list[str]:
     """Parse requirements.txt into list of package names (strip comments, -r, empty)."""
     if not req_path.exists():
@@ -138,26 +267,34 @@ def _find_system_python() -> list[str] | None:
 
 
 def _run_setup_bootstrap(app_root: Path, progress_cb) -> tuple[bool, str]:
-    """Create venv, install each package with progress, verify before returning."""
-    import re
+    """Ensure venv exists and requirements are satisfied; reuse healthy venv and sync via pip -r."""
     venv = app_root / "venv"
-    if platform.system() == "Windows":
+    win = platform.system() == "Windows"
+    if win:
         py_exe = venv / "Scripts" / "python.exe"
         pip_exe = venv / "Scripts" / "pip.exe"
     else:
         py_exe = venv / "bin" / "python"
         pip_exe = venv / "bin" / "pip"
 
-    # Skip only if venv exists and passes import check
-    if py_exe.exists():
+    if py_exe.exists() and pip_exe.exists() and _venv_import_ok(py_exe):
+        progress_cb("Syncing dependencies…", 0, 0, 0, "pip install -r requirements.txt")
+        ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb)
+        if ok and _venv_import_ok(py_exe):
+            progress_cb("Done", 100, 0, 0)
+            return True, ""
+        if ok:
+            err = "Dependency verification failed after pip sync."
+        progress_cb("Replacing virtual environment…", 0, 0, 0, (err or "")[:100])
         try:
-            r = subprocess.run(
-                [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
-                capture_output=True, timeout=10,
-            )
-            if r.returncode == 0:
-                return True, ""
-        except Exception:
+            shutil.rmtree(venv)
+        except OSError:
+            pass
+    elif venv.exists():
+        progress_cb("Removing incomplete virtual environment…", 0, 0, 0)
+        try:
+            shutil.rmtree(venv)
+        except OSError:
             pass
 
     py_cmd = _find_system_python()
@@ -527,37 +664,33 @@ def _do_setup_gui():
         try:
             app_dir = _app_dir()
             app_dir.mkdir(parents=True, exist_ok=True)
-            fd, zip_path = tempfile.mkstemp(suffix=".zip")
-            os.close(fd)
-            _set_stage(0, "Downloading ChronoArchiver source…")
-            if not _download_with_progress(url, zip_path, progress_cb):
-                result[0] = False
-                result_error[0] = "Failed while downloading source package."
-                done[0] = True
-                return
-            _set_stage(1, "Extracting package…")
-            progress_cb("Extracting…", 0, 0, 0)
-            if app_dir.exists():
-                shutil.rmtree(app_dir)
-            app_dir.mkdir(parents=True)
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                for m in zf.namelist():
-                    rel = m[len("ChronoArchiver/"):] if m.startswith("ChronoArchiver/") and m != "ChronoArchiver/" else m
-                    if not rel or rel.startswith(".") or "__MACOSX" in rel or rel.startswith("tools/"):
-                        continue
-                    dest = app_dir / rel
-                    if m.endswith("/"):
-                        dest.mkdir(parents=True, exist_ok=True)
-                    else:
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        with zf.open(m) as src, open(dest, "wb") as out:
-                            out.write(src.read())
+            zip_path: str | None = None
             try:
-                os.remove(zip_path)
-            except OSError:
-                pass
-            _set_stage(2, "Creating virtual environment…")
-            progress_cb("Creating virtual environment…", 0, 0, 0)
+                if _should_skip_source_zip(app_dir):
+                    _set_stage(0, "Source already matches this version — skipping download")
+                    progress_cb("Using installed source", 100, 0, 0, f"v{VERSION} (src/version.py)")
+                    _set_stage(1, "Application files — already up to date")
+                    progress_cb("Extracting…", 100, 0, 0, "skipped")
+                else:
+                    fd, zip_path = tempfile.mkstemp(suffix=".zip")
+                    os.close(fd)
+                    _set_stage(0, "Downloading ChronoArchiver source…")
+                    if not _download_with_progress(url, zip_path, progress_cb):
+                        result[0] = False
+                        result_error[0] = "Failed while downloading source package."
+                        done[0] = True
+                        return
+                    _set_stage(1, "Updating application files (venv preserved)…")
+                    progress_cb("Extracting…", 0, 0, 0)
+                    _extract_source_zip_merged(zip_path, app_dir, progress_cb)
+            finally:
+                if zip_path:
+                    try:
+                        os.remove(zip_path)
+                    except OSError:
+                        pass
+            _set_stage(2, "Virtual environment…")
+            progress_cb("Virtual environment…", 0, 0, 0)
             _set_stage(3, "Installing dependencies…")
             ok, err = _run_setup_bootstrap(app_dir, progress_cb)
             if not ok:
