@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-03-25
+### Fixed
+- **AI Media Scanner UI**: when scanning starts, `START AI SCAN` goes grey/disabled and `STOP` becomes red to reflect scan state.
+
 ## [3.8.9] - 2026-03-25
 ### Fixed
 - **GPU metrics (footer + encoder telemetry)**: show `N/A` when `nvidia-smi`/NVML can’t provide utilization, and show real `%` only when numeric utilization is available.
