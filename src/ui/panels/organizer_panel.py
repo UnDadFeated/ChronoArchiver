@@ -141,7 +141,7 @@ class MediaOrganizerPanel(QWidget):
         v_mode.addWidget(self._chk_dry)
         lbl_struct = QLabel("Folder structure:")
         lbl_struct.setStyleSheet(
-            "font-size:9px; color:#888; margin-top:5px; margin-bottom:-2px;"
+            "font-size:9px; color:#888; margin-top:10px; margin-bottom:-2px;"
         )
         v_mode.addWidget(lbl_struct)
         self._combo_structure = QComboBox()

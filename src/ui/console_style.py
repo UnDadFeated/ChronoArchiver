@@ -65,9 +65,14 @@ def message_to_html(msg: str) -> str:
 
     # Determine line-level semantic color for non-structured parts
     u = msg.upper()
-    if u.startswith("ERROR:") or u.startswith("FAILED:") or "ERROR:" in u[:25]:
+    if (
+        u.startswith("ERROR:")
+        or u.startswith("FAILED:")
+        or "ERROR:" in u[:25]
+        or "FAILED" in u[:35]
+    ):
         line_color = ERROR
-    elif u.startswith("WARNING:") or "WARNING:" in u[:25]:
+    elif u.startswith("WARNING:") or "WARNING:" in u[:25] or u.startswith("WARNING "):
         line_color = WARNING
     elif u.startswith("REJECTED:") or "DELETE ERROR" in u or "EXPORT FAILED" in u:
         line_color = ERROR
@@ -78,11 +83,24 @@ def message_to_html(msg: str) -> str:
         or "DONE:" in u
         or "MODEL SETUP COMPLETE" in u
         or "OPENCV INSTALLED" in u
+        or "ALL MODELS ALREADY PRESENT" in u
     ):
         line_color = SUCCESS
+    elif u.startswith("TIP:") or u.startswith("TIP "):
+        line_color = INFO
     elif u.startswith("[SKIP]") or u.startswith("[DUPLICATE]") or u.startswith("SKIP ("):
         line_color = SKIP_TAG
-    elif "SCANNING" in u[:15] or "STARTING" in u[:15] or "FOUND " in u[:10] or "SCANNED:" in u[:15]:
+    elif (
+        "SCANNING" in u[:15]
+        or "STARTING" in u[:15]
+        or "ENCODING" in u[:15]
+        or "ENCODE" in u[:15]
+        or "FFMPEG" in u[:20]
+        or "INSTALL" in u[:18]
+        or "DOWNLOADING" in u[:20]
+        or "FOUND " in u[:10]
+        or "SCANNED:" in u[:15]
+    ):
         line_color = INFO
     else:
         line_color = BASE
