@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-3.8.9-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-3.9.0-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -29,16 +29,16 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Installation
 
-Release **3.8.9** — installers and AUR `pkgver` are aligned on this version.
+Release **3.9.0** — installers and AUR `pkgver` are aligned on this version.
 
 ### GitHub (Windows / macOS installers)
 
-Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v3.8.9`**):
+Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v3.9.0`**):
 
 | Platform | Asset |
 |----------|--------|
-| Windows x64 | `ChronoArchiver-Setup-3.8.9-win64.exe` |
-| macOS | `ChronoArchiver-Setup-3.8.9-mac64.zip` |
+| Windows x64 | `ChronoArchiver-Setup-3.9.0-win64.exe` |
+| macOS | `ChronoArchiver-Setup-3.9.0-mac64.zip` |
 
 The setup is small; first run may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
 
@@ -56,7 +56,7 @@ First launch creates an app-private venv (e.g. `~/.local/share/ChronoArchiver/ve
 
 ### Arch Linux (AUR)
 
-Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **3.8.9**:
+Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **3.9.0**:
 
 ```bash
 paru -S chronoarchiver
@@ -81,6 +81,8 @@ Run [from git](#git-clone-linux-windows-macos) in toolbox/distrobox, or use an A
 | **AI Media Scanner** | OpenCV YuNet + optional YOLO ONNX; keep/move lists; models under user data (`Setup Models` / `Install OpenCV` in-app) |
 | **Mass AV1 Encoder** | Queue with folder structure preserved; **SVT-AV1**, **NVENC** (e.g. RTX 40+), **VAAPI** / **AMF** where available; pause/resume |
 | **Requirements** | **GPU optional** — hardware AV1/NVENC when supported; full software path otherwise |
+
+**Privacy note (AI Media Scanner):** analysis runs locally on your machine. Selected images are processed on-device using OpenCV/ONNX and are not uploaded to any server.
 
 Full release notes: [CHANGELOG.md](CHANGELOG.md).
 
