@@ -124,7 +124,7 @@ class AV1EncoderPanel(QWidget):
         self._total_saved    = 0
         self._batch_start    = 0.0
         self._io_bytes       = 0.0
-        self._gpu_cache      = "  N/A"
+        self._gpu_cache      = "N/A"
         self._gpu_counter    = 0
         self._gpu_last_err_t = 0.0
         self._gpu_last_err = ""
@@ -1165,7 +1165,8 @@ class AV1EncoderPanel(QWidget):
             if not vals:
                 raise ValueError(f"Unexpected nvidia-smi output: {out[:80]}")
             g = max(vals)
-            return f"{min(999, g):3d}%"
+            g = min(999, int(g))
+            return f"{g:2d}%" if g < 100 else f"{g:3d}%"
         except Exception as e:
             now = time.monotonic()
             msg = str(e)[:140]
@@ -1194,10 +1195,11 @@ class AV1EncoderPanel(QWidget):
                     vals = [int(x) for x in re.findall(r"\d+", stdout or "")]
                     if vals:
                         g = max(vals)
-                        return f"{min(999, g):3d}%"
+                        g = min(999, int(g))
+                        return f"{g:2d}%" if g < 100 else f"{g:3d}%"
                 except Exception:
                     pass
-            return "  N/A"
+            return "N/A"
 
     def _add_log(self, msg):
         sb = self._log_edit.verticalScrollBar()

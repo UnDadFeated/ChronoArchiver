@@ -529,6 +529,7 @@ class ChronoArchiverApp(QMainWindow):
         self._metrics_gpu_counter = 0
         self._metrics_gpu_last_err_t = 0.0
         self._metrics_gpu_last_err = ""
+        self._metrics_gpu_value_width_px = 44  # Keep footer value width stable (avoid text shift)
 
         # UI Components
         self.central_widget = QWidget()
@@ -917,7 +918,8 @@ class ChronoArchiverApp(QMainWindow):
                     if not vals:
                         raise ValueError(f"Unexpected nvidia-smi output: {out[:80]}")
                     g = max(vals)
-                    self._metrics_gpu_cache = f"{min(999, g):3d}%"
+                    g = min(999, g)
+                    self._metrics_gpu_cache = f"{g:2d}%" if g < 100 else f"{g:3d}%"
                 except Exception as e:
                     # If NVML/nvidia-smi can't provide utilization, try a Windows-wide
                     # vendor-agnostic performance counter fallback. Otherwise show N/A.
@@ -952,7 +954,11 @@ class ChronoArchiverApp(QMainWindow):
                         except Exception:
                             g_win = None
 
-                    self._metrics_gpu_cache = f"{min(999, g_win):3d}%" if g_win is not None else "  N/A"
+                    if g_win is None:
+                        self._metrics_gpu_cache = "N/A"
+                    else:
+                        g_win = min(999, int(g_win))
+                        self._metrics_gpu_cache = f"{g_win:2d}%" if g_win < 100 else f"{g_win:3d}%"
                 self._metrics_gpu_counter = 0
             cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
             ram_s = f"{min(999, int(round(ram_val))):3d}%"
@@ -960,13 +966,14 @@ class ChronoArchiverApp(QMainWindow):
             orange_dot = "#f59e0b"
             white = "#f8f8f2"
             dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
+            w = self._metrics_gpu_value_width_px
             self.lbl_metrics.setText(
                 f'<span style="color:{teal}; font-weight:700;">CPU</span> '
-                f'<span style="color:{white}; font-weight:700;">{cpu_s}</span> {dot} '
+                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{cpu_s}</span> {dot} '
                 f'<span style="color:{teal}; font-weight:700;">GPU</span> '
-                f'<span style="color:{white}; font-weight:700;">{self._metrics_gpu_cache}</span> {dot} '
+                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{self._metrics_gpu_cache}</span> {dot} '
                 f'<span style="color:{teal}; font-weight:700;">RAM</span> '
-                f'<span style="color:{white}; font-weight:700;">{ram_s}</span>'
+                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{ram_s}</span>'
             )
         except Exception:
             pass
@@ -977,13 +984,14 @@ class ChronoArchiverApp(QMainWindow):
         orange_dot = "#f59e0b"
         white = "#f8f8f2"
         dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
+        w = self._metrics_gpu_value_width_px
         self.lbl_metrics.setText(
             f'<span style="color:{teal}; font-weight:700;">CPU</span> '
-            f'<span style="color:{white}; font-weight:700;">{cpu}</span> {dot} '
+            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{cpu}</span> {dot} '
             f'<span style="color:{teal}; font-weight:700;">GPU</span> '
-            f'<span style="color:{white}; font-weight:700;">{gpu}</span> {dot} '
+            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{gpu}</span> {dot} '
             f'<span style="color:{teal}; font-weight:700;">RAM</span> '
-            f'<span style="color:{white}; font-weight:700;">{ram}</span>'
+            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{ram}</span>'
         )
 
     def _open_donate(self):
