@@ -281,11 +281,22 @@ class ScannerEngine:
     def _init_opencv_face(self):
         model = self._get_model_path('face_detection_yunet_2023mar.onnx')
         backend, target = self._get_dnn_backend_target()
-        return cv2.FaceDetectorYN.create(
-            model=model, config="", input_size=(320, 320),
-            score_threshold=0.5, nms_threshold=0.3, top_k=5000,
-            backend_id=backend, target_id=target
-        )
+        try:
+            return cv2.FaceDetectorYN.create(
+                model=model, config="", input_size=(320, 320),
+                score_threshold=0.5, nms_threshold=0.3, top_k=5000,
+                backend_id=backend, target_id=target
+            )
+        except Exception as e:
+            # Backend selection may be "available" but still fail at runtime on some OpenCV builds/devices.
+            debug(UTILITY_AI_MEDIA_SCANNER, f"FaceDetector init failed backend={backend} target={target}: {e}. Falling back to CPU.")
+            cpu_backend = cv2.dnn.DNN_BACKEND_OPENCV
+            cpu_target = cv2.dnn.DNN_TARGET_CPU
+            return cv2.FaceDetectorYN.create(
+                model=model, config="", input_size=(320, 320),
+                score_threshold=0.5, nms_threshold=0.3, top_k=5000,
+                backend_id=cpu_backend, target_id=cpu_target
+            )
 
     def _detect_face_opencv(self, detector, image):
         if image is None or image.size == 0:
@@ -304,7 +315,15 @@ class ScannerEngine:
             net.setPreferableBackend(backend)
             net.setPreferableTarget(target)
         except Exception:
-            pass
+            # If backend/target pairing fails, fall back to CPU.
+            debug(UTILITY_AI_MEDIA_SCANNER, f"YOLO detector prefers backend={backend} target={target} but failed; falling back to CPU.")
+            cpu_backend = cv2.dnn.DNN_BACKEND_OPENCV
+            cpu_target = cv2.dnn.DNN_TARGET_CPU
+            try:
+                net.setPreferableBackend(cpu_backend)
+                net.setPreferableTarget(cpu_target)
+            except Exception:
+                pass
         return net
 
     def _detect_subject_yolov8(self, net, image, threshold: float = 0.4) -> bool:

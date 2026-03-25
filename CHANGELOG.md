@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [3.8.7] - 2026-03-25
+### Fixed
+- **AI Scanner**: remove redundant GPU re-detection during OpenCV install (variant mismatch).
+- **AI Scanner**: prevent overlapping `_check_models()` runs on startup/showEvent.
+- **AI Scanner update checks**: detect outdated OpenCV for `opencv-python` / `opencv-python-headless` / contrib variants.
+- **AI Scanner**: safer DNN backend selection fallback; face detector init falls back to CPU when backend/target pairing fails.
+- **Console**: improved coloring for unsupported backend/runtime errors (e.g. `UNSUPPORTED`, `getDevice`).
+
 ## [3.8.6] - 2026-03-25
 ### Fixed
 - GPU detection on Linux (hybrid iGPU + discrete GPU): prefer NVIDIA when present (caches/hybrid-friendly DRM + `lspci` detection).
