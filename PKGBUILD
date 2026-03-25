@@ -1,7 +1,7 @@
 # Maintainer: UnDadFeated
 pkgname=chronoarchiver
 pkgver=3.9.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
 url="https://github.com/UnDadFeated/ChronoArchiver"
