@@ -918,8 +918,12 @@ class ChronoArchiverApp(QMainWindow):
                     if not vals:
                         raise ValueError(f"Unexpected nvidia-smi output: {out[:80]}")
                     g = max(vals)
-                    g = min(999, g)
-                    self._metrics_gpu_cache = f"{g:2d}%" if g < 100 else f"{g:3d}%"
+                    if g < 0 or g > 100:
+                        raise ValueError(f"nvidia-smi utilization out of range: {g}")
+                    if g == 100:
+                        self._metrics_gpu_cache = "100%"
+                    else:
+                        self._metrics_gpu_cache = f"{g:2d}%"
                 except Exception as e:
                     # If NVML/nvidia-smi can't provide utilization, try a Windows-wide
                     # vendor-agnostic performance counter fallback. Otherwise show N/A.
@@ -957,8 +961,13 @@ class ChronoArchiverApp(QMainWindow):
                     if g_win is None:
                         self._metrics_gpu_cache = "N/A"
                     else:
-                        g_win = min(999, int(g_win))
-                        self._metrics_gpu_cache = f"{g_win:2d}%" if g_win < 100 else f"{g_win:3d}%"
+                        g_win = int(g_win)
+                        if g_win < 0 or g_win > 100:
+                            self._metrics_gpu_cache = "N/A"
+                        elif g_win == 100:
+                            self._metrics_gpu_cache = "100%"
+                        else:
+                            self._metrics_gpu_cache = f"{g_win:2d}%"
                 self._metrics_gpu_counter = 0
             cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
             ram_s = f"{min(999, int(round(ram_val))):3d}%"

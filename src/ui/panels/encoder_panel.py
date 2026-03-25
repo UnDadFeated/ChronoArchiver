@@ -29,6 +29,7 @@ from core.av1_engine import AV1EncoderEngine, EncodingProgress
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from core.av1_settings import AV1Settings
 from core.debug_logger import debug, UTILITY_MASS_AV1_ENCODER
+from core.subprocess_tee import win_hide_kw
 
 
 def _enc_browse_btn_qss(bar_h: int, btn_w: int, border: str, fg: str) -> str:
@@ -1156,6 +1157,7 @@ class AV1EncoderPanel(QWidget):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                **win_hide_kw(),
             )
             out = (proc.stdout or "").strip()
             err = (proc.stderr or "").strip()
@@ -1165,8 +1167,12 @@ class AV1EncoderPanel(QWidget):
             if not vals:
                 raise ValueError(f"Unexpected nvidia-smi output: {out[:80]}")
             g = max(vals)
-            g = min(999, int(g))
-            return f"{g:2d}%" if g < 100 else f"{g:3d}%"
+            g = int(g)
+            if g < 0 or g > 100:
+                return "N/A"
+            if g == 100:
+                return "100%"
+            return f"{g:2d}%"
         except Exception as e:
             now = time.monotonic()
             msg = str(e)[:140]
@@ -1190,13 +1196,17 @@ class AV1EncoderPanel(QWidget):
                         stderr=subprocess.PIPE,
                         text=True,
                         timeout=2.5,
+                        **win_hide_kw(),
                     )
                     stdout = (proc.stdout or "").strip()
                     vals = [int(x) for x in re.findall(r"\d+", stdout or "")]
                     if vals:
-                        g = max(vals)
-                        g = min(999, int(g))
-                        return f"{g:2d}%" if g < 100 else f"{g:3d}%"
+                        g = int(max(vals))
+                        if g < 0 or g > 100:
+                            return "N/A"
+                        if g == 100:
+                            return "100%"
+                        return f"{g:2d}%"
                 except Exception:
                     pass
             return "N/A"
