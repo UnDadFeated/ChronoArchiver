@@ -227,21 +227,25 @@ class DonateNavWidget(QWidget):
         self.setToolTip("Support development via PayPal ($5 USD)")
         self._beat_wait_ms = 5000
         self._beat_flash_ms = 180
-        self._schedule_next_beat(0)
+        self._beat_gap_ms = 130  # dim gap between the two fast beats
+        self._start_heartbeat_cycle()
 
     def _set_heart_color(self, bright: bool):
         c = "#ef4444" if bright else "#b91c1c"
         self._heart.setStyleSheet(
             f"font-size: 11px; color: {c}; background: transparent; border: none; padding: 0;")
 
-    def _schedule_next_beat(self, delay_ms: int):
-        QTimer.singleShot(delay_ms, self._beat_once)
-
-    def _beat_once(self):
-        # Bright flash, then return to dim; spaced out to avoid distraction.
+    def _start_heartbeat_cycle(self):
+        # Two fast beats.
         self._set_heart_color(True)
         QTimer.singleShot(self._beat_flash_ms, lambda: self._set_heart_color(False))
-        self._schedule_next_beat(self._beat_wait_ms)
+        QTimer.singleShot(self._beat_flash_ms + self._beat_gap_ms, self._second_beat)
+
+    def _second_beat(self):
+        self._set_heart_color(True)
+        QTimer.singleShot(self._beat_flash_ms, lambda: self._set_heart_color(False))
+        # Rest 5 seconds (from when the second beat starts).
+        QTimer.singleShot(self._beat_flash_ms + self._beat_wait_ms, self._start_heartbeat_cycle)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
