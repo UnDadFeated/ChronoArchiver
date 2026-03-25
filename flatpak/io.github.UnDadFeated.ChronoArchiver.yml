@@ -137,8 +137,15 @@ modules:
     sha256: 44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529
   - *id002
   - type: file
-    url: https://files.pythonhosted.org/packages/60/04/ee2a9e8542e4fa2773b81771ff8349ff19cdd56b7258a0cc442639052edb/cryptography-46.0.5.tar.gz
-    sha256: abace499247268e3757271b2f1e244b36b06f8515cf27c4d49468fc9eb16e93d
+    url: https://files.pythonhosted.org/packages/5c/32/9b87132a2f91ee7f5223b091dc963055503e9b442c98fc0b8a5ca765fab0/cryptography-46.0.5-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+    sha256: 039917b0dc418bb9f6edce8a906572d69e74bd330b0b3fea4f79dab7f8ddd235
+    only-arches:
+    - x86_64
+  - type: file
+    url: https://files.pythonhosted.org/packages/0f/04/c85bdeab78c8bc77b701bf0d9bdcf514c044e18a46dcff330df5448631b0/cryptography-46.0.5-cp38-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl
+    sha256: 7d1f30a86d2757199cb2d56e48cce14deddf1f9c95f1ef1b64ee91ea43fe2e18
+    only-arches:
+    - aarch64
   - type: file
     url: https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl
     sha256: d0013f540772d1420576855455d050a2180186c91c15779301ac2ccb3eeb68de
