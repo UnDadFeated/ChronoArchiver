@@ -918,13 +918,14 @@ class ChronoArchiverApp(QMainWindow):
             white = "#f8f8f2"
             dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
             w = self._metrics_gpu_value_width_px
+            vstyle = f"color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right; white-space:pre; font-family:{_FONT_MONO};"
             self.lbl_metrics.setText(
                 f'<span style="color:{teal}; font-weight:700;">CPU</span> '
-                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{cpu_s}</span> {dot} '
+                f'<span style="{vstyle}">{cpu_s}</span> {dot} '
                 f'<span style="color:{teal}; font-weight:700;">GPU</span> '
-                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{self._metrics_gpu_cache}</span> {dot} '
+                f'<span style="{vstyle}">{self._metrics_gpu_cache}</span> {dot} '
                 f'<span style="color:{teal}; font-weight:700;">RAM</span> '
-                f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{ram_s}</span>'
+                f'<span style="{vstyle}">{ram_s}</span>'
             )
         except Exception:
             pass
@@ -936,13 +937,14 @@ class ChronoArchiverApp(QMainWindow):
         white = "#f8f8f2"
         dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
         w = self._metrics_gpu_value_width_px
+        vstyle = f"color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right; white-space:pre; font-family:{_FONT_MONO};"
         self.lbl_metrics.setText(
             f'<span style="color:{teal}; font-weight:700;">CPU</span> '
-            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{cpu}</span> {dot} '
+            f'<span style="{vstyle}">{cpu}</span> {dot} '
             f'<span style="color:{teal}; font-weight:700;">GPU</span> '
-            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{gpu}</span> {dot} '
+            f'<span style="{vstyle}">{gpu}</span> {dot} '
             f'<span style="color:{teal}; font-weight:700;">RAM</span> '
-            f'<span style="color:{white}; font-weight:700; display:inline-block; min-width:{w}px; text-align:right;">{ram}</span>'
+            f'<span style="{vstyle}">{ram}</span>'
         )
 
     def _open_donate(self):
