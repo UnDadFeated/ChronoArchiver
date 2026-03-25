@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
-- **Flatpak manifest**: Install **`pybind11`** and **`packaging>=24.2`** before **Pillow** so Pillow 12.x / setuptools can prepare metadata inside **`flatpak-builder`** (`pybind11`, `packaging.licenses`).
+- **Flatpak manifest**: Install **`pybind11`** and **`packaging>=24.2`** before **Pillow** so Pillow 12.x / setuptools can prepare metadata inside **`flatpak-builder`** (`pybind11`, `packaging.licenses`). **`nh3`**: use **`manylinux` wheels** per arch (not sdist) so **twine → readme-renderer** does not require **maturin** at install time.
 
 ### Changed
 - **Documentation**: Root **README** shortened for public readers — **Installation** (GitHub **v3.8.2**, AUR, Flathub) then **Technical overview**; maintainer Flathub steps moved to **`flatpak/README.md`**.
