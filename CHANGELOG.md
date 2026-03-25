@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [3.8.6] - 2026-03-25
+### Fixed
+- GPU detection on Linux (hybrid iGPU + discrete GPU): prefer NVIDIA when present (caches/hybrid-friendly DRM + `lspci` detection).
+- AI Scanner: safer OpenCV DNN backend/target selection (only choose CUDA when CUDA devices are available; only choose OpenCL when available), preventing the `getDevice` / unsupported-GPU startup failure.
+
 ## [3.8.5] - 2026-03-25
 ### Changed
 - Semver **3.8.5** (installers, PKGBUILD, PyPI metadata).
