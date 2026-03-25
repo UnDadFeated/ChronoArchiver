@@ -29,7 +29,7 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Installation
 
-Release **3.8.2** — installers, AUR `pkgver`, and Flatpak metadata are aligned on this version.
+Release **3.8.2** — installers and AUR `pkgver` are aligned on this version.
 
 ### GitHub (Windows / macOS installers)
 
@@ -64,19 +64,9 @@ paru -S chronoarchiver
 yay -S chronoarchiver
 ```
 
-### Flatpak (Flathub)
+### Fedora Atomic / Bazzite (and similar immutable desktops)
 
-App ID **`io.github.UnDadFeated.ChronoArchiver`**. Manifests live in [`flatpak/`](flatpak/) in this repo.
-
-When the app is published on [Flathub](https://flathub.org/):
-
-```bash
-flatpak install flathub io.github.UnDadFeated.ChronoArchiver
-```
-
-Until then, build locally with [`flatpak/README.md`](flatpak/README.md). Updates: `flatpak update` (or your software center).
-
-**Fedora Atomic / Bazzite:** use Flatpak from Flathub when available; otherwise run [from git](#git-clone-linux-windows-macos) or an Arch toolbox with the AUR package.
+Run [from git](#git-clone-linux-windows-macos) in toolbox/distrobox, or use an Arch container with the [AUR package](#arch-linux-aur).
 
 ---
 
@@ -93,6 +83,8 @@ Until then, build locally with [`flatpak/README.md`](flatpak/README.md). Updates
 | **Requirements** | **GPU optional** — hardware AV1/NVENC when supported; full software path otherwise |
 
 Full release notes: [CHANGELOG.md](CHANGELOG.md).
+
+**Updates:** AUR (`paru`/`yay`), git clone (`git pull`), or Windows/macOS setup installer — see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
