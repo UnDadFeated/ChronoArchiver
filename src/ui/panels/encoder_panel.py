@@ -353,11 +353,9 @@ class AV1EncoderPanel(QWidget):
         self._edit_rej.textChanged.connect(self._save_rej_time)
         h_rej.addWidget(self._edit_rej)
 
-        wrap_rej = QWidget(); vr = QVBoxLayout(wrap_rej)
-        vr.setContentsMargins(0, 0, 0, 0); vr.setSpacing(0)
-        vr.addWidget(w_rej)
-        vr.addWidget(QLabel("hh:mm:ss threshold", styleSheet=_hint_s))
-        v_opts.addWidget(wrap_rej)
+        lbl_rej_hint = QLabel("hh:mm:ss threshold", styleSheet=_hint_s)
+        h_rej.addWidget(lbl_rej_hint, 1)
+        v_opts.addWidget(w_rej)
 
         # Delete (dual verification — full-width labeled checkboxes; avoids edge overlap)
         lbl_del = QLabel("Delete source on success")

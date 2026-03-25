@@ -215,9 +215,9 @@ class DonateNavWidget(QWidget):
         h.setSpacing(0)
         self._heart = QLabel("\u2665")
         self._heart.setStyleSheet(
-            "font-size: 11px; color: #ef4444; background: transparent; border: none; padding: 0;")
+            "font-size: 11px; color: #b91c1c; background: transparent; border: none; padding: 0;")
         self._heart.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._lbl = QLabel(" Support development of our products")
+        self._lbl = QLabel("Support Developer!")
         self._lbl.setStyleSheet(
             "font-size: 9px; color: #6b7280; background: transparent; border: none;")
         self._lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -225,18 +225,23 @@ class DonateNavWidget(QWidget):
         h.addWidget(self._lbl, 0, Qt.AlignVCenter)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip("Support development via PayPal ($5 USD)")
-        self._pulse = 0
-        self._pulse_timer = QTimer(self)
-        self._pulse_timer.setInterval(550)
-        self._pulse_timer.timeout.connect(self._pulse_heart)
-        self._pulse_timer.start()
-        self._pulse_heart()
+        self._beat_wait_ms = 5000
+        self._beat_flash_ms = 180
+        self._schedule_next_beat(0)
 
-    def _pulse_heart(self):
-        self._pulse ^= 1
-        c = "#ef4444" if self._pulse else "#b91c1c"
+    def _set_heart_color(self, bright: bool):
+        c = "#ef4444" if bright else "#b91c1c"
         self._heart.setStyleSheet(
             f"font-size: 11px; color: {c}; background: transparent; border: none; padding: 0;")
+
+    def _schedule_next_beat(self, delay_ms: int):
+        QTimer.singleShot(delay_ms, self._beat_once)
+
+    def _beat_once(self):
+        # Bright flash, then return to dim; spaced out to avoid distraction.
+        self._set_heart_color(True)
+        QTimer.singleShot(self._beat_flash_ms, lambda: self._set_heart_color(False))
+        self._schedule_next_beat(self._beat_wait_ms)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -575,13 +580,13 @@ class ChronoArchiverApp(QMainWindow):
         self.status_layout.addStretch()
 
         self.btn_copy_console = QPushButton("COPY CONSOLE")
-        self.btn_copy_console.setStyleSheet("font-size: 8px; color: #6b7280; border:none; background:transparent;")
+        self.btn_copy_console.setStyleSheet("font-size: 8px; color: #eab308; border:none; background:transparent;")
         self.btn_copy_console.setToolTip("Copy current panel console to clipboard")
         self.btn_copy_console.clicked.connect(self._copy_console)
         self.status_layout.addWidget(self.btn_copy_console, 0, Qt.AlignVCenter)
 
         self.btn_debug = QPushButton("DEBUG")
-        self.btn_debug.setStyleSheet("font-size: 8px; color: #6b7280; border:none; background:transparent;")
+        self.btn_debug.setStyleSheet("font-size: 8px; color: #ef4444; border:none; background:transparent;")
         self.btn_debug.setToolTip(f"Open debug log folder\n{os.path.dirname(get_log_path())}")
         self.btn_debug.clicked.connect(self._open_debug_folder)
         self.status_layout.addWidget(self.btn_debug, 0, Qt.AlignVCenter)
@@ -589,9 +594,10 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_metrics = QLabel("CPU   0% · GPU   0% · RAM   0%")
         self.lbl_metrics.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_metrics.setStyleSheet(
-            "font-size: 9px; color: #6b7280; font-weight: 600; "
+            "font-size: 9px; color: #f59e0b; font-weight: 600; "
             "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
             "min-width: 155px;")
+        self.lbl_metrics.setTextFormat(Qt.RichText)
         self.status_layout.addWidget(self.lbl_metrics, 0, Qt.AlignVCenter)
 
         self.layout.addWidget(self.status_bar)
@@ -857,13 +863,33 @@ class ChronoArchiverApp(QMainWindow):
                 self._metrics_gpu_counter = 0
             cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
             ram_s = f"{min(999, int(round(ram_val))):3d}%"
-            self.lbl_metrics.setText(f"CPU {cpu_s} · GPU {self._metrics_gpu_cache} · RAM {ram_s}")
+            orange = "#f59e0b"
+            magenta_dot = "#ff79c6"
+            dot = f'<span style="color:{magenta_dot}; font-weight:700;">·</span>'
+            self.lbl_metrics.setText(
+                f'<span style="color:{orange}; font-weight:700;">CPU</span> '
+                f'<span style="color:{orange}; font-weight:700;">{cpu_s}</span> {dot} '
+                f'<span style="color:{orange}; font-weight:700;">GPU</span> '
+                f'<span style="color:{orange}; font-weight:700;">{self._metrics_gpu_cache}</span> {dot} '
+                f'<span style="color:{orange}; font-weight:700;">RAM</span> '
+                f'<span style="color:{orange}; font-weight:700;">{ram_s}</span>'
+            )
         except Exception:
             pass
 
     def _on_encoder_metrics(self, cpu, gpu, ram):
         """Encoder panel can override with its own (includes encoding Time)."""
-        self.lbl_metrics.setText(f"CPU {cpu} · GPU {gpu} · RAM {ram}")
+        orange = "#f59e0b"
+        magenta_dot = "#ff79c6"
+        dot = f'<span style="color:{magenta_dot}; font-weight:700;">·</span>'
+        self.lbl_metrics.setText(
+            f'<span style="color:{orange}; font-weight:700;">CPU</span> '
+            f'<span style="color:{orange}; font-weight:700;">{cpu}</span> {dot} '
+            f'<span style="color:{orange}; font-weight:700;">GPU</span> '
+            f'<span style="color:{orange}; font-weight:700;">{gpu}</span> {dot} '
+            f'<span style="color:{orange}; font-weight:700;">RAM</span> '
+            f'<span style="color:{orange}; font-weight:700;">{ram}</span>'
+        )
 
     def _open_donate(self):
         try:

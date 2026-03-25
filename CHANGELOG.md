@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [3.8.5] - 2026-03-25
+### Changed
+- Semver **3.8.5** (installers, PKGBUILD, PyPI metadata).
+- UI — Header donate: text is now **"Support Developer!"**; heart beats once every 5 seconds to stay low-distraction.
+- UI — Footer: prereq order **PYSIDE6** → **FFMPEG** → **OPENCV** → **AI MODELS** → **READY**; copy console button yellow; debug button red; CPU/GPU/RAM orange with magenta separator dots.
+- UI — Organizer execution mode: move **Folder structure:** label down for tighter spacing.
+- UI — Encoder rejects: move **Skip Short Clips** threshold label beside the time input.
+- Console coloring: standardized semantic colors across Organizer/Encoder/Scanner consoles (FFMPEG/ENCODE/INSTALL/MODEL keywords; improved non-dull status highlighting).
+
 ## [3.8.4] - 2026-03-25
 ### Changed
 - Semver **3.8.4** (installers, PKGBUILD, PyPI metadata).
