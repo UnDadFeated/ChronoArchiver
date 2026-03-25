@@ -124,7 +124,7 @@ class AV1EncoderPanel(QWidget):
         self._total_saved    = 0
         self._batch_start    = 0.0
         self._io_bytes       = 0.0
-        self._gpu_cache      = "  0%"
+        self._gpu_cache      = "  N/A"
         self._gpu_counter    = 0
         self._gpu_last_err_t = 0.0
         self._gpu_last_err = ""
@@ -1173,8 +1173,8 @@ class AV1EncoderPanel(QWidget):
                 self._gpu_last_err_t = now
                 self._gpu_last_err = msg
                 debug(UTILITY_MASS_AV1_ENCODER, f"GPU metrics: nvidia-smi query failed: {msg}")
-            # Keep footer numeric ("0%") so the UI always shows percent tracking.
-            return "  0%"
+            # If NVML/nvidia-smi can't provide utilization, keep it explicit.
+            return "  N/A"
 
     def _add_log(self, msg):
         sb = self._log_edit.verticalScrollBar()
