@@ -59,6 +59,68 @@ def detect_gpu() -> str:
     """
     found = {"nvidia": False, "amd": False, "intel": False}
 
+    # Windows: use Win32_VideoController to pick the discrete adapter.
+    # The earlier sysfs + lspci heuristics are Linux-centric and can mis-detect iGPU.
+    if platform.system() == "Windows":
+        try:
+            ps_cmd = (
+                "Get-CimInstance Win32_VideoController | "
+                "Select-Object Name,AdapterRAM,VideoProcessor,Description | "
+                "ConvertTo-Json -Compress"
+            )
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+                **win_hide_kw(),
+            )
+            if proc.returncode == 0 and (proc.stdout or "").strip():
+                data = json.loads(proc.stdout)
+                if isinstance(data, dict):
+                    entries = [data]
+                else:
+                    entries = list(data)
+
+                def _parse_vendor(s: str) -> str:
+                    t = (s or "").lower()
+                    if "nvidia" in t:
+                        return "nvidia"
+                    if "amd" in t or "radeon" in t:
+                        return "amd"
+                    if "intel" in t:
+                        return "intel"
+                    return ""
+
+                candidates: list[tuple[int, bool, str]] = []  # (adapterRAM, integrated, vendor)
+                for e in entries:
+                    name = e.get("Name") or ""
+                    desc = e.get("Description") or ""
+                    vp = e.get("VideoProcessor") or ""
+                    adapter_ram_raw = e.get("AdapterRAM")
+                    try:
+                        adapter_ram = int(adapter_ram_raw) if adapter_ram_raw else 0
+                    except (TypeError, ValueError):
+                        adapter_ram = 0
+
+                    blob = f"{name} {desc} {vp}"
+                    vendor = _parse_vendor(blob)
+                    if not vendor:
+                        continue
+
+                    is_integrated = "integrated" in blob.lower()
+                    candidates.append((adapter_ram, is_integrated, vendor))
+
+                # Prefer non-integrated (discrete). If none found, fall back to any vendor.
+                non_int = [c for c in candidates if not c[1]]
+                pick_from = non_int if non_int else candidates
+                if pick_from:
+                    _, _, vendor = max(pick_from, key=lambda x: x[0])
+                    return vendor
+        except Exception:
+            pass
+
     # 1) NVIDIA direct check (most reliable when available)
     try:
         smi = shutil.which("nvidia-smi")
