@@ -668,7 +668,16 @@ class AIScannerPanel(QWidget):
             return
         ew, eh = self._eng_btn_w, self._eng_btn_h
         if w == self._btn_start:
-            w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
+            # IMPORTANT: Don't override the disabled styling from app QSS.
+            # During scan `_update_start_enabled()` disables `_btn_start`, but
+            # guide-glow "clear" previously forced it back to green, ignoring :disabled.
+            if w.isEnabled():
+                w.setStyleSheet(
+                    "background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;"
+                )
+            else:
+                # Remove override so `QPushButton#btnStart:disabled` applies.
+                w.setStyleSheet("")
         elif w == self._btn_start_move:
             if self._btn_start_move.isEnabled():
                 w.setStyleSheet(
