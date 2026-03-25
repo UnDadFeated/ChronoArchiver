@@ -544,7 +544,9 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
         progress_cb("No packages in requirements.txt", 0, 0, 0)
         return False, "requirements.txt is empty or unreadable."
 
-    n = len(packages)
+    # Treat FFmpeg as the "10th dependency" so the cadence matches the setup UI.
+    # (FFmpeg is fetched after pip install via static-ffmpeg.)
+    n = len(packages) + 1
     for i, pkg in enumerate(packages):
         base_pct = 100.0 * i / n
         pkg_display = f"{pkg} ({i + 1}/{n})"
@@ -682,7 +684,8 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
                             pct = 0.0
                         # Keep FFmpeg download spam out of the installer console (text wall).
                         # Progress bar + step percentage still update via progress_cb().
-                        progress_cb("FFmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
+                        # Keep component label consistent with "dependency 10/10" cadence.
+                        progress_cb("static-ffmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
                 else:
                     # Non-CA output is installer-log-only (no console wall).
                     if line and line.strip():
@@ -691,7 +694,7 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
         if proc.returncode != 0:
             _install_log(f"ffmpeg bootstrap: exit {proc.returncode}")
             return False, "FFmpeg download failed (see log)."
-        progress_cb("FFmpeg", 100.0, 0.0, 0.0, "OK")
+        progress_cb("static-ffmpeg", 100.0, 0.0, 0.0, "OK")
         return True, ""
     except subprocess.TimeoutExpired:
         if proc:
@@ -718,7 +721,11 @@ def _finalize_bootstrap_with_ffmpeg(
     """Run after pip/verify so FFmpeg always installs (not only when setup GUI task() includes a separate step)."""
     _install_log("bootstrap: FFmpeg (static-ffmpeg) starting")
     _setup_console_line("Downloading FFmpeg...", console_q)
-    progress_cb("FFmpeg", 0, 0, 0, "")
+    # Match dependency cadence: show as dependency 10/10 instead of a separate component.
+    packages = _parse_requirements(app_root / "requirements.txt")
+    dep_total = (len(packages) + 1) if packages else 10
+    ff_label = f"static-ffmpeg ({dep_total}/{dep_total})"
+    progress_cb(ff_label, 0, 0, 0, "")
     ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb, console_q)
     if not ok_ff:
         _install_log(f"bootstrap: FFmpeg FAILED {err_ff!r}")
@@ -1227,7 +1234,7 @@ def _do_setup_gui(download_url: str) -> bool:
             # - ffmpeg part: 0..100 -> 90..100 of the stage
             mapped_step_pct = step_pct
             if stage["index"] == 3:
-                if component == "FFmpeg":
+                if component == "FFmpeg" or component.startswith("static-ffmpeg"):
                     mapped_step_pct = 90.0 + (step_pct * 0.1)
                 else:
                     mapped_step_pct = step_pct * 0.9
