@@ -97,10 +97,10 @@ class ScannerEngine:
             face_engine = self._init_opencv_face()
             if keep_animals:
                 subject_engine = self._init_subject_detector()
-                self.logger("Subject Filter Enabled (Keeping Persons & Animals).")
+                self.logger("Keep Animals Filter Enabled.")
             else:
                 subject_engine = None
-                self.logger("Subject Filter Disabled.")
+                self.logger("Keep Animals Filter Unchecked.")
                 
         except Exception as e:
             self.logger(f"Model Init Failed: {e}")
