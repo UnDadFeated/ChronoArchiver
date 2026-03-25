@@ -39,7 +39,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.1")
 
 
 VERSION = _read_version()
@@ -274,7 +274,9 @@ def _download_url() -> str:
     return ""
 
 
-def _download_with_progress(url: str, dest_path: str, progress_cb) -> bool:
+def _download_with_progress(
+    url: str, dest_path: str, progress_cb, cancel_event: threading.Event | None = None
+) -> bool:
     """Stream download with progress. progress_cb(component, pct, speed_mbps, size_mb)."""
     _install_log(f"download: GET {url}")
     _install_log(f"download: dest_path={dest_path!r}")
@@ -287,6 +289,9 @@ def _download_with_progress(url: str, dest_path: str, progress_cb) -> bool:
             chunk_size = 256 * 1024
             with open(dest_path, "wb") as f:
                 while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        _install_log("download: cancelled by user")
+                        return False
                     chunk = resp.read(chunk_size)
                     if not chunk:
                         break
@@ -342,7 +347,9 @@ def _zip_relative_dest(member: str) -> str | None:
     return rel
 
 
-def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> None:
+def _extract_source_zip_merged(
+    zip_path: str, app_dir: Path, progress_cb, cancel_event: threading.Event | None = None
+) -> bool:
     """Unpack source zip over existing install without deleting venv; skip only byte-identical files."""
     app_dir.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -351,6 +358,9 @@ def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> Non
         infos = [zi for zi in zf.infolist() if _zip_relative_dest(zi.filename) is not None]
         n = max(1, len(infos))
         for i, info in enumerate(infos):
+            if cancel_event is not None and cancel_event.is_set():
+                _install_log("extract: cancelled by user")
+                return False
             rel = _zip_relative_dest(info.filename)
             if rel is None:
                 continue
@@ -373,6 +383,7 @@ def _extract_source_zip_merged(zip_path: str, app_dir: Path, progress_cb) -> Non
             progress_cb("Extracting…", pct, 0, 0, rel[:72])
     _install_log(f"extract summary: wrote {written}, skipped_identical {skipped}")
     _purge_src_pycache(app_dir)
+    return True
 
 
 def _venv_import_ok(py_exe: Path) -> bool:
@@ -388,7 +399,13 @@ def _venv_import_ok(py_exe: Path) -> bool:
         return False
 
 
-def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
+def _pip_sync_requirements(
+    app_root: Path,
+    pip_exe: Path,
+    progress_cb,
+    console_q: queue.Queue | None = None,
+    cancel_event: threading.Event | None = None,
+) -> tuple[bool, str]:
     """pip install -r requirements.txt — idempotent; picks up new deps on upgrade."""
     req = app_root / "requirements.txt"
     if not req.exists():
@@ -407,6 +424,13 @@ def _pip_sync_requirements(app_root: Path, pip_exe: Path, progress_cb, console_q
     prev_bytes = [0.0]
     prev_time = [time.time()]
     for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+        if cancel_event is not None and cancel_event.is_set():
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            proc.wait(timeout=30)
+            return False, "Cancelled."
         pip_capture.append((line or "").rstrip("\n"))
         _setup_console_line(line, console_q)
         line = (line or "").strip()
@@ -481,7 +505,12 @@ def _find_system_python() -> list[str] | None:
     return None
 
 
-def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
+def _run_setup_bootstrap(
+    app_root: Path,
+    progress_cb,
+    console_q: queue.Queue | None = None,
+    cancel_event: threading.Event | None = None,
+) -> tuple[bool, str]:
     """Ensure venv exists and requirements are satisfied; reuse healthy venv and sync via pip -r."""
     _install_log(f"bootstrap: app_root={app_root}")
     venv = app_root / "venv"
@@ -495,9 +524,11 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
 
     if py_exe.exists() and pip_exe.exists() and _venv_import_ok(py_exe):
         progress_cb("Syncing dependencies…", 0, 0, 0, "pip install -r requirements.txt")
-        ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb, console_q)
+        ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb, console_q, cancel_event)
         if ok and _venv_import_ok(py_exe):
-            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q)
+            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(
+                app_root, py_exe, progress_cb, console_q, cancel_event
+            )
             if not fin_ok:
                 return False, fin_err
             progress_cb("Done", 100, 0, 0)
@@ -521,6 +552,9 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
     if not py_cmd:
         progress_cb("Python not found", 0, 0, 0, "Install Python 3.11+ from python.org")
         return False, "Python 3.11+ not found on PATH (or via py launcher)."
+
+    if cancel_event is not None and cancel_event.is_set():
+        return False, "Cancelled."
 
     progress_cb("Creating virtual environment…", 0, 0, 0)
     try:
@@ -548,6 +582,8 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
     # (FFmpeg is fetched after pip install via static-ffmpeg.)
     n = len(packages) + 1
     for i, pkg in enumerate(packages):
+        if cancel_event is not None and cancel_event.is_set():
+            return False, "Cancelled."
         base_pct = 100.0 * i / n
         pkg_display = f"{pkg} ({i + 1}/{n})"
 
@@ -567,6 +603,13 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
         prev_bytes = [0.0]
         prev_time = [time.time()]
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
+            if cancel_event is not None and cancel_event.is_set():
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                proc.wait(timeout=30)
+                return False, "Cancelled."
             pkg_lines.append((line or "").rstrip("\n"))
             _setup_console_line(line, console_q)
             line = (line or "").strip()
@@ -626,7 +669,7 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
     except Exception as e:
         _install_log(f"bootstrap verify: EXCEPTION {type(e).__name__}: {e!r}")
         return False, f"Verification exception: {e}"
-    fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q)
+    fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q, cancel_event)
     if not fin_ok:
         return False, fin_err
     progress_cb("Done", 100, 0, 0)
@@ -640,6 +683,7 @@ def _bootstrap_ffmpeg(
     console_q: queue.Queue | None = None,
     *,
     ff_component: str = "FFmpeg",
+    cancel_event: threading.Event | None = None,
 ) -> tuple[bool, str]:
     """Download FFmpeg via static-ffmpeg into the venv (after pip). Full setup + quick-launch."""
     if not py_exe.is_file():
@@ -678,6 +722,14 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
         )
         if proc.stdout:
             for line in iter(proc.stdout.readline, ""):
+                if cancel_event is not None and cancel_event.is_set():
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    proc.wait(timeout=30)
+                    _install_log("ffmpeg bootstrap: cancelled by user")
+                    return False, "Cancelled."
                 line = (line or "").rstrip("\n")
                 if line.startswith("CA_PROGRESS:"):
                     rest = line[len("CA_PROGRESS:") :]
@@ -723,7 +775,11 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
 
 
 def _finalize_bootstrap_with_ffmpeg(
-    app_root: Path, py_exe: Path, progress_cb, console_q: queue.Queue | None = None
+    app_root: Path,
+    py_exe: Path,
+    progress_cb,
+    console_q: queue.Queue | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[bool, str]:
     """Run after pip/verify so FFmpeg always installs (not only when setup GUI task() includes a separate step)."""
     _install_log("bootstrap: FFmpeg (static-ffmpeg) starting")
@@ -733,7 +789,9 @@ def _finalize_bootstrap_with_ffmpeg(
     dep_total = (len(packages) + 1) if packages else 10
     ff_label = f"FFmpeg ({dep_total}/{dep_total})"
     progress_cb(ff_label, 0, 0, 0, "")
-    ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb, console_q, ff_component=ff_label)
+    ok_ff, err_ff = _bootstrap_ffmpeg(
+        app_root, py_exe, progress_cb, console_q, ff_component=ff_label, cancel_event=cancel_event
+    )
     if not ok_ff:
         _install_log(f"bootstrap: FFmpeg FAILED {err_ff!r}")
         return False, err_ff or "FFmpeg download failed."
@@ -897,7 +955,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(13,13,13)
 $font = New-Object System.Drawing.Font('Consolas', 8)
 
 $lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = 'Setup output...'
+$lbl.Text = 'Uninstalling ChronoArchiver...'
 $lbl.ForeColor = [System.Drawing.Color]::FromArgb(229,231,235)
 $lbl.Left = 16; $lbl.Top = 14; $lbl.Width = 920; $lbl.Height = 20
 $form.Controls.Add($lbl)
@@ -942,35 +1000,48 @@ function Set-Progress {
   $pb.Value = $v
 }
 
-# DoWork runs on a worker thread; ProgressChanged UserState is unreliable in PS + WinForms.
-# Marshal all console lines and bar updates onto the UI thread.
+# Worker thread must not call $form.Invoke with PS scriptblocks (no Runspace on UI thread).
+# Queue log/progress; WinForms Timer drains on the UI thread (same runspace as the script).
+$script:uiQ = New-Object System.Collections.Queue
+$script:uiQLock = New-Object Object
+function Enqueue-Ui {
+  param([string]$kind, $payload)
+  [System.Threading.Monitor]::Enter($script:uiQLock)
+  try { [void]$script:uiQ.Enqueue(@($kind, $payload)) }
+  finally { [System.Threading.Monitor]::Exit($script:uiQLock) }
+}
 function Ui-Log {
   param([string]$s)
-  if ($form.IsDisposed -or [string]::IsNullOrWhiteSpace($s)) { return }
-  $line = $s
-  try {
-    if ($form.InvokeRequired) {
-      $form.Invoke([Action] { Append-Line $line })
-    } else {
-      Append-Line $line
-    }
-  } catch {}
+  if ([string]::IsNullOrWhiteSpace($s)) { return }
+  Enqueue-Ui 'L' $s
 }
-
 function Ui-Prog {
   param([int]$v)
-  if ($form.IsDisposed) { return }
-  if ($v -lt 0) { $v = 0 }
-  if ($v -gt 100) { $v = 100 }
-  $vv = $v
-  try {
-    if ($form.InvokeRequired) {
-      $form.Invoke([Action] { Set-Progress $vv })
-    } else {
-      Set-Progress $vv
-    }
-  } catch {}
+  Enqueue-Ui 'P' $v
 }
+
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 40
+$timer.add_Tick({
+  $lim = 100
+  $n = 0
+  while ($n -lt $lim) {
+    $pair = $null
+    [System.Threading.Monitor]::Enter($script:uiQLock)
+    try {
+      if ($script:uiQ.Count -eq 0) { break }
+      $pair = $script:uiQ.Dequeue()
+    } finally {
+      [System.Threading.Monitor]::Exit($script:uiQLock)
+    }
+    if ($null -eq $pair) { break }
+    $kind = [string]$pair[0]
+    $pay = $pair[1]
+    if ($kind -eq 'L') { Append-Line ([string]$pay) }
+    elseif ($kind -eq 'P') { Set-Progress ([int]$pay) }
+    $n++
+  }
+})
 
 $r = [System.Windows.Forms.MessageBox]::Show(
   'Remove ChronoArchiver and all data from this PC?',
@@ -984,13 +1055,34 @@ $job = New-Object System.ComponentModel.BackgroundWorker
 $job.WorkerReportsProgress = $false
 $job.add_RunWorkerCompleted({
   param($sender,$e)
+  $timer.Stop()
+  while ($true) {
+    $pair = $null
+    [System.Threading.Monitor]::Enter($script:uiQLock)
+    try {
+      if ($script:uiQ.Count -eq 0) { break }
+      $pair = $script:uiQ.Dequeue()
+    } finally {
+      [System.Threading.Monitor]::Exit($script:uiQLock)
+    }
+    if ($null -eq $pair) { break }
+    $kind = [string]$pair[0]
+    $pay = $pair[1]
+    if ($kind -eq 'L') { Append-Line ([string]$pay) }
+    elseif ($kind -eq 'P') { Set-Progress ([int]$pay) }
+  }
   if ($e.Error) {
     Append-Line ('ERROR: ' + $e.Error.Message)
   }
   Append-Line 'Done. You can close this window.'
   Set-Progress 100
   $btn.Enabled = $true
-  $lbl.Text = 'Setup output...'
+  $lbl.Text = 'Uninstalling ChronoArchiver...'
+})
+
+$form.add_FormClosing({
+  param($sender,$ev)
+  $timer.Stop()
 })
 
 function Remove-TreeLogged {
@@ -1128,7 +1220,10 @@ $job.add_DoWork({
   Ui-Prog 98
 })
 
-$form.add_Shown({ $job.RunWorkerAsync() })
+$form.add_Shown({
+  $timer.Start()
+  $job.RunWorkerAsync()
+})
 [void]$form.ShowDialog()
 """
     ps1 = (
@@ -1361,16 +1456,68 @@ def _do_setup_gui(download_url: str) -> bool:
     _install_log(f"setup GUI: download URL={url}")
 
     root = tk.Tk()
-    root.title("ChronoArchiver — Setup")
-    root.geometry("1020x500")
-    root.minsize(760, 400)
+    root.overrideredirect(True)
+    root.geometry("1020x520+80+60")
+    root.minsize(760, 420)
     root.resizable(True, True)
-    root.configure(bg="#0d0d0d")
+    root.configure(bg="#0d0d0d", highlightthickness=1, highlightbackground="#333333")
     root.option_add("*Font", "TkDefaultFont 9")
     _apply_setup_window_icon(root)
 
+    result = [False]
+    result_error = [""]
+    done = [False]
+    console_q: queue.Queue = queue.Queue(maxsize=12000)
+
+    title_wrap = tk.Frame(root, bg="#0d0d0d")
+    title_wrap.pack(fill=tk.X, side=tk.TOP)
+    title_bar = tk.Frame(title_wrap, bg="#1a1a1a", height=34)
+    title_bar.pack(fill=tk.X)
+    title_bar.pack_propagate(False)
+    tb_title = tk.Label(
+        title_bar,
+        text="  ChronoArchiver Setup",
+        fg="#e5e7eb",
+        bg="#1a1a1a",
+        font=("", 10, "bold"),
+        anchor="w",
+    )
+    tb_title.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=6)
+
+    def _start_move(e):
+        root._drag_dx = e.x
+        root._drag_dy = e.y
+
+    def _do_move(e):
+        root.geometry(f"+{root.winfo_x() + e.x - root._drag_dx}+{root.winfo_y() + e.y - root._drag_dy}")
+
+    for _w in (title_bar, tb_title):
+        _w.bind("<ButtonPress-1>", _start_move)
+        _w.bind("<B1-Motion>", _do_move)
+
+    cancel_ev = threading.Event()
+
+    def on_cancel_install():
+        if done[0]:
+            return
+        cancel_ev.set()
+        _setup_console_line("Cancel requested — stopping after the current short step...", console_q)
+
+    tk.Button(
+        title_bar,
+        text="Cancel install",
+        command=on_cancel_install,
+        bg="#3f3f3f",
+        fg="#f9fafb",
+        activebackground="#525252",
+        activeforeground="#ffffff",
+        relief=tk.FLAT,
+        padx=10,
+        pady=4,
+    ).pack(side=tk.RIGHT, padx=8, pady=4)
+
     main_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL, bg="#0d0d0d", sashwidth=5, sashrelief=tk.FLAT)
-    main_pane.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+    main_pane.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
     left = tk.Frame(main_pane, bg="#0d0d0d")
     main_pane.add(left, minsize=420)
     right = tk.Frame(main_pane, bg="#0d0d0d", width=320)
@@ -1394,16 +1541,16 @@ def _do_setup_gui(download_url: str) -> bool:
     prog_overall.pack(pady=4)
     lbl_pct_overall = tk.Label(left, text="0%", fg="#6b7280", bg="#0d0d0d")
     lbl_pct_overall.pack(pady=2)
+    checklist_stage_names = (
+        "Download source",
+        "Extract files",
+        "Create environment",
+        "Install dependencies",
+        "Verify install",
+        "Create shortcuts",
+    )
     checklist = [
-        tk.Label(left, text=f"  [ ] {name}", fg="#6b7280", bg="#0d0d0d", anchor="w")
-        for name in (
-            "Download source",
-            "Extract files",
-            "Create environment",
-            "Install dependencies",
-            "Verify install",
-            "Create shortcuts",
-        )
+        tk.Label(left, text=f"  [ ] {name}", fg="#6b7280", bg="#0d0d0d", anchor="w") for name in checklist_stage_names
     ]
     for lbl in checklist:
         lbl.pack(fill="x", padx=26)
@@ -1411,7 +1558,15 @@ def _do_setup_gui(download_url: str) -> bool:
     tk.Label(right, text="Setup output...", fg="#9ca3af", bg="#0d0d0d", font=("", 9)).pack(anchor="w", pady=(8, 4))
     tf = tk.Frame(right, bg="#0d0d0d")
     tf.pack(fill=tk.BOTH, expand=True)
-    sb = tk.Scrollbar(tf, bg="#1a1a1a")
+    sb = tk.Scrollbar(
+        tf,
+        bg="#2a2a2a",
+        troughcolor="#111111",
+        activebackground="#404040",
+        borderwidth=0,
+        highlightthickness=0,
+        width=12,
+    )
     sb.pack(side=tk.RIGHT, fill=tk.Y)
     console_text = tk.Text(
         tf,
@@ -1427,11 +1582,6 @@ def _do_setup_gui(download_url: str) -> bool:
     console_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     sb.config(command=console_text.yview)
     console_text.config(yscrollcommand=sb.set)
-
-    result = [False]
-    result_error = [""]
-    done = [False]
-    console_q: queue.Queue = queue.Queue(maxsize=12000)
 
     def poll_console():
         inserted = 0
@@ -1466,6 +1616,20 @@ def _do_setup_gui(download_url: str) -> bool:
         (95.0, 5.0),  # Shortcuts/finalize
     ]
     last_overall_pct = [0.0]  # Avoid progress bar going backwards when sub-components report out-of-order pct
+
+    def reset_progress_ui():
+        last_overall_pct[0] = 0.0
+        stage["index"] = 0
+        stage["base"], stage["span"] = stage_plan[0]
+        lbl_component.config(text="Installation cancelled — idle")
+        lbl_detail.config(text="")
+        lbl_speed.config(text="")
+        prog_step["value"] = 0
+        prog_overall["value"] = 0
+        lbl_pct_step.config(text="0%")
+        lbl_pct_overall.config(text="0%")
+        for i, lbl in enumerate(checklist):
+            lbl.config(text=f"  [ ] {checklist_stage_names[i]}", fg="#6b7280")
 
     def _set_stage(idx: int, title: str):
         stage["index"] = idx
@@ -1532,17 +1696,31 @@ def _do_setup_gui(download_url: str) -> bool:
                     os.close(fd)
                     _install_log(f"task: temp zip {zip_path}")
                     _set_stage(0, "Downloading ChronoArchiver source…")
-                    if not _download_with_progress(url, zip_path, progress_cb):
-                        _install_log("task: ERROR download failed")
-                        _install_log_footer(False, "download")
+                    if not _download_with_progress(url, zip_path, progress_cb, cancel_ev):
+                        canc = cancel_ev.is_set()
+                        _install_log("task: ERROR download failed or cancelled")
+                        _install_log_footer(False, "cancelled" if canc else "download")
                         result[0] = False
-                        result_error[0] = "Failed while downloading source package."
+                        result_error[0] = "Installation cancelled." if canc else "Failed while downloading source package."
+                        if canc:
+                            root.after(0, reset_progress_ui)
                         done[0] = True
                         return
                     _install_log("task: download OK, merging extract")
                     _set_stage(1, "Updating application files (venv preserved)…")
                     progress_cb("Extracting…", 0, 0, 0)
-                    _extract_source_zip_merged(zip_path, app_dir, progress_cb)
+                    if not _extract_source_zip_merged(zip_path, app_dir, progress_cb, cancel_ev):
+                        canc = cancel_ev.is_set()
+                        _install_log("task: extract failed or cancelled")
+                        _install_log_footer(False, "cancelled" if canc else "extract")
+                        result[0] = False
+                        result_error[0] = (
+                            "Installation cancelled." if canc else "Failed while extracting application files."
+                        )
+                        if canc:
+                            root.after(0, reset_progress_ui)
+                        done[0] = True
+                        return
                     _install_log(f"task: after extract, src __version__ = {_read_source_version(app_dir)!r}")
             finally:
                 if zip_path:
@@ -1550,16 +1728,27 @@ def _do_setup_gui(download_url: str) -> bool:
                         os.remove(zip_path)
                     except OSError:
                         pass
+            if cancel_ev.is_set():
+                _install_log("task: cancelled before venv step")
+                _install_log_footer(False, "cancelled")
+                root.after(0, reset_progress_ui)
+                result[0] = False
+                result_error[0] = "Installation cancelled."
+                done[0] = True
+                return
             _set_stage(2, "Virtual environment…")
             progress_cb("Virtual environment…", 0, 0, 0)
             _set_stage(3, "Installing dependencies…")
             _install_log("task: starting venv / pip bootstrap")
-            ok, err = _run_setup_bootstrap(app_dir, progress_cb, console_q)
+            ok, err = _run_setup_bootstrap(app_dir, progress_cb, console_q, cancel_ev)
             if not ok:
-                _install_log(f"task: bootstrap FAILED {err!r}")
-                _install_log_footer(False, "bootstrap")
+                canc = cancel_ev.is_set() or (err or "").strip().lower() == "cancelled."
+                _install_log(f"task: bootstrap FAILED {err!r} cancelled={canc}")
+                _install_log_footer(False, "cancelled" if canc else "bootstrap")
                 result[0] = False
-                result_error[0] = err or "Dependency installation failed."
+                result_error[0] = "Installation cancelled." if canc else (err or "Dependency installation failed.")
+                if canc:
+                    root.after(0, reset_progress_ui)
                 done[0] = True
                 return
             _install_log("task: bootstrap OK")
@@ -1601,10 +1790,14 @@ def _do_setup_gui(download_url: str) -> bool:
     if not result[0]:
         root2 = tk.Tk()
         root2.withdraw()
-        msg = "Setup failed."
-        if result_error[0]:
-            msg += f"\n\n{result_error[0][:600]}"
-        messagebox.showerror("ChronoArchiver", msg)
+        err_tail = (result_error[0] or "").strip()
+        if err_tail == "Installation cancelled.":
+            messagebox.showinfo("ChronoArchiver", "Installation was cancelled.")
+        else:
+            msg = "Setup failed."
+            if err_tail:
+                msg += f"\n\n{err_tail[:600]}"
+            messagebox.showerror("ChronoArchiver", msg)
         root2.destroy()
         return False
     return True

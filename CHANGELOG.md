@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-03-25
+### Fixed
+- **Windows uninstaller**: Removed **`$form.Invoke`** scriptblocks from worker thread (fixes *“There is no Runspace available…”*). Log lines and progress use a **thread-safe queue** drained by a **WinForms Timer** on the UI thread; header text is **Uninstalling ChronoArchiver...**
+- **OpenCV variant (AI Scanner)**: **NVIDIA preferred on Windows** when **`nvidia-smi -L`** reports a GPU (before WMI). WMI/GPU list now breaks ties by **vendor rank** (NVIDIA over AMD over Intel) so **hybrid AMD iGPU + NVIDIA dGPU** (e.g. RTX 5090 with **AdapterRAM** quirks) selects **CUDA** + bundled NVIDIA pip stack, not OpenCL-on-AMD. **Detection** also treats **GeForce / RTX / Quadro** names as NVIDIA.
+- **Setup launcher (Windows/macOS)**: **Borderless** custom title bar (drag to move), **Cancel install** (cooperative cancel: download / extract / pip / FFmpeg check **`cancel_event`**; progress UI **resets** on cancel), **dark-styled** console **scrollbar**.
+
 ## [4.0.0] - 2026-03-25
 ### Fixed
 - **Windows uninstaller (Settings → Apps)**: Uninstall WinForms UI uses valid PowerShell (no accidental `{{` / `}}` tokens), runs under **STA** (required for WinForms), and the `.cmd` wrapper uses **`%~dp0`** so the paired `Uninstall_ChronoArchiver.ps1` is found when Windows launches uninstall **without a useful working directory**. The registry `UninstallString` still targets the `.cmd`; it is **re-written on each setup run**, so it stays aligned with the current Start Menu folder layout.
