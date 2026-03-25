@@ -39,7 +39,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "3.9.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.0")
 
 
 VERSION = _read_version()
@@ -633,7 +633,14 @@ def _run_setup_bootstrap(app_root: Path, progress_cb, console_q: queue.Queue | N
     return True, ""
 
 
-def _bootstrap_ffmpeg(app_root: Path, py_exe: Path, progress_cb, console_q: queue.Queue | None = None) -> tuple[bool, str]:
+def _bootstrap_ffmpeg(
+    app_root: Path,
+    py_exe: Path,
+    progress_cb,
+    console_q: queue.Queue | None = None,
+    *,
+    ff_component: str = "FFmpeg",
+) -> tuple[bool, str]:
     """Download FFmpeg via static-ffmpeg into the venv (after pip). Full setup + quick-launch."""
     if not py_exe.is_file():
         return False, "venv Python not found"
@@ -685,7 +692,7 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
                         # Keep FFmpeg download spam out of the installer console (text wall).
                         # Progress bar + step percentage still update via progress_cb().
                         # Keep component label consistent with "dependency 10/10" cadence.
-                        progress_cb("FFmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
+                        progress_cb(ff_component, pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
                 else:
                     # Non-CA output is installer-log-only (no console wall).
                     if line and line.strip():
@@ -694,7 +701,7 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
         if proc.returncode != 0:
             _install_log(f"ffmpeg bootstrap: exit {proc.returncode}")
             return False, "FFmpeg download failed (see log)."
-        progress_cb("FFmpeg", 100.0, 0.0, 0.0, "OK")
+        progress_cb(ff_component, 100.0, 0.0, 0.0, "OK")
         return True, ""
     except subprocess.TimeoutExpired:
         if proc:
@@ -726,7 +733,7 @@ def _finalize_bootstrap_with_ffmpeg(
     dep_total = (len(packages) + 1) if packages else 10
     ff_label = f"FFmpeg ({dep_total}/{dep_total})"
     progress_cb(ff_label, 0, 0, 0, "")
-    ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb, console_q)
+    ok_ff, err_ff = _bootstrap_ffmpeg(app_root, py_exe, progress_cb, console_q, ff_component=ff_label)
     if not ok_ff:
         _install_log(f"bootstrap: FFmpeg FAILED {err_ff!r}")
         return False, err_ff or "FFmpeg download failed."
@@ -860,36 +867,37 @@ $Shortcut.Save()
     # Uninstaller CMD: lives under Start Menu (outside install dir so we can delete that tree first).
     # PowerShell confirm — works from Settings → Apps (no console; plain "choice" does not).
     install_dir = str(app_root.resolve())
-    sm_ps = str(folder).replace("'", "''")
-    desk_ps = str(desktop / "ChronoArchiver.lnk").replace("'", "''")
     uninstall_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
     uninstall_cmd = folder / "Uninstall_ChronoArchiver.cmd"
     uninstall_ps1 = folder / "Uninstall_ChronoArchiver.ps1"
-    _bs = chr(92)
-    _extraud_line = f'set "EXTRAUD=%LOCALAPPDATA%{_bs}UnDadFeated{_bs}ChronoArchiver"'
-    install_ps = install_dir.replace("'", "''")
-    ps1 = r'''$ErrorActionPreference = "SilentlyContinue"
+
+    def _ps_sq(s: str) -> str:
+        """Escape for PowerShell single-quoted literals."""
+        return (s or "").replace("'", "''")
+
+    # Valid PowerShell (no doubled {{ }}); STA + script dir for Apps & Features uninstall.
+    ps1_tmpl = r"""$ErrorActionPreference = "SilentlyContinue"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$target  = "__TARGET__"
-$unkey   = "__UNKEY__"
-$desk    = "__DESK__"
-$sm      = "__SM__"
-$extraud = Join-Path $env:LOCALAPPDATA "UnDadFeated\\ChronoArchiver"
-$root    = "__ROOT__"
+$target  = '__TARGET__'
+$unkey   = '__UNKEY__'
+$desk    = '__DESK__'
+$sm      = '__SM__'
+$extraud = Join-Path $env:LOCALAPPDATA 'UnDadFeated\ChronoArchiver'
+$root    = '__ROOT__'
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "ChronoArchiver — Uninstall"
-$form.StartPosition = "CenterScreen"
+$form.Text = 'ChronoArchiver — Uninstall'
+$form.StartPosition = 'CenterScreen'
 $form.Width = 980
 $form.Height = 560
 $form.BackColor = [System.Drawing.Color]::FromArgb(13,13,13)
 
-$font = New-Object System.Drawing.Font("Consolas", 8)
+$font = New-Object System.Drawing.Font('Consolas', 8)
 
 $lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = "Uninstalling ChronoArchiver…"
+$lbl.Text = 'Uninstalling ChronoArchiver…'
 $lbl.ForeColor = [System.Drawing.Color]::FromArgb(229,231,235)
 $lbl.Left = 16; $lbl.Top = 14; $lbl.Width = 920; $lbl.Height = 20
 $form.Controls.Add($lbl)
@@ -905,95 +913,100 @@ $tb.Font = $font
 $tb.ReadOnly = $true
 $tb.BackColor = [System.Drawing.Color]::FromArgb(17,17,17)
 $tb.ForeColor = [System.Drawing.Color]::FromArgb(209,213,219)
-$tb.BorderStyle = "FixedSingle"
+$tb.BorderStyle = 'FixedSingle'
 $form.Controls.Add($tb)
 
 $btn = New-Object System.Windows.Forms.Button
-$btn.Text = "Close"
+$btn.Text = 'Close'
 $btn.Enabled = $false
 $btn.Left = 858; $btn.Top = 486; $btn.Width = 90; $btn.Height = 28
 $btn.Add_Click({ $form.Close() })
 $form.Controls.Add($btn)
 
-function Append-Line([string]$s) {{
-  $ts = (Get-Date).ToString("HH:mm:ss")
+function Append-Line {
+  param([string]$s)
+  $ts = (Get-Date).ToString('HH:mm:ss')
   $tb.AppendText("[$ts] $s`r`n")
   $tb.SelectionStart = $tb.TextLength
   $tb.ScrollToCaret()
-}}
+}
 
-function Set-Progress([int]$v) {{
-  if ($v -lt 0) {{ $v = 0 }}
-  if ($v -gt 100) {{ $v = 100 }}
+function Set-Progress {
+  param([int]$v)
+  if ($v -lt 0) { $v = 0 }
+  if ($v -gt 100) { $v = 100 }
   $pb.Value = $v
-}}
+}
 
 $r = [System.Windows.Forms.MessageBox]::Show(
-  "Remove ChronoArchiver and all data from this PC?",
-  "ChronoArchiver Uninstall",
-  "YesNo",
-  "Question"
+  'Remove ChronoArchiver and all data from this PC?',
+  'ChronoArchiver Uninstall',
+  'YesNo',
+  'Question'
 )
-if ($r -ne [System.Windows.Forms.DialogResult]::Yes) {{ exit 0 }}
+if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
 
 $job = New-Object System.ComponentModel.BackgroundWorker
 $job.WorkerReportsProgress = $true
-$job.add_ProgressChanged({{
-  param($s,$e)
+$job.add_ProgressChanged({
+  param($sender,$e)
   Append-Line $e.UserState
   Set-Progress $e.ProgressPercentage
-}})
-$job.add_RunWorkerCompleted({{
-  param($s,$e)
-  Append-Line "Done. You can close this window."
+})
+$job.add_RunWorkerCompleted({
+  param($sender,$e)
+  Append-Line 'Done. You can close this window.'
   Set-Progress 100
-  $lbl.Text = "Uninstall complete."
+  $lbl.Text = 'Uninstall complete.'
   $btn.Enabled = $true
-}})
-$job.add_DoWork({{
-  param($s,$e)
-  $s.ReportProgress(5, "Closing running app…")
+})
+$job.add_DoWork({
+  param($sender,$e)
+  $sender.ReportProgress(5, 'Closing running app…')
   Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object {{ ($_.Name -eq "pythonw.exe" -or $_.Name -eq "python.exe") -and $_.CommandLine -and ($_.CommandLine -like ("*"+$root+"*")) }} |
-    ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
+    Where-Object {
+      ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and $_.CommandLine -and
+      ($_.CommandLine -like ('*' + $root + '*'))
+    } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 2
 
-  $s.ReportProgress(25, "Removing install directory…")
-  if (Test-Path -LiteralPath $target) {{ Remove-Item -LiteralPath $target -Recurse -Force }}
+  $sender.ReportProgress(25, 'Removing install directory…')
+  if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 
-  $s.ReportProgress(55, "Removing app data…")
-  if (Test-Path -LiteralPath $extraud) {{ Remove-Item -LiteralPath $extraud -Recurse -Force }}
+  $sender.ReportProgress(55, 'Removing app data…')
+  if (Test-Path -LiteralPath $extraud) { Remove-Item -LiteralPath $extraud -Recurse -Force }
 
-  $s.ReportProgress(75, "Removing shortcuts…")
-  if (Test-Path -LiteralPath $desk) {{ Remove-Item -LiteralPath $desk -Force }}
+  $sender.ReportProgress(75, 'Removing shortcuts…')
+  if (Test-Path -LiteralPath $desk) { Remove-Item -LiteralPath $desk -Force }
   Start-Sleep -Milliseconds 500
-  if (Test-Path -LiteralPath $sm) {{ Remove-Item -LiteralPath $sm -Recurse -Force }}
+  if (Test-Path -LiteralPath $sm) { Remove-Item -LiteralPath $sm -Recurse -Force }
 
-  $s.ReportProgress(90, "Removing uninstall registration…")
-  cmd.exe /c ("reg delete `"" + $unkey + "`" /f") | Out-Null
+  $sender.ReportProgress(90, 'Removing uninstall registration…')
+  & reg.exe delete $unkey /f 2>$null | Out-Null
 
-  $s.ReportProgress(98, "Finalizing…")
-}})
+  $sender.ReportProgress(98, 'Finalizing…')
+})
 
 $form.add_Shown({ $job.RunWorkerAsync() })
 [void]$form.ShowDialog()
-'''
+"""
     ps1 = (
-        ps1.replace("__TARGET__", install_dir.replace('"', '""'))
-           .replace("__UNKEY__", uninstall_key.replace('"', '""'))
-           .replace("__DESK__", desk_ps.replace('"', '""'))
-           .replace("__SM__", sm_ps.replace('"', '""'))
-           .replace("__ROOT__", install_dir.replace('"', '""'))
+        ps1_tmpl.replace("__TARGET__", _ps_sq(install_dir))
+        .replace("__UNKEY__", _ps_sq(uninstall_key))
+        .replace("__DESK__", _ps_sq(str(desktop / "ChronoArchiver.lnk")))
+        .replace("__SM__", _ps_sq(str(folder)))
+        .replace("__ROOT__", _ps_sq(install_dir))
     )
     uninstall_ps1.write_text(ps1, encoding="utf-8")
 
     uninstall_cmd.write_text(
-        f'''@echo off
+        """@echo off
 setlocal
-REM Wrapper kept intentionally tiny to avoid parsing/escaping failures.
-powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{uninstall_ps1}"
-exit /b 0
-''',
+cd /d "%~dp0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "%~dp0Uninstall_ChronoArchiver.ps1"
+exit /b %ERRORLEVEL%
+""",
         encoding="utf-8",
     )
 

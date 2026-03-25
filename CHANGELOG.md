@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-03-25
+### Fixed
+- **Windows uninstaller (Settings → Apps)**: Uninstall WinForms UI uses valid PowerShell (no accidental `{{` / `}}` tokens), runs under **STA** (required for WinForms), and the `.cmd` wrapper uses **`%~dp0`** so the paired `Uninstall_ChronoArchiver.ps1` is found when Windows launches uninstall **without a useful working directory**. The registry `UninstallString` still targets the `.cmd`; it is **re-written on each setup run**, so it stays aligned with the current Start Menu folder layout.
+
+### Changed
+- **Setup — FFmpeg dependency label**: During static-ffmpeg / FFmpeg bootstrap, the **current component** line keeps the **`FFmpeg (N/10)`** cadence for the whole download (same as other pip dependencies), not only at the start of the step.
+
 ## [3.9.0] - 2026-03-25
 ### Fixed
 - **AI Media Scanner UI**: when scanning starts, `START AI SCAN` goes grey/disabled and `STOP` becomes red to reflect scan state.
