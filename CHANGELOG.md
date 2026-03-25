@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-03-25
+### Changed
+- **Windows uninstaller**: **Less verbose** log — after the install path banner, shows **Deleting directories and files...** instead of **every file path**; retains **Removing root** / **rmdir** fallback / **WARNING** and **FAILED** lines. **Dark-mode scrollbars** via **DWM immersive dark** on the form and **`SetWindowTheme`** **DarkMode_Explorer** on the console **RichTextBox** (matches dark installer styling).
+
 ## [4.0.2] - 2026-03-25
 ### Fixed
 - **Windows uninstaller**: Removed **BackgroundWorker** / cross-thread handlers entirely; uninstall runs on the **UI thread** inside **`Form.Load`** with **`Application.DoEvents()`** so **no PowerShell Runspace** errors and removals actually execute. **Borderless** window with **draggable** top strip; **Done** button uses flat dark styling.

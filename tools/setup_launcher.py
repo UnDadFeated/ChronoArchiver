@@ -39,7 +39,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.2")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.3")
 
 
 VERSION = _read_version()
@@ -954,6 +954,16 @@ $Shortcut.Save()
     ps1_tmpl = r"""$ErrorActionPreference = "SilentlyContinue"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class ChronoUninstUi {
+  public const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
+  public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+  [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+  [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+}
+'@
 
 $target  = '__TARGET__'
 $unkey   = '__UNKEY__'
@@ -968,6 +978,14 @@ $form.StartPosition = 'CenterScreen'
 $form.Width = 980
 $form.Height = 592
 $form.BackColor = [System.Drawing.Color]::FromArgb(10,10,10)
+$form.Add_HandleCreated({
+  $h = $sender.Handle
+  if ($h -ne [IntPtr]::Zero) {
+    $yes = 1
+    [void][ChronoUninstUi]::DwmSetWindowAttribute($h, [ChronoUninstUi]::DWMWA_USE_IMMERSIVE_DARK_MODE, [ref]$yes, 4)
+    [void][ChronoUninstUi]::DwmSetWindowAttribute($h, [ChronoUninstUi]::DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, [ref]$yes, 4)
+  }
+})
 
 $dragBar = New-Object System.Windows.Forms.Panel
 $dragBar.Height = 32
@@ -1041,6 +1059,11 @@ $tb.ReadOnly = $true
 $tb.BackColor = [System.Drawing.Color]::FromArgb(17,17,17)
 $tb.ForeColor = [System.Drawing.Color]::FromArgb(209,213,219)
 $tb.BorderStyle = 'FixedSingle'
+$tb.Add_HandleCreated({
+  try {
+    [void][ChronoUninstUi]::SetWindowTheme($tb.Handle, 'DarkMode_Explorer', $null)
+  } catch { }
+})
 $form.Controls.Add($tb)
 
 $btn = New-Object System.Windows.Forms.Button
@@ -1092,6 +1115,7 @@ function Remove-TreeLogged {
     return
   }
   Append-Line "--- $label : $rootPath ---"
+  Append-Line 'Deleting directories and files...'
   Set-Progress $pct
   Pump-Ui
   $nitem = 0
@@ -1099,14 +1123,13 @@ function Remove-TreeLogged {
     $items = @(Get-ChildItem -LiteralPath $rootPath -Recurse -Force -ErrorAction SilentlyContinue |
       Sort-Object { $_.FullName.Length } -Descending)
     foreach ($it in $items) {
-      Append-Line "Removing: $($it.FullName)"
       try {
         Remove-Item -LiteralPath $it.FullName -Force -Recurse -ErrorAction Stop
       } catch {
         Append-Line "FAILED: $($it.FullName) - $($_.Exception.Message)"
       }
       $nitem++
-      if (($nitem % 12) -eq 0) { Pump-Ui }
+      if (($nitem % 24) -eq 0) { Pump-Ui }
     }
   } catch {
     Append-Line "ERROR listing $rootPath - $($_.Exception.Message)"
