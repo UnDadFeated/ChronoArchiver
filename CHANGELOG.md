@@ -5,6 +5,7 @@
 ### Fixed
 - **Flatpak manifest**: Install **`pybind11`** and **`packaging>=24.2`** before **Pillow** so Pillow 12.x / setuptools can prepare metadata inside **`flatpak-builder`** (`pybind11`, `packaging.licenses`). **`nh3`** / **`cryptography`**: use **`manylinux` wheels** per arch (not sdist) so **twine** / **SecretStorage** dependencies do not require **maturin** or a full **cryptography** source build.
 - **Flatpak icon**: **`flatpak/io.github.UnDadFeated.ChronoArchiver.png`** — **256×256** square (transparent pad around `src/ui/assets/icon.png`) so **`appstreamcli` / Flathub** accept **`hicolor/256x256`** export.
+- **Flathub linter**: Git source pins **`commit`** alongside **`tag`**; **`--filesystem=/tmp`** removed (use sandbox **`/tmp`**). **`--filesystem=home`** requires a **[linter exception](https://docs.flathub.org/docs/for-app-authors/linter#exceptions)** (`finish-args-home-filesystem-access`) for arbitrary user media paths — add via PR to **[flatpak-builder-lint `exceptions.json`](https://github.com/flathub-infra/flatpak-builder-lint/blob/master/flatpak_builder_lint/staticfiles/exceptions.json)** or as directed by Flathub reviewers.
 
 ### Changed
 - **Documentation**: Root **README** shortened for public readers — **Installation** (GitHub **v3.8.2**, AUR, Flathub) then **Technical overview**; maintainer Flathub steps moved to **`flatpak/README.md`**.
