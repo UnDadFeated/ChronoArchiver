@@ -59,9 +59,24 @@ def detect_gpu() -> str:
     """
     found = {"nvidia": False, "amd": False, "intel": False}
 
-    # Windows: use Win32_VideoController to pick the discrete adapter.
-    # The earlier sysfs + lspci heuristics are Linux-centric and can mis-detect iGPU.
+    # Windows: Prefer NVIDIA when present (hybrid APU/iGPU + RTX): WMI AdapterRAM is often 0 for new
+    # dGPUs, so sorting by VRAM alone incorrectly picks the integrated AMD GPU over an RTX card.
     if platform.system() == "Windows":
+        try:
+            smi = shutil.which("nvidia-smi")
+            if smi:
+                r = subprocess.run(
+                    [smi, "-L"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    **win_hide_kw(),
+                )
+                if r.returncode == 0 and r.stdout and re.search(r"\bNVIDIA\b", r.stdout, re.I):
+                    return "nvidia"
+        except Exception:
+            pass
+
         try:
             ps_cmd = (
                 "Get-CimInstance Win32_VideoController | "
@@ -85,13 +100,16 @@ def detect_gpu() -> str:
 
                 def _parse_vendor(s: str) -> str:
                     t = (s or "").lower()
-                    if "nvidia" in t:
+                    if "nvidia" in t or "geforce" in t or "rtx" in t or "quadro" in t or "tesla" in t:
                         return "nvidia"
                     if "amd" in t or "radeon" in t:
                         return "amd"
                     if "intel" in t:
                         return "intel"
                     return ""
+
+                def _vendor_rank(v: str) -> int:
+                    return {"nvidia": 3, "amd": 2, "intel": 1}.get(v, 0)
 
                 candidates: list[tuple[int, bool, str]] = []  # (adapterRAM, integrated, vendor)
                 for e in entries:
@@ -112,11 +130,12 @@ def detect_gpu() -> str:
                     is_integrated = "integrated" in blob.lower()
                     candidates.append((adapter_ram, is_integrated, vendor))
 
-                # Prefer non-integrated (discrete). If none found, fall back to any vendor.
+                # Prefer discrete when listed; else any adapter.
                 non_int = [c for c in candidates if not c[1]]
                 pick_from = non_int if non_int else candidates
                 if pick_from:
-                    _, _, vendor = max(pick_from, key=lambda x: x[0])
+                    # Primary: vendor rank (NVIDIA over AMD over Intel). tie-break: AdapterRAM.
+                    _, _, vendor = max(pick_from, key=lambda x: (_vendor_rank(x[2]), x[0]))
                     return vendor
         except Exception:
             pass
@@ -198,8 +217,11 @@ def detect_gpu() -> str:
 def get_opencv_variant() -> str:
     """
     Variant for **AI Scanner → Install OpenCV** only (not installed by setup/bootstrap):
-    - 'cuda': NVIDIA → cudawarped wheel + CUDA stack in venv
-    - 'opencl_amd' / 'opencl_intel' / 'opencl': PyPI opencv-python (OpenCL), same behavior as before
+    - 'cuda': NVIDIA (dGPU or any GPU reported by nvidia-smi / WMI GeForce-RTX-style) → CUDA wheel + pip CUDA stack
+    - 'opencl_amd': AMD as primary adapter → PyPI opencv-python (OpenCL)
+    - 'opencl_intel': Intel (integrated or discrete Arc, etc.) → PyPI opencv-python (OpenCL)
+    - 'opencl': fallback when no vendor detected
+    Hybrid systems: **NVIDIA is preferred** when an NVIDIA GPU is present (before VRAM-only WMI tie-breaks).
     """
     gpu = detect_gpu()
     if gpu == "nvidia":
