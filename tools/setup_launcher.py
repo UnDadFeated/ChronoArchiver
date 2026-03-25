@@ -680,6 +680,13 @@ raise SystemExit(0 if ensure_bundled_ffmpeg(cb) else 1)
                             pct = float(pct_s)
                         except ValueError:
                             pct = 0.0
+                        # Echo FFmpeg progress details into the installer console.
+                        # Previously, CA_PROGRESS lines were consumed only for the progress bars,
+                        # so the right-side installer console showed nothing useful.
+                        _setup_console_line(
+                            f"[ffmpeg] {phase} {pct:.0f}% {detail}".strip(),
+                            console_q,
+                        )
                         progress_cb("FFmpeg", pct, 0.0, 0.0, f"{phase}: {detail}"[:100])
                 else:
                     _setup_console_line(line, console_q)
@@ -1213,7 +1220,20 @@ def _do_setup_gui(download_url: str) -> bool:
             step_pct = min(100, max(0, pct))
             prog_step["value"] = step_pct
             lbl_pct_step.config(text=f"{step_pct:.1f}%")
-            overall_pct = min(100.0, stage["base"] + stage["span"] * step_pct / 100.0)
+            # During "Install dependencies…" we run multiple sub-components in sequence:
+            # - pip installs (reported as component="requirements.txt", pct 0..100)
+            # - FFmpeg bootstrap (reported as component="FFmpeg", pct 0..100)
+            # The default mapping would cause overall progress to jump backwards when
+            # FFmpeg starts (pct resets to 0). We remap into a continuous range:
+            # - pip:   0..100  -> 0..80   of the stage (overall 50..82)
+            # - ffmpeg:0..100  -> 80..100 of the stage (overall 82..90)
+            mapped_step_pct = step_pct
+            if stage["index"] == 3:
+                if component == "requirements.txt":
+                    mapped_step_pct = step_pct * 0.8
+                elif component == "FFmpeg":
+                    mapped_step_pct = 80.0 + (step_pct * 0.2)
+            overall_pct = min(100.0, stage["base"] + stage["span"] * mapped_step_pct / 100.0)
             prog_overall["value"] = overall_pct
             lbl_pct_overall.config(text=f"{overall_pct:.1f}%")
             if speed_mbps >= 0.01:
