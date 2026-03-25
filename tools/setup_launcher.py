@@ -888,7 +888,7 @@ $extraud = Join-Path $env:LOCALAPPDATA 'UnDadFeated\ChronoArchiver'
 $root    = '__ROOT__'
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'ChronoArchiver — Uninstall'
+$form.Text = 'ChronoArchiver - Uninstall'
 $form.StartPosition = 'CenterScreen'
 $form.Width = 980
 $form.Height = 560
@@ -897,7 +897,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(13,13,13)
 $font = New-Object System.Drawing.Font('Consolas', 8)
 
 $lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = 'Uninstalling ChronoArchiver…'
+$lbl.Text = 'Setup output...'
 $lbl.ForeColor = [System.Drawing.Color]::FromArgb(229,231,235)
 $lbl.Left = 16; $lbl.Top = 14; $lbl.Width = 920; $lbl.Height = 20
 $form.Controls.Add($lbl)
@@ -919,6 +919,9 @@ $form.Controls.Add($tb)
 $btn = New-Object System.Windows.Forms.Button
 $btn.Text = 'Close'
 $btn.Enabled = $false
+$btn.ForeColor = [System.Drawing.Color]::White
+$btn.BackColor = [System.Drawing.Color]::FromArgb(55, 55, 55)
+$btn.FlatStyle = 'Flat'
 $btn.Left = 858; $btn.Top = 486; $btn.Width = 90; $btn.Height = 28
 $btn.Add_Click({ $form.Close() })
 $form.Controls.Add($btn)
@@ -950,42 +953,98 @@ $job = New-Object System.ComponentModel.BackgroundWorker
 $job.WorkerReportsProgress = $true
 $job.add_ProgressChanged({
   param($sender,$e)
-  Append-Line $e.UserState
+  if ($null -ne $e.UserState -and "$($e.UserState)" -ne '') {
+    Append-Line ([string]$e.UserState)
+  }
   Set-Progress $e.ProgressPercentage
 })
 $job.add_RunWorkerCompleted({
   param($sender,$e)
   Append-Line 'Done. You can close this window.'
   Set-Progress 100
-  $lbl.Text = 'Uninstall complete.'
   $btn.Enabled = $true
 })
+
+function Remove-TreeLogged {
+  param($bw, [int]$pct, [string]$rootPath, [string]$label)
+  if ([string]::IsNullOrWhiteSpace($rootPath)) { return }
+  if (-not (Test-Path -LiteralPath $rootPath)) {
+    $bw.ReportProgress($pct, "(skip) Not found ($label): $rootPath")
+    return
+  }
+  $bw.ReportProgress($pct, "--- $label : $rootPath ---")
+  try {
+    $items = @(Get-ChildItem -LiteralPath $rootPath -Recurse -Force -ErrorAction SilentlyContinue |
+      Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($it in $items) {
+      $bw.ReportProgress($pct, "Removing: $($it.FullName)")
+      Remove-Item -LiteralPath $it.FullName -Force -Recurse -ErrorAction SilentlyContinue
+    }
+  } catch {}
+  if (Test-Path -LiteralPath $rootPath) {
+    $bw.ReportProgress($pct, "Removing root: $rootPath")
+    Remove-Item -LiteralPath $rootPath -Force -Recurse -ErrorAction SilentlyContinue
+  }
+  if (Test-Path -LiteralPath $rootPath) {
+    $bw.ReportProgress($pct, "WARNING: still present (in use or permissions): $rootPath")
+  }
+}
+
 $job.add_DoWork({
   param($sender,$e)
-  $sender.ReportProgress(5, 'Closing running app…')
-  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  $bw = $sender
+
+  $bw.ReportProgress(5, 'Closing running ChronoArchiver (python) processes…')
+  $procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
       ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and $_.CommandLine -and
       ($_.CommandLine -like ('*' + $root + '*'))
-    } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    })
+  foreach ($p in $procs) {
+    $bw.ReportProgress(5, "Stopping PID $($p.ProcessId): $($p.CommandLine)")
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+  }
   Start-Sleep -Seconds 2
 
-  $sender.ReportProgress(25, 'Removing install directory…')
-  if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+  Remove-TreeLogged $bw 25 $target 'Install directory'
 
-  $sender.ReportProgress(55, 'Removing app data…')
-  if (Test-Path -LiteralPath $extraud) { Remove-Item -LiteralPath $extraud -Recurse -Force }
+  Remove-TreeLogged $bw 55 $extraud 'App data (UnDadFeated)'
 
-  $sender.ReportProgress(75, 'Removing shortcuts…')
-  if (Test-Path -LiteralPath $desk) { Remove-Item -LiteralPath $desk -Force }
-  Start-Sleep -Milliseconds 500
-  if (Test-Path -LiteralPath $sm) { Remove-Item -LiteralPath $sm -Recurse -Force }
+  $bw.ReportProgress(75, 'Removing desktop shortcut(s)…')
+  $deskPaths = @(
+    $desk,
+    (Join-Path ([Environment]::GetFolderPath('Desktop')) 'ChronoArchiver.lnk'),
+    (Join-Path $env:USERPROFILE 'Desktop\ChronoArchiver.lnk'),
+    (Join-Path $env:USERPROFILE 'OneDrive\Desktop\ChronoArchiver.lnk')
+  )
+  $seen = @{}
+  foreach ($dp in $deskPaths) {
+    if ([string]::IsNullOrWhiteSpace($dp)) { continue }
+    $k = $dp.ToLowerInvariant()
+    if ($seen.ContainsKey($k)) { continue }
+    $seen[$k] = $true
+    if (Test-Path -LiteralPath $dp) {
+      $bw.ReportProgress(75, "Removing desktop shortcut: $dp")
+      Remove-Item -LiteralPath $dp -Force -ErrorAction SilentlyContinue
+    } else {
+      $bw.ReportProgress(75, "(skip) No shortcut at: $dp")
+    }
+  }
 
-  $sender.ReportProgress(90, 'Removing uninstall registration…')
-  & reg.exe delete $unkey /f 2>$null | Out-Null
+  $bw.ReportProgress(90, "Removing uninstall registry key: $unkey")
+  try {
+    $regp = Start-Process -FilePath 'reg.exe' -ArgumentList @('delete', $unkey, '/f') -Wait -PassThru -NoNewWindow -ErrorAction SilentlyContinue
+    $bw.ReportProgress(90, ('reg.exe exit code: ' + $regp.ExitCode))
+  } catch {
+    $bw.ReportProgress(90, ('reg.exe error: ' + $_.Exception.Message))
+  }
 
-  $sender.ReportProgress(98, 'Finalizing…')
+  # Start Menu folder contains this script; delete after exit via delayed cmd.
+  $bw.ReportProgress(92, "Scheduling Start Menu uninstall folder removal (releases file locks): $sm")
+  $delayCmd = 'ping 127.0.0.1 -n 5 >nul & rmdir /s /q "' + $sm + '"'
+  Start-Process -FilePath cmd.exe -ArgumentList '/c', $delayCmd -WindowStyle Hidden
+
+  $bw.ReportProgress(98, 'Finalizing…')
 })
 
 $form.add_Shown({ $job.RunWorkerAsync() })
