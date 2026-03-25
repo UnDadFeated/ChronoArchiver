@@ -851,7 +851,9 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
 
     wheel_path: Path | None = None
     try:
-        if v == "cuda" and detect_gpu() == "nvidia":
+        # Use CUDA path only when the caller selected variant="cuda".
+        # Do not re-detect GPU again here (variant is already computed once for the UI flow).
+        if v == "cuda":
             if not _is_cuda_cudnn_installed():
                 prog("Installing CUDA runtime and cuDNN...", "pip install into venv...", 0, 0)
                 ok_venv, err_venv = _install_cuda_cudnn_venv(
@@ -863,7 +865,7 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
                     return False, err_venv or "Could not install CUDA/cuDNN"
             if not requests:
                 return False, "requests module required for wheel download"
-        if v == "cuda" and detect_gpu() == "nvidia" and requests:
+        if v == "cuda" and requests:
             debug(UTILITY_OPENCV_INSTALL, "install_opencv: fetching CUDA wheel URL")
             prog("Fetching OpenCV CUDA wheel URL...", "")
             try:

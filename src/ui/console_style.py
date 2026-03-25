@@ -70,6 +70,9 @@ def message_to_html(msg: str) -> str:
         or u.startswith("FAILED:")
         or "ERROR:" in u[:25]
         or "FAILED" in u[:35]
+        or "UNSUPPORTED" in u
+        or "GETDEVICE" in u
+        or "NOT SUPPORTED" in u
     ):
         line_color = ERROR
     elif u.startswith("WARNING:") or "WARNING:" in u[:25] or u.startswith("WARNING "):

@@ -483,6 +483,7 @@ class AIScannerPanel(QWidget):
         self._opencv_just_installed = False
         self._cached_cv_ok = False  # Updated by _check_models; used by _get_guide_target, _update_start_enabled
         # _check_models runs when prereqs done (app calls it) and on showEvent — avoids blocking main thread during FFmpeg install
+        self._models_check_in_progress = False
 
     def showEvent(self, event: QShowEvent):
         super().showEvent(event)
@@ -497,9 +498,13 @@ class AIScannerPanel(QWidget):
 
     def _check_models(self):
         """Run OpenCV check off main thread, then apply UI updates."""
+        if self._models_check_in_progress:
+            return
+        self._models_check_in_progress = True
         def _apply(cv_ok: bool):
             self._cached_cv_ok = cv_ok
             debug(UTILITY_AI_MEDIA_SCANNER, f"_check_models: cv_ok={cv_ok} _opencv_just_installed={self._opencv_just_installed}")
+            self._models_check_in_progress = False
             if self._opencv_just_installed:
                 self._lbl_opencv.setText("RESTART REQUIRED")
                 self._lbl_opencv.setStyleSheet("font-size:8px; font-weight:700; color:#10b981;")
@@ -595,12 +600,19 @@ class AIScannerPanel(QWidget):
                     _wh = {}
                     if platform.system() == "Windows":
                         _wh = {"creationflags": subprocess.CREATE_NO_WINDOW}
+                    # Pip's --outdated output varies by opencv package name.
                     r = subprocess.run(
                         [str(pip_exe), "list", "--outdated"],
                         capture_output=True, text=True, timeout=10,
                         **_wh,
                     )
-                    if r.returncode == 0 and "opencv-python" in (r.stdout or ""):
+                    hay = (r.stdout or "")
+                    if r.returncode == 0 and (
+                        "opencv-python" in hay
+                        or "opencv-python-headless" in hay
+                        or "opencv-contrib-python" in hay
+                        or "opencv-contrib-python-headless" in hay
+                    ):
                         opencv_up = True
             except Exception:
                 pass
