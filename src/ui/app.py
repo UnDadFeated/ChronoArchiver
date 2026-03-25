@@ -525,7 +525,7 @@ class ChronoArchiverApp(QMainWindow):
         self._update_result_queue = queue.Queue()
         self._update_poll_timer = None
         self._component_sync_started = False
-        self._metrics_gpu_cache = "  0%"
+        self._metrics_gpu_cache = "  N/A"
         self._metrics_gpu_counter = 0
         self._metrics_gpu_last_err_t = 0.0
         self._metrics_gpu_last_err = ""
@@ -919,9 +919,8 @@ class ChronoArchiverApp(QMainWindow):
                     g = max(vals)
                     self._metrics_gpu_cache = f"{min(999, g):3d}%"
                 except Exception as e:
-                    # Keep footer numeric ("0%") so the UI always shows percent tracking.
-                    # Detailed reason is still logged (throttled) for troubleshooting.
-                    self._metrics_gpu_cache = "  0%"
+                    # If NVML/nvidia-smi has no usable output, show N/A (but still log the reason).
+                    self._metrics_gpu_cache = "  N/A"
                     now = time.monotonic()
                     msg = str(e)[:140]
                     if (now - self._metrics_gpu_last_err_t) >= 20.0 or msg != self._metrics_gpu_last_err:
