@@ -867,16 +867,16 @@ class ChronoArchiverApp(QMainWindow):
                 self._metrics_gpu_counter = 0
             cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
             ram_s = f"{min(999, int(round(ram_val))):3d}%"
-            magenta = "#ff79c6"
+            teal = "#94e2d5"
             orange_dot = "#f59e0b"
             white = "#f8f8f2"
             dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
             self.lbl_metrics.setText(
-                f'<span style="color:{magenta}; font-weight:700;">CPU</span> '
+                f'<span style="color:{teal}; font-weight:700;">CPU</span> '
                 f'<span style="color:{white}; font-weight:700;">{cpu_s}</span> {dot} '
-                f'<span style="color:{magenta}; font-weight:700;">GPU</span> '
+                f'<span style="color:{teal}; font-weight:700;">GPU</span> '
                 f'<span style="color:{white}; font-weight:700;">{self._metrics_gpu_cache}</span> {dot} '
-                f'<span style="color:{magenta}; font-weight:700;">RAM</span> '
+                f'<span style="color:{teal}; font-weight:700;">RAM</span> '
                 f'<span style="color:{white}; font-weight:700;">{ram_s}</span>'
             )
         except Exception:
@@ -884,16 +884,16 @@ class ChronoArchiverApp(QMainWindow):
 
     def _on_encoder_metrics(self, cpu, gpu, ram):
         """Encoder panel can override with its own (includes encoding Time)."""
-        magenta = "#ff79c6"
+        teal = "#94e2d5"
         orange_dot = "#f59e0b"
         white = "#f8f8f2"
         dot = f'<span style="color:{orange_dot}; font-weight:700;">·</span>'
         self.lbl_metrics.setText(
-            f'<span style="color:{magenta}; font-weight:700;">CPU</span> '
+            f'<span style="color:{teal}; font-weight:700;">CPU</span> '
             f'<span style="color:{white}; font-weight:700;">{cpu}</span> {dot} '
-            f'<span style="color:{magenta}; font-weight:700;">GPU</span> '
+            f'<span style="color:{teal}; font-weight:700;">GPU</span> '
             f'<span style="color:{white}; font-weight:700;">{gpu}</span> {dot} '
-            f'<span style="color:{magenta}; font-weight:700;">RAM</span> '
+            f'<span style="color:{teal}; font-weight:700;">RAM</span> '
             f'<span style="color:{white}; font-weight:700;">{ram}</span>'
         )
 
