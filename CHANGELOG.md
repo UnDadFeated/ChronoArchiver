@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-03-25
+### Fixed
+- **Windows uninstaller**: Moved uninstall work from **`Form.Load`** to **`Form.Shown`**. **`Load`** runs before the first paint, so **`ShowDialog`** kept the window hidden until removal finished; the UI now appears immediately after **Yes** so the console shows live progress.
+
 ## [4.0.3] - 2026-03-25
 ### Changed
 - **Windows uninstaller**: **Less verbose** log — after the install path banner, shows **Deleting directories and files...** instead of **every file path**; retains **Removing root** / **rmdir** fallback / **WARNING** and **FAILED** lines. **Dark-mode scrollbars** via **DWM immersive dark** on the form and **`SetWindowTheme`** **DarkMode_Explorer** on the console **RichTextBox** (matches dark installer styling).

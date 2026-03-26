@@ -39,7 +39,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.3")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "4.0.4")
 
 
 VERSION = _read_version()
@@ -1167,8 +1167,11 @@ $r = [System.Windows.Forms.MessageBox]::Show(
 )
 if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
 
-$form.add_Load({
+# Run work in Shown, not Load: Load runs before first paint, so ShowDialog would block
+# until uninstall finished (~10s) with no visible window. Shown fires after the form is displayed.
+$form.add_Shown({
   try {
+    Pump-Ui
     Append-Line 'Closing running ChronoArchiver (python) processes...'
     Set-Progress 5
     Pump-Ui
