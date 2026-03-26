@@ -55,13 +55,13 @@ class MediaOrganizerPanel(QWidget):
             f"padding:2px 6px; min-height:{_bar_h}px; max-height:{_bar_h}px;"
         )
         _btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
-        # Keep original combo chrome (inherit global colors). Do not set max-height on QComboBox — it can
-        # clip the popup; only constrain the QAbstractItemView height so rows stay visible.
+        # Inherit combo colors from the theme. No max-height on QComboBox (can clip). Popup view: no
+        # min-height (avoids empty space below short lists); max-height caps long lists.
         def _combo_qss(fs: int, min_h: int) -> str:
             return (
                 f"QComboBox {{ font-size: {fs}px; min-height: {min_h}px; }}"
                 "QComboBox QAbstractItemView {"
-                " min-height: 96px; max-height: 240px; outline: none; padding: 2px;"
+                " max-height: 240px; outline: none; padding: 0px;"
                 "}"
             )
 

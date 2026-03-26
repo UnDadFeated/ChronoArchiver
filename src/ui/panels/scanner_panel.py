@@ -437,7 +437,10 @@ class AIScannerPanel(QWidget):
         h_btns.addWidget(self._btn_browse_target)
         self._combo_action = QComboBox()
         self._combo_action.addItems(["Move", "Copy"])
-        self._combo_action.setStyleSheet("font-size:8px; min-width:72px; min-height:24px;")
+        self._combo_action.setStyleSheet(
+            "font-size:8px; min-width:72px; min-height:24px;"
+            "QComboBox QAbstractItemView { max-height: 120px; outline: none; padding: 0px; }"
+        )
         self._combo_action.setCurrentIndex(0)
         self._combo_action.currentTextChanged.connect(self._update_move_copy_label)
         h_btns.addWidget(self._combo_action)

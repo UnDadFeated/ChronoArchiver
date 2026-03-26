@@ -12,9 +12,7 @@ import sys
 import tempfile
 import threading
 import time
-import importlib.util
 import webbrowser
-from pathlib import Path
 
 import psutil
 
@@ -39,6 +37,7 @@ from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
 from ui.panels.encoder_panel import AV1EncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
+from ui.panels.upscaler_panel import ZImageProUpscalerPanel
 from core.updater import ApplicationUpdater
 from core.subprocess_tee import (
     set_subprocess_tee_callback,
@@ -716,41 +715,9 @@ class ChronoArchiverApp(QMainWindow):
         self._activity_dot += 1
 
     def _make_zimage_pro_panel(self) -> QWidget:
-        """
-        Create the Z-Image Pro Upscaler panel.
-
-        For local testing, the panel is loaded from the sibling `ChronoUpscaler/` workspace.
-        The core upscaler modules are ported into ChronoArchiver `src/core/` so installs run
-        into the app-private venv as intended.
-        """
+        """Create the vendored Z-Image Pro Upscaler panel (same package as AUR / release installs)."""
         try:
-            upscaler_panel_path = (
-                Path(__file__).resolve().parents[3]
-                / "ChronoUpscaler"
-                / "src"
-                / "ui"
-                / "panels"
-                / "upscaler_panel.py"
-            )
-            if not upscaler_panel_path.is_file():
-                w = QWidget()
-                w.setStyleSheet("background-color: #0c0c0c;")
-                lbl = QLabel("Z-Image Pro Upscaler not available (ChronoUpscaler source not found).", w)
-                lbl.setWordWrap(True)
-                lbl.setStyleSheet("color:#e5e7eb; padding:20px;")
-                return w
-
-            spec = importlib.util.spec_from_file_location(
-                "chrono_upscaler_panel_dynamic", str(upscaler_panel_path)
-            )
-            if not spec or not spec.loader:
-                raise RuntimeError("Failed to build import spec")
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)  # type: ignore[union-attr]
-            PanelCls = getattr(mod, "UpscalerPanel", None)
-            if PanelCls is None:
-                raise RuntimeError("UpscalerPanel not found in upscaler_panel.py")
-            return PanelCls()
+            return ZImageProUpscalerPanel()
         except Exception as e:
             debug(UTILITY_APP, f"Z-Image panel load failed: {e}")
             w = QWidget()

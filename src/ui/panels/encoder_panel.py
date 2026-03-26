@@ -131,7 +131,7 @@ class AV1EncoderPanel(QWidget):
         _combo_style = (
             "QComboBox { font-size: 9px; padding: 0 4px; min-height: 12px; max-height: 16px; }"
             "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: right; width: 16px; }"
-            "QComboBox QAbstractItemView { min-height: 80px; max-height: 160px; outline: none; padding: 2px; }"
+            "QComboBox QAbstractItemView { max-height: 160px; outline: none; padding: 0px; }"
         )
 
         root = QVBoxLayout(self)
@@ -318,7 +318,10 @@ class AV1EncoderPanel(QWidget):
         self._combo_exist.setCurrentText(
             {"overwrite": "Overwrite", "skip": "Skip", "rename": "Rename"}.get(
                 self._settings.get("existing_output"), "Overwrite"))
-        self._combo_exist.setStyleSheet("font-size:9px; color:#aaa; min-height:20px;")
+        self._combo_exist.setStyleSheet(
+            "font-size:9px; color:#aaa; min-height:20px;"
+            "QComboBox QAbstractItemView { max-height: 120px; outline: none; padding: 0px; }"
+        )
         self._combo_exist.currentTextChanged.connect(
             lambda t: self._settings.set("existing_output", t.lower()))
         v_exist.addWidget(self._combo_exist)
