@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-4.0.5-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-4.5.1-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -15,13 +15,14 @@ ChronoArchiver consolidates date-based file organization, AI-driven image analys
 
 ## Overview
 
-ChronoArchiver provides three core workflows for managing large media libraries:
+ChronoArchiver provides four core pillars for managing large media libraries:
 
 | Module | Purpose |
 |--------|---------|
 | **Media Organizer** | Sorts photos and videos into date-based folder hierarchies using EXIF, filename, or metadata. |
-| **AI Media Scanner** | Classifies images by subject presence (faces, animals) for bulk triage and archival. |
 | **Mass AV1 Encoder** | Batch-transcodes video to AV1 with optional hardware acceleration. |
+| **AI Media Scanner** | Classifies images by subject presence (faces, animals) for bulk triage and archival. |
+| **Z-Image Pro Upscaler** | GPU-accelerated AI refinement upscaling (optional PyTorch/diffusers stack and HF models). |
 
 Configuration is stored in the platform user-data directory. Each panel validates prerequisites before enabling execution; Start remains disabled until all required inputs (paths, models, etc.) are satisfied.
 
@@ -29,16 +30,16 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Installation
 
-Release **4.0.5** — installers and AUR `pkgver` are aligned on this version.
+Release **4.5.1** — installers and AUR `pkgver` are aligned on this version.
 
 ### GitHub (Windows / macOS installers)
 
-Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v4.0.5`**):
+Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v4.5.0`**):
 
 | Platform | Asset |
 |----------|--------|
-| Windows x64 | `ChronoArchiver-Setup-4.0.5-win64.exe` |
-| macOS | `ChronoArchiver-Setup-4.0.5-mac64.zip` |
+| Windows x64 | `ChronoArchiver-Setup-4.5.0-win64.exe` |
+| macOS | `ChronoArchiver-Setup-4.5.0-mac64.zip` |
 
 The setup is small; first run may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
 
@@ -56,7 +57,7 @@ First launch creates an app-private venv (e.g. `~/.local/share/ChronoArchiver/ve
 
 ### Arch Linux (AUR)
 
-Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **4.0.5**:
+Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **4.5.1**:
 
 ```bash
 paru -S chronoarchiver

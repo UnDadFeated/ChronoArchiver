@@ -5,6 +5,9 @@ import threading
 import logging
 import hashlib
 import tarfile
+import shutil
+from pathlib import Path
+from typing import Callable, Optional
 
 try:
     from .debug_logger import debug, UTILITY_MODEL_SETUP
@@ -197,3 +200,132 @@ class ModelManager:
 
     def cancel(self):
         self.stop_event.set()
+
+
+# ---------------------------------------------------------------------------
+# Z-Image Pro Upscaler models (ChronoUpscaler port)
+# ---------------------------------------------------------------------------
+
+try:
+    # Optional: only needed when using the upscaler UI.
+    from huggingface_hub import HfApi, hf_hub_download, list_repo_files
+except ImportError:  # pragma: no cover
+    HfApi = None  # type: ignore[misc, assignment]
+    hf_hub_download = None  # type: ignore[misc, assignment]
+    list_repo_files = None  # type: ignore[misc, assignment]
+
+REPO_ID = "Tongyi-MAI/Z-Image-Turbo"
+HF_MODEL_URL = f"https://huggingface.co/{REPO_ID}"
+
+
+def snapshot_path(models_root: Path) -> Path:
+    return Path(models_root) / "Tongyi-MAI_Z-Image-Turbo"
+
+
+class ZImageModelManager:
+    """Cancellable file-by-file HF download for Z-Image-Turbo (diffusers)."""
+
+    def __init__(self, models_root: Path):
+        self.models_root = Path(models_root)
+        self.snapshot_dir = snapshot_path(self.models_root)
+        self.stop_event = threading.Event()
+
+    def cancel(self) -> None:
+        self.stop_event.set()
+
+    def is_up_to_date(self) -> bool:
+        if not self.snapshot_dir.is_dir():
+            return False
+        transformer_cfg = self.snapshot_dir / "transformer" / "config.json"
+        if not transformer_cfg.is_file():
+            return False
+        try:
+            if not any(self.snapshot_dir.glob("transformer/*.safetensors")):
+                return False
+        except OSError:
+            return False
+        return True
+
+    def estimate_total_bytes(self) -> int:
+        if HfApi is None:
+            return 12 * 1024 * 1024 * 1024
+        try:
+            api = HfApi()
+            info = api.model_info(REPO_ID, files_metadata=True)
+            total = 0
+            for s in info.siblings or []:
+                if getattr(s, "size", None):
+                    total += int(s.size)
+            return max(total, 1024)
+        except Exception:
+            return 12 * 1024 * 1024 * 1024
+
+    def _file_size_map(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        if HfApi is None:
+            return out
+        try:
+            api = HfApi()
+            info = api.model_info(REPO_ID, files_metadata=True)
+            for s in info.siblings or []:
+                key = getattr(s, "path", None) or getattr(s, "rfilename", None)
+                if key and getattr(s, "size", None):
+                    out[str(key)] = int(s.size)
+        except Exception:
+            pass
+        return out
+
+    def download_models(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
+        """
+        Download repo files one-by-one (enables cancel between files).
+        progress_callback(downloaded, total_size, filename, overall_0_to_1, label, url)
+        """
+        if hf_hub_download is None or list_repo_files is None or HfApi is None:
+            return False
+        self.stop_event.clear()
+        self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            files = list(list_repo_files(repo_id=REPO_ID, repo_type="model"))
+        except Exception:
+            return False
+
+        sizes = self._file_size_map()
+        total_est = max(self.estimate_total_bytes(), 1)
+        done_cum = 0
+        label = "Z-Image-Turbo"
+
+        for rel in files:
+            if self.stop_event.is_set():
+                return False
+            sz = int(sizes.get(rel, 0) or 0)
+            url = f"{HF_MODEL_URL}/resolve/main/{rel}"
+            if progress_callback:
+                overall = done_cum / total_est
+                progress_callback(0, sz or 1, rel, min(1.0, overall), label, url)
+            try:
+                hf_hub_download(
+                    repo_id=REPO_ID,
+                    filename=rel,
+                    local_dir=str(self.snapshot_dir),
+                    local_dir_use_symlinks=False,
+                    resume_download=True,
+                )
+            except Exception:
+                return False
+            done_cum += sz if sz > 0 else 0
+            if progress_callback:
+                overall = done_cum / total_est
+                progress_callback(sz or 1, sz or 1, rel, min(1.0, overall), label, url)
+
+        if progress_callback:
+            progress_callback(0, 0, "Verifying", 1.0, label, HF_MODEL_URL)
+        return self.is_up_to_date()
+
+    def remove_snapshot(self) -> None:
+        if self.snapshot_dir.is_dir():
+            try:
+                shutil.rmtree(self.snapshot_dir, ignore_errors=False)
+            except OSError:
+                pass
+

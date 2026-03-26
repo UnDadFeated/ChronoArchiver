@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [4.5.1] - 2026-03-26
+### Fixed
+- **Media Organizer**: **Execution mode** **QComboBox** dropdowns show all options again (**`QAbstractItemView`** min/max height; no **`max-height`** on the closed control). Theme colors stay inherited (no custom combobox fill).
+
+## [4.5.0] - 2026-03-26
+### Added
+- **Z-Image Pro Upscaler**: New in-app panel for Z-Image-Turbo–style refinement upscaling (diffusers pipeline, Hugging Face model management under **`Settings/z_image_pro_upscaler/`**). Core support: **`ml_runtime`** (pip install/remove PyTorch + stack), **`zimage_engine`**, **`restart`**, and **`ZImageModelManager`** in **`model_manager`**.
+- **Footer prerequisites**: **PYTORCH** and **UPSCALER MODELS** indicators (aligned with **`check_ml_runtime()`** and Z-Image snapshot state); **AI MODELS** label renamed **SCANNER MODELS**. Startup pre-check order: **PySide6 → FFmpeg → OpenCV → PyTorch → scanner models → upscaler models**, then **READY**. Footer refreshes when the upscaler finishes model/runtime setup when the panel exposes **`setup_complete`**.
+
+### Changed
+- **Footer GPU utilization**: Matches upscaler behavior — **`nvidia-smi`** uses a short timeout and shows **N/A** when the query fails instead of a misleading **0%**.
+
 ## [4.0.5] - 2026-03-25
 ### Changed
 - **Code quality**: Ruff-clean **src**/**tools**; removed **dead code** (unused **`get_log_content`**, **`OrganizerEngine.count_files`**, **`ApplicationUpdater.get_changelog`**, duplicate **`is_venv_ready()`** alias, unused **`_Signals.setup_phase`**, scanner **`_opencv_update_available`**, encoder dead state, footer unused GPU error fields). Renamed ambiguous **`l`** in GPU / OpenCV debug paths.

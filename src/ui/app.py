@@ -12,7 +12,9 @@ import sys
 import tempfile
 import threading
 import time
+import importlib.util
 import webbrowser
+from pathlib import Path
 
 import psutil
 
@@ -53,6 +55,8 @@ from core.app_paths import (
     remove_empty_windows_legacy_config_nest,
 )
 from core.logger import setup_logger
+from core.ml_runtime import check_ml_runtime
+from core.model_manager import ZImageModelManager
 
 # Font stack: Inter if bundled, else Windows-native for readability
 _FONT_SANS = "'Inter', 'Segoe UI', 'Lucida Grande', sans-serif" if platform.system() == "Windows" else "'Inter', 'Ubuntu', sans-serif"
@@ -550,8 +554,9 @@ class ChronoArchiverApp(QMainWindow):
         self.btn_org = self._create_nav_btn("MEDIA ORGANIZER", 0)
         self.btn_enc = self._create_nav_btn("MASS AV1 ENCODER", 1)
         self.btn_scn = self._create_nav_btn("AI MEDIA SCANNER", 2)
+        self.btn_upz = self._create_nav_btn("Z-IMAGE PRO UPSCALER", 3)
         
-        self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn]
+        self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn, self.btn_upz]
         
         self.nav_layout.addStretch()
 
@@ -575,11 +580,16 @@ class ChronoArchiverApp(QMainWindow):
         self.panel_org = MediaOrganizerPanel(log_callback=self._log, status_callback=self._set_activity)
         self.panel_enc = AV1EncoderPanel(log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity)
         self.panel_scn = AIScannerPanel(log_callback=self._log, status_callback=self._set_activity)
+        self.panel_upz = self._make_zimage_pro_panel()
 
         self.stack.addWidget(self.panel_org)
         self.stack.addWidget(self.panel_enc)
         self.stack.addWidget(self.panel_scn)
+        self.stack.addWidget(self.panel_upz)
         self.panel_scn._sig.prereqs_changed.connect(self._refresh_footer)
+        _upz_sig = getattr(self.panel_upz, "_sig", None)
+        if _upz_sig is not None and hasattr(_upz_sig, "setup_complete"):
+            _upz_sig.setup_complete.connect(lambda *_: QTimer.singleShot(0, self._refresh_footer))
 
         def _tee_cb(channel: str, line: str):
             QTimer.singleShot(0, lambda: self._route_subprocess_line(channel, line))
@@ -673,7 +683,7 @@ class ChronoArchiverApp(QMainWindow):
             btn.setChecked(i == index)
             btn.setStyle(btn.style())  # Refresh style
         self.lbl_metrics.setVisible(True)
-        panels = ["Media Organizer", "Mass AV1 Encoder", "AI Media Scanner"]
+        panels = ["Media Organizer", "Mass AV1 Encoder", "AI Media Scanner", "Z-Image Pro Upscaler"]
         debug(UTILITY_APP, f"Panel switch: {panels[index]}")
         panel = self.stack.currentWidget()
         if hasattr(panel, "get_activity"):
@@ -682,7 +692,7 @@ class ChronoArchiverApp(QMainWindow):
     def _set_activity(self, activity: str):
         """Activity: 'idle' | 'encoding' | 'organizing' | 'scanning'. Footer left reflects app state."""
         self._activity = activity or "idle"
-        if self._activity in ("encoding", "organizing", "scanning"):
+        if self._activity in ("encoding", "organizing", "scanning", "upscaling"):
             self._activity_dot = 0
             self._activity_timer.start()
             self._animate_activity()
@@ -695,23 +705,80 @@ class ChronoArchiverApp(QMainWindow):
             self._activity_timer.stop()
             self.lbl_status.setText("IDLE")
             return
-        base = {"encoding": "ENCODING", "organizing": "ORGANIZING", "scanning": "SCANNING"}.get(self._activity, "IDLE")
+        base = {
+            "encoding": "ENCODING",
+            "organizing": "ORGANIZING",
+            "scanning": "SCANNING",
+            "upscaling": "UPSCALING",
+        }.get(self._activity, "IDLE")
         dots = "." * (self._activity_dot % 3 + 1)
         self.lbl_status.setText(f"{base}{dots}")
         self._activity_dot += 1
+
+    def _make_zimage_pro_panel(self) -> QWidget:
+        """
+        Create the Z-Image Pro Upscaler panel.
+
+        For local testing, the panel is loaded from the sibling `ChronoUpscaler/` workspace.
+        The core upscaler modules are ported into ChronoArchiver `src/core/` so installs run
+        into the app-private venv as intended.
+        """
+        try:
+            upscaler_panel_path = (
+                Path(__file__).resolve().parents[3]
+                / "ChronoUpscaler"
+                / "src"
+                / "ui"
+                / "panels"
+                / "upscaler_panel.py"
+            )
+            if not upscaler_panel_path.is_file():
+                w = QWidget()
+                w.setStyleSheet("background-color: #0c0c0c;")
+                lbl = QLabel("Z-Image Pro Upscaler not available (ChronoUpscaler source not found).", w)
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet("color:#e5e7eb; padding:20px;")
+                return w
+
+            spec = importlib.util.spec_from_file_location(
+                "chrono_upscaler_panel_dynamic", str(upscaler_panel_path)
+            )
+            if not spec or not spec.loader:
+                raise RuntimeError("Failed to build import spec")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+            PanelCls = getattr(mod, "UpscalerPanel", None)
+            if PanelCls is None:
+                raise RuntimeError("UpscalerPanel not found in upscaler_panel.py")
+            return PanelCls()
+        except Exception as e:
+            debug(UTILITY_APP, f"Z-Image panel load failed: {e}")
+            w = QWidget()
+            lbl = QLabel("Z-Image Pro Upscaler failed to load. See debug log.", w)
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("color:#e5e7eb; padding:20px;")
+            return w
 
     def _log(self, msg):
         self.logger.info(msg)
 
     def _check_prereqs(self):
-        """Run pre-req checks (order matches footer): PySide6, FFmpeg, OpenCV, AI models, then footer + idle."""
+        """Run pre-req checks (order matches footer): PySide6, FFmpeg, OpenCV, PyTorch, scanner models, upscaler models, then footer + idle."""
         def step_opencv():
             self.lbl_status.setText("CHECKING OPENCV…")
-            QTimer.singleShot(400, step_models)
+            QTimer.singleShot(400, step_pytorch)
 
-        def step_models():
-            self.lbl_status.setText("CHECKING AI MODELS…")
-            QTimer.singleShot(400, step_finalize)
+        def step_pytorch():
+            self.lbl_status.setText("CHECKING PYTORCH…")
+            QTimer.singleShot(350, step_scanner_models)
+
+        def step_scanner_models():
+            self.lbl_status.setText("CHECKING SCANNER MODELS…")
+            QTimer.singleShot(400, step_upscaler_models)
+
+        def step_upscaler_models():
+            self.lbl_status.setText("CHECKING UPSCALER MODELS…")
+            QTimer.singleShot(350, step_finalize)
 
         def step_finalize():
             self._refresh_footer()
@@ -802,7 +869,7 @@ class ChronoArchiverApp(QMainWindow):
         step_pyside()
 
     def _refresh_footer(self):
-        """Update footer pre-req status: PySide6, FFmpeg, OpenCV, AI models, READY."""
+        """Update footer pre-req status: PySide6, FFmpeg, OpenCV, PyTorch, scanner models, upscaler models, READY."""
         ok_sym = '<span style="color:#10b981">✓</span>'
         fail_sym = '<span style="color:#ef4444">✗</span>'
         skip_sym = '<span style="color:#eab308">—</span>'
@@ -810,13 +877,29 @@ class ChronoArchiverApp(QMainWindow):
         def _apply(opencv_ok: bool):
             ffmpeg_ok = bool(check_ffmpeg_in_venv() or shutil.which("ffmpeg"))
             models_ready = self.panel_scn._model_mgr.is_up_to_date()
+            pytorch_ok, pytorch_reason = check_ml_runtime()
+            z_root = _app_settings_dir() / "z_image_pro_upscaler" / "models"
+            upscaler_models_ready = ZImageModelManager(z_root).is_up_to_date()
             parts = [
                 f"PYSIDE6 {ok_sym}",
                 f"FFMPEG {ok_sym if ffmpeg_ok else fail_sym}",
                 f"OPENCV {ok_sym if opencv_ok else skip_sym}",
-                f"AI MODELS {ok_sym if models_ready else skip_sym}",
+                f"PYTORCH {ok_sym if pytorch_ok else skip_sym}",
+                f"SCANNER MODELS {ok_sym if models_ready else skip_sym}",
+                f"UPSCALER MODELS {ok_sym if upscaler_models_ready else skip_sym}",
             ]
-            debug(UTILITY_APP, f"Pre-reqs: FFmpeg={'ok' if ffmpeg_ok else 'missing'}, OpenCV={'ok' if opencv_ok else 'missing'}, AI Models={'ok' if models_ready else 'missing'}, PySide6=ok")
+            debug(
+                UTILITY_APP,
+                "Pre-reqs: FFmpeg=%s, OpenCV=%s, PyTorch=%s (%s), Scanner models=%s, Upscaler models=%s, PySide6=ok"
+                % (
+                    "ok" if ffmpeg_ok else "missing",
+                    "ok" if opencv_ok else "missing",
+                    "ok" if pytorch_ok else "missing",
+                    pytorch_reason,
+                    "ok" if models_ready else "missing",
+                    "ok" if upscaler_models_ready else "missing",
+                ),
+            )
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
                 status += "  ·  <span style=\"color:#10b981\">READY</span>"
@@ -897,16 +980,21 @@ class ChronoArchiverApp(QMainWindow):
             if self._metrics_gpu_counter >= 3:
                 try:
                     out = subprocess.check_output(
-                        ["nvidia-smi", "--query-gpu=utilization.gpu",
-                         "--format=csv,noheader,nounits"],
-                        text=True, stderr=subprocess.DEVNULL,
+                        [
+                            "nvidia-smi",
+                            "--query-gpu=utilization.gpu",
+                            "--format=csv,noheader,nounits",
+                        ],
+                        text=True,
+                        stderr=subprocess.DEVNULL,
+                        timeout=3,
                         **win_hide_kw(),
                     ).strip()
                     line = out.strip().split("\n")[0].strip() if out else ""
                     g = int(line) if line.isdigit() else 0
                     self._metrics_gpu_cache = f"{min(999, g):3d}%"
                 except Exception:
-                    self._metrics_gpu_cache = "  0%"
+                    self._metrics_gpu_cache = "  N/A"
                 self._metrics_gpu_counter = 0
             cpu_s = f"{min(999, int(round(cpu_val))):3d}%"
             ram_s = f"{min(999, int(round(ram_val))):3d}%"
