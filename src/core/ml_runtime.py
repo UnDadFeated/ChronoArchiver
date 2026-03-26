@@ -1,0 +1,193 @@
+"""Install / remove PyTorch + diffusers stack via pip (used by Z-Image Pro Upscaler)."""
+
+from __future__ import annotations
+
+import platform
+import re
+import subprocess
+import sys
+from collections.abc import Callable
+from typing import Optional
+
+ProgressCB = Callable[[str, str, int, int], None]
+
+
+def estimate_ml_runtime_components() -> tuple[list[tuple[str, int]], int]:
+    """
+    Return ([(label, approx_bytes), ...], total_bytes) for the pip-based install.
+    Coarse estimates used only for UI sizing/progress display.
+    """
+    if platform.system() == "Darwin":
+        components = [
+            ("torch (CPU wheel)", int(0.65 * 1024**3)),
+            ("torchvision", int(0.20 * 1024**3)),
+            ("diffusers + transformers stack", int(0.30 * 1024**3)),
+        ]
+    else:
+        # cu124 wheels include CUDA libs; these dominate download size.
+        components = [
+            ("torch (CUDA/cu124 wheel)", int(2.80 * 1024**3)),
+            ("torchvision", int(0.35 * 1024**3)),
+            ("diffusers + transformers stack", int(0.50 * 1024**3)),
+        ]
+    total = sum(s for _, s in components)
+    return components, total
+
+
+def win_hide_kw() -> dict:
+    if platform.system() == "Windows":
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+    return {}
+
+
+def _pip(*args: str) -> list[str]:
+    return [sys.executable, "-m", "pip", *args]
+
+
+def check_ml_runtime() -> tuple[bool, str]:
+    """
+    Returns (ready_for_upscale, reason).
+    reason: ok | missing_torch | missing_diffusers | no_cuda | import_error
+    """
+    try:
+        import torch
+    except ImportError:
+        return False, "missing_torch"
+    try:
+        import diffusers  # noqa: F401
+    except ImportError:
+        return False, "missing_diffusers"
+    try:
+        if not torch.cuda.is_available():
+            return False, "no_cuda"
+    except Exception:
+        return False, "import_error"
+    return True, "ok"
+
+
+def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Optional[str]]:
+    """
+    pip install torch (CUDA wheels on Linux/Windows) + diffusers stack into the running interpreter.
+    progress(phase, detail, downloaded, total) — total may be 0 when unknown.
+    """
+
+    def prog(phase: str, detail: str = "", downloaded: int = 0, total: int = 0) -> None:
+        if progress:
+            progress(phase, detail, downloaded, total)
+
+    if platform.system() == "Darwin":
+        torch_cmd = _pip("install", "-U", "torch", "torchvision")
+    else:
+        torch_cmd = _pip(
+            "install",
+            "-U",
+            "torch",
+            "torchvision",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu124",
+        )
+    stack_cmd = _pip(
+        "install",
+        "-U",
+        "diffusers>=0.37.0",
+        "transformers",
+        "accelerate",
+        "safetensors",
+        "huggingface_hub",
+    )
+    steps = [
+        ("Upgrading pip…", _pip("install", "-U", "pip")),
+        ("Installing PyTorch (CUDA)…" if platform.system() != "Darwin" else "Installing PyTorch…", torch_cmd),
+        ("Installing diffusers stack…", stack_cmd),
+    ]
+
+    components, total_est = estimate_ml_runtime_components()
+    _ = components  # kept for parity with upstream UI expectations
+
+    pct_re = re.compile(r"(\d+)\s*%")
+    total_hint = total_est if total_est > 0 else 0
+
+    for phase_label, cmd in steps:
+        prog(phase_label, " ".join(cmd[-3:]), 0, total_hint)
+        try:
+            p = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                **win_hide_kw(),
+            )
+            if p.stdout is None:
+                return False, "pip stdout unavailable"
+
+            for line in p.stdout:
+                ln = (line or "").strip()
+                if not ln:
+                    continue
+                prog("Installing…", ln[:140], 0, total_hint)
+                m = pct_re.search(ln)
+                if m:
+                    pct = int(m.group(1))
+                    pct = max(0, min(100, pct))
+                    downloaded_b = int(total_est * (pct / 100.0)) if total_est > 0 else 0
+                    prog("Downloading…", ln[:120], downloaded_b, total_hint)
+
+            rc = p.wait(timeout=3600)
+            if rc != 0:
+                return False, f"pip exited with code {rc}"
+        except subprocess.TimeoutExpired:
+            try:
+                p.kill()
+            except Exception:
+                pass
+            return False, "pip timed out"
+        except Exception as e:
+            return False, str(e)
+
+    prog(
+        "Complete.",
+        "Restart ChronoArchiver if the app does not see new packages.",
+        total_est if total_est > 0 else 1,
+        total_est if total_est > 0 else 1,
+    )
+    return True, None
+
+
+def uninstall_ml_runtime(progress: Optional[ProgressCB] = None) -> bool:
+    def prog(phase: str, detail: str = "", downloaded: int = 0, total: int = 0) -> None:
+        if progress:
+            progress(phase, detail, downloaded, total)
+
+    pkgs = [
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "diffusers",
+        "transformers",
+        "accelerate",
+        "safetensors",
+        "huggingface_hub",
+    ]
+    cmd = _pip("uninstall", "-y", *pkgs)
+    prog("Removing packages…", " ".join(pkgs[:4]) + " …", 0, 0)
+    try:
+        p = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            **win_hide_kw(),
+        )
+        if p.stdout:
+            for line in p.stdout:
+                ln = (line or "").strip()
+                if ln:
+                    prog("Uninstalling…", ln[:140], 0, 0)
+        rc = p.wait(timeout=600)
+        prog("Done.", "", 1, 1)
+        return rc == 0
+    except Exception:
+        return False
+

@@ -55,6 +55,15 @@ class MediaOrganizerPanel(QWidget):
             f"padding:2px 6px; min-height:{_bar_h}px; max-height:{_bar_h}px;"
         )
         _btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
+        # Keep original combo chrome (inherit global colors). Do not set max-height on QComboBox — it can
+        # clip the popup; only constrain the QAbstractItemView height so rows stay visible.
+        def _combo_qss(fs: int, min_h: int) -> str:
+            return (
+                f"QComboBox {{ font-size: {fs}px; min-height: {min_h}px; }}"
+                "QComboBox QAbstractItemView {"
+                " min-height: 96px; max-height: 240px; outline: none; padding: 2px;"
+                "}"
+            )
 
         root = QVBoxLayout(self)
         root.setContentsMargins(6, 2, 6, 2)
@@ -151,20 +160,20 @@ class MediaOrganizerPanel(QWidget):
             "YYYY-MM-DD (flat day)",
             "YYYY/YYYY-MM/YYYY-MM-DD (nested day)",
         ])
-        self._combo_structure.setStyleSheet("font-size:9px; min-height:18px; max-height:18px;")
+        self._combo_structure.setStyleSheet(_combo_qss(9, 18))
         v_mode.addWidget(self._combo_structure)
         h_mode = QHBoxLayout()
         self._combo_action = QComboBox()
         self._combo_action.addItems(["Move", "Copy", "Symlink"])
         self._combo_action.setToolTip("Move=relocate; Copy=duplicate; Symlink=create links")
-        self._combo_action.setStyleSheet("font-size:8px; min-height:17px; max-height:17px;")
+        self._combo_action.setStyleSheet(_combo_qss(8, 17))
         self._combo_dup = QComboBox()
         self._combo_dup.addItems([
             "Rename", "Skip", "Keep newer",
             "Overwrite if same name", "Overwrite if same name+size",
         ])
         self._combo_dup.setToolTip("Rename=add _1, _2… on collision; Skip=skip if exists; Keep newer=skip if target newer; Overwrite name=replace any; Overwrite name+size=replace only when size matches, else rename")
-        self._combo_dup.setStyleSheet("font-size:8px; min-height:17px; max-height:17px;")
+        self._combo_dup.setStyleSheet(_combo_qss(8, 17))
         h_mode.addWidget(QLabel("Action:", styleSheet="font-size:8px; color:#888;"))
         h_mode.addWidget(self._combo_action, 1)
         h_mode.addWidget(QLabel("Dup:", styleSheet="font-size:8px; color:#888;"))
