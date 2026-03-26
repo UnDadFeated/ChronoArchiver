@@ -203,7 +203,7 @@ class ModelManager:
 
 
 # ---------------------------------------------------------------------------
-# Z-Image Pro Upscaler models (ChronoUpscaler port)
+# Z-Image Pro Upscaler models (Hugging Face Z-Image-Turbo snapshot)
 # ---------------------------------------------------------------------------
 
 try:

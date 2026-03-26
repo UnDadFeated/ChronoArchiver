@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [4.5.2] - 2026-03-26
+### Fixed
+- **Z-Image Pro Upscaler (AUR / release installs)**: Panel and tool icons are **vendored** in-repo (`**ui/panels/upscaler_panel.py**`, **`ui/assets/upscaler/*.png`**). No separate upscaler source tree is required; **`ZImageProUpscalerPanel`** is imported from **`ui.panels.upscaler_panel`**.
+
+### Changed
+- **Combo popups (upscaler)**: Scale and save-format dropdowns use the same tight **QAbstractItemView** sizing as other panels (no forced minimum list height).
+
 ## [4.5.1] - 2026-03-26
 ### Fixed
 - **Media Organizer**: **Execution mode** **QComboBox** dropdowns show all options again (**`QAbstractItemView`** min/max height; no **`max-height`** on the closed control). Theme colors stay inherited (no custom combobox fill).
