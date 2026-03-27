@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import webbrowser
 
 import psutil
@@ -44,7 +43,7 @@ from core.subprocess_tee import (
     set_subprocess_channel,
     win_hide_kw,
 )
-from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP
+from core.debug_logger import init_log, get_log_path, debug, UTILITY_APP, UTILITY_INSTALLER_POPUP
 from core.app_paths import (
     APP_NAME,
     APP_AUTHOR,
@@ -313,11 +312,12 @@ class PreReqDialog(QDialog):
         self._bar.show()
         self._bar.setValue(0)
         ffmpeg_queue = queue.Queue()
-        _last_debug_t = [0.0]
-        _last_phase = [None]
-        _last_pct_bucket = [-1]
 
         def _on_progress(phase: str, pct: int, detail: str):
+            debug(
+                UTILITY_INSTALLER_POPUP,
+                f"FFmpeg prereq popup: phase={phase!r} pct={pct}% detail={(detail or '')[:220]}",
+            )
             try:
                 ffmpeg_queue.put_nowait((phase, pct, detail))
             except queue.Full:
@@ -331,23 +331,6 @@ class PreReqDialog(QDialog):
                     self._bar.setValue(min(100, pct))
                     self._bar.setFormat("%p%")
                     self._lbl_detail.setText(detail[:120] if detail else "")
-
-                    # Capture popup installer phases/progress into the main debug log.
-                    now = time.monotonic()
-                    pct_bucket = (pct // 10) if pct is not None else -1
-                    should_log = (
-                        phase != _last_phase[0]
-                        or phase == "done"
-                        or ("failed" in (phase or "").lower())
-                        or (pct_bucket != _last_pct_bucket[0] and pct is not None)
-                        or (now - _last_debug_t[0] >= 5.0)
-                    )
-                    if should_log:
-                        _last_phase[0] = phase
-                        _last_pct_bucket[0] = pct_bucket
-                        _last_debug_t[0] = now
-                        d_s = (detail or "").replace("\n", " ")[:140]
-                        debug(UTILITY_APP, f"FFmpeg popup: phase={phase!r} pct={pct}% detail={d_s}")
 
                     if phase == "done":
                         timer.stop()
@@ -438,10 +421,12 @@ class UpdateDownloadDialog(QDialog):
         except OSError:
             pass
         self._dest_path = dest
-        _last_debug_t = [0.0]
-        _last_pct_bucket = [-1]
 
         def _on_progress(downloaded, total, pct, mbps):
+            debug(
+                UTILITY_INSTALLER_POPUP,
+                f"App update download popup: bytes={downloaded}/{total} pct={pct:.1f} mbps={(mbps or 0):.4f}",
+            )
             try:
                 self._progress_queue.put_nowait((downloaded, total, pct, mbps))
             except queue.Full:
@@ -455,8 +440,8 @@ class UpdateDownloadDialog(QDialog):
                         self._download_ok = bool(msg[1])
                         self._poll_timer.stop()
                         debug(
-                            UTILITY_APP,
-                            f"Update popup: download_done ok={self._download_ok} version={version}",
+                            UTILITY_INSTALLER_POPUP,
+                            f"App update download popup: done ok={self._download_ok} version={version}",
                         )
                         if self._download_ok:
                             self.accept()
@@ -468,20 +453,6 @@ class UpdateDownloadDialog(QDialog):
                     self._bar.setValue(min(100, int(pct)))
                     self._bar.setFormat("%p%")
                     self._lbl_speed.setText(f"{mbps:.2f} MB/s" if mbps and mbps > 0 else "")
-
-                    now = time.monotonic()
-                    pct_bucket = int(pct) // 10
-                    if (
-                        pct_bucket != _last_pct_bucket[0]
-                        or now - _last_debug_t[0] >= 5.0
-                        or int(pct) in (0, 100)
-                    ):
-                        _last_pct_bucket[0] = pct_bucket
-                        _last_debug_t[0] = now
-                        debug(
-                            UTILITY_APP,
-                            f"Update popup: downloaded={downloaded}B total={total}B pct={int(pct)}% speed={(mbps or 0):.2f}MB/s",
-                        )
             except queue.Empty:
                 pass
 

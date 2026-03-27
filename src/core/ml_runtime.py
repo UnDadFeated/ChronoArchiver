@@ -6,10 +6,42 @@ import platform
 import re
 import subprocess
 import sys
+from collections import deque
 from collections.abc import Callable
 from typing import Optional
 
+try:
+    from .debug_logger import UTILITY_APP, UTILITY_INSTALLER_POPUP, debug as _debug_log
+except ImportError:
+    from core.debug_logger import UTILITY_APP, UTILITY_INSTALLER_POPUP, debug as _debug_log
+
+try:
+    from .venv_manager import VENV_PYTHON_MAX_LINUX_WIN, VENV_PYTHON_MIN
+except ImportError:
+    from core.venv_manager import VENV_PYTHON_MAX_LINUX_WIN, VENV_PYTHON_MIN
+
 ProgressCB = Callable[[str, str, int, int], None]
+
+
+def _cuda_torch_supported_python() -> tuple[bool, str]:
+    """
+    Published PyTorch + CUDA wheels lag the latest CPython; pip otherwise fails opaquely
+    ("No matching distribution found for torch").
+    """
+    major, minor = sys.version_info[:2]
+    if (major, minor) > VENV_PYTHON_MAX_LINUX_WIN:
+        return False, (
+            f"Python {major}.{minor} is not supported by published PyTorch CUDA wheels yet "
+            f"(bundled install targets {VENV_PYTHON_MIN[0]}.{VENV_PYTHON_MIN[1]}–"
+            f"{VENV_PYTHON_MAX_LINUX_WIN[0]}.{VENV_PYTHON_MAX_LINUX_WIN[1]}). "
+            "Recreate the ChronoArchiver venv, then retry."
+        )
+    if (major, minor) < VENV_PYTHON_MIN:
+        return False, (
+            f"Python {major}.{minor} is too old for the bundled PyTorch install path "
+            f"(need {VENV_PYTHON_MIN[0]}.{VENV_PYTHON_MIN[1]}+)."
+        )
+    return True, ""
 
 
 def estimate_ml_runtime_components() -> tuple[list[tuple[str, int]], int]:
@@ -72,8 +104,20 @@ def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Opt
     """
 
     def prog(phase: str, detail: str = "", downloaded: int = 0, total: int = 0) -> None:
+        d = (detail or "").replace("\n", " ")[:260]
+        _debug_log(
+            UTILITY_INSTALLER_POPUP,
+            f"PyTorch/diffusers UI: {phase} | {d} | bytes={downloaded}/{total}",
+        )
         if progress:
             progress(phase, detail, downloaded, total)
+
+    # CUDA wheels (Linux/Windows) track a narrower CPython range than CPU-only macOS builds.
+    if platform.system() != "Darwin":
+        py_ok, py_msg = _cuda_torch_supported_python()
+        if not py_ok:
+            _debug_log(UTILITY_APP, f"install_ml_runtime: blocked ({py_msg})")
+            return False, py_msg
 
     if platform.system() == "Darwin":
         torch_cmd = _pip("install", "-U", "torch", "torchvision")
@@ -121,8 +165,12 @@ def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Opt
             if p.stdout is None:
                 return False, "pip stdout unavailable"
 
+            tail: deque[str] = deque(maxlen=48)
             for line in p.stdout:
-                ln = (line or "").strip()
+                raw = (line or "").rstrip("\n\r")
+                if raw.strip():
+                    tail.append(raw.strip()[:500])
+                ln = raw.strip()
                 if not ln:
                     continue
                 prog("Installing…", ln[:140], 0, total_hint)
@@ -135,7 +183,10 @@ def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Opt
 
             rc = p.wait(timeout=3600)
             if rc != 0:
-                return False, f"pip exited with code {rc}"
+                snippet = " · ".join(tail)[-900:] if tail else "(no pip output)"
+                err = f"{phase_label} pip exit {rc}: {snippet}"
+                _debug_log(UTILITY_APP, f"install_ml_runtime: {err}")
+                return False, err
         except subprocess.TimeoutExpired:
             try:
                 p.kill()
