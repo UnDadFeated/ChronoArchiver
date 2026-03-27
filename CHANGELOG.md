@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [4.7.3] - 2026-03-27
+
+### Fixed
+- **AI Video Upscaler**: Panel load failure after the `panel_widgets` refactor — engine button styles still called removed **`_eng_row_btn_qss`** instead of **`eng_row_btn_qss`** (NameError during `__init__`).
+
 ## [4.7.2] - 2026-03-27
 ### Changed
 - **UI modules**: Shared panel helpers in **`ui/panel_widgets.py`** (field labels, engine-row / browse-button QSS, combo + compact spin styles, network speed + byte formatting, PyTorch installer VRAM blurb). **AI Image Upscaler**, **AI Video Upscaler**, **AI Media Scanner**, and **Mass AV1 Encoder** import these instead of duplicating definitions.
