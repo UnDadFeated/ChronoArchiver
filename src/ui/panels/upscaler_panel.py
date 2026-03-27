@@ -271,10 +271,11 @@ class AIImageUpscalerPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._sig = _Signals()
-        self._sig.log_msg.connect(self._add_log)
-        self._sig.setup_complete.connect(self._on_setup_complete_generic)
-        self._sig.upscale_done.connect(self._on_upscale_done)
-        self._sig.upscale_failed.connect(self._on_upscale_failed)
+        _q = Qt.ConnectionType.QueuedConnection
+        self._sig.log_msg.connect(self._add_log, _q)
+        self._sig.setup_complete.connect(self._on_setup_complete_generic, _q)
+        self._sig.upscale_done.connect(self._on_upscale_done, _q)
+        self._sig.upscale_failed.connect(self._on_upscale_failed, _q)
 
         # Keep Upscaler state under ChronoArchiver/Settings (user request: settings/stuff lives there).
         self._z_settings = settings_dir() / "z_image_pro_upscaler"
@@ -837,8 +838,7 @@ class AIImageUpscalerPanel(QWidget):
             self._engine_just_installed = False
             self._engine.unload()
             self._add_log("PyTorch stack uninstalled.")
-            self._refresh_engine_and_models()
-            self._update_buttons()
+            QTimer.singleShot(0, self._apply_engine_row_after_setup)
             return
 
         if kind == "engine":
@@ -849,8 +849,7 @@ class AIImageUpscalerPanel(QWidget):
                 self._add_log("PyTorch / diffusers install finished. Restart ChronoArchiver to load new packages.")
             else:
                 self._add_log(f"Engine setup failed: {err or 'unknown error'}")
-            self._refresh_engine_and_models()
-            self._update_buttons()
+            QTimer.singleShot(0, self._apply_engine_row_after_setup)
             return
 
         if kind == "models":
@@ -858,10 +857,12 @@ class AIImageUpscalerPanel(QWidget):
             self._add_log("Model setup complete." if ok else "Model setup failed or cancelled.")
             if ok:
                 self._engine.unload()
-            self._refresh_engine_and_models()
-            self._update_buttons()
+            QTimer.singleShot(0, self._apply_engine_row_after_setup)
             return
 
+        QTimer.singleShot(0, self._apply_engine_row_after_setup)
+
+    def _apply_engine_row_after_setup(self) -> None:
         self._refresh_engine_and_models()
         self._update_buttons()
 

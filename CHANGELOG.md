@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [4.7.7] - 2026-03-27
+
+### Changed
+- **AI Video Upscaler**: **REFRESH** sits in the left Real-ESRGAN control cluster (rightmost there); **UPSCALE** alone on the far right. Guide pulse: **Install PyTorch → Download weights → Browse → REFRESH** (until preview exists) **→ UPSCALE**; refresh/run pulses use **border-only** stylesheets (fixed **80×22**) so the guide does not shift layout.
+
+### Fixed
+- **Background-thread UI**: Installs/downloads that use `threading.Thread` and Qt signals now connect with **`Qt::QueuedConnection`** so slots always run on the **GUI thread** (fixes engine/weights rows stuck on **MISSING** / stale labels until restart). **AI Video Upscaler** defers filesystem refresh with **`QTimer.singleShot(0, …)`** after setup so the row matches the footer. Same deferred refresh for **AI Image Upscaler** after PyTorch/model setup; **AI Media Scanner** after OpenCV / model install / uninstall (footer **`prereqs_changed`** deferred too). Main window footer hooks use **QueuedConnection**.
+
 ## [4.7.6] - 2026-03-27
 
 ### Fixed

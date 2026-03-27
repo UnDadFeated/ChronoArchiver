@@ -26,6 +26,11 @@ from PySide6.QtWidgets import (
     QInputDialog, QTextEdit, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
+
+# Worker threads emit setup_complete; slots must run on GUI thread (Qt auto may mis-detect Python threads).
+_QUEUED_SINGLESHOT = Qt.ConnectionType(
+    Qt.ConnectionType.QueuedConnection.value | Qt.ConnectionType.SingleShotConnection.value
+)
 from PySide6.QtGui import QShowEvent, QPixmap, QTextCursor
 
 import pathlib
@@ -210,10 +215,11 @@ class AIScannerPanel(QWidget):
         self._log_cb = log_callback
         self._status_cb = status_callback
         self._sig    = _Signals()
-        self._sig.log_msg.connect(self._add_log)
-        self._sig.progress.connect(self._on_progress)
-        self._sig.finished.connect(self._on_finished)
-        self._sig.version_check_done.connect(self._on_version_check)
+        _q = Qt.ConnectionType.QueuedConnection
+        self._sig.log_msg.connect(self._add_log, _q)
+        self._sig.progress.connect(self._on_progress, _q)
+        self._sig.finished.connect(self._on_finished, _q)
+        self._sig.version_check_done.connect(self._on_version_check, _q)
 
         self._model_mgr = ModelManager(str(models_dir()))
 
@@ -855,9 +861,15 @@ class AIScannerPanel(QWidget):
                     for line in err.strip().split("\n")[:10]:
                         if line.strip():
                             self._add_log(f"  {line[:200]}")
-            self._sig.prereqs_changed.emit()
 
-        self._sig.setup_complete.connect(_on_done, Qt.ConnectionType.SingleShotConnection)
+            def _after():
+                self._check_models()
+                self._update_start_enabled()
+                self._sig.prereqs_changed.emit()
+
+            QTimer.singleShot(0, _after)
+
+        self._sig.setup_complete.connect(_on_done, _QUEUED_SINGLESHOT)
         dlg.show()
         threading.Thread(target=_task, daemon=True).start()
 
@@ -884,11 +896,15 @@ class AIScannerPanel(QWidget):
             if ok:
                 self._opencv_just_installed = False
             self._add_log("OpenCV uninstalled." if ok else "OpenCV uninstall failed or not found.")
-            self._check_models()
-            self._update_start_enabled()
-            self._sig.prereqs_changed.emit()
 
-        self._sig.setup_complete.connect(_on_done, Qt.ConnectionType.SingleShotConnection)
+            def _after():
+                self._check_models()
+                self._update_start_enabled()
+                self._sig.prereqs_changed.emit()
+
+            QTimer.singleShot(0, _after)
+
+        self._sig.setup_complete.connect(_on_done, _QUEUED_SINGLESHOT)
         threading.Thread(target=_task, daemon=True).start()
 
     def _on_setup_models(self):
@@ -940,12 +956,16 @@ class AIScannerPanel(QWidget):
             self._bar.setFormat("Ready")
             self._lbl_status.setText("Ready")
             self._bar.setValue(0)
-            self._check_models()
-            self._update_start_enabled()
             self._add_log("Model setup complete." if ok else "Model setup failed or cancelled.")
-            self._sig.prereqs_changed.emit()
 
-        self._sig.setup_complete.connect(_on_done, Qt.ConnectionType.SingleShotConnection)
+            def _after():
+                self._check_models()
+                self._update_start_enabled()
+                self._sig.prereqs_changed.emit()
+
+            QTimer.singleShot(0, _after)
+
+        self._sig.setup_complete.connect(_on_done, _QUEUED_SINGLESHOT)
 
         def _task():
             debug(UTILITY_MODEL_SETUP, "Model setup popup: starting download_models")
@@ -986,11 +1006,15 @@ class AIScannerPanel(QWidget):
 
         def _on_done():
             self._setup_in_progress = False
-            self._check_models()
-            self._update_start_enabled()
-            self._sig.prereqs_changed.emit()
 
-        self._sig.remove_done.connect(_on_done, Qt.ConnectionType.SingleShotConnection)
+            def _after():
+                self._check_models()
+                self._update_start_enabled()
+                self._sig.prereqs_changed.emit()
+
+            QTimer.singleShot(0, _after)
+
+        self._sig.remove_done.connect(_on_done, _QUEUED_SINGLESHOT)
         threading.Thread(target=_task, daemon=True).start()
 
     def _browse(self):
