@@ -42,6 +42,7 @@ from ui.console_style import PANEL_CONSOLE_TEXTEDIT_STYLE, message_to_html
 from PIL import Image, ImageOps
 
 from core.app_paths import settings_dir
+from core.debug_logger import debug as _debug_installer, UTILITY_INSTALLER_POPUP
 from core.ml_runtime import (
     check_ml_runtime,
     install_ml_runtime,
@@ -1032,6 +1033,11 @@ class ZImageProUpscalerPanel(QWidget):
 
         def _task():
             def prog(dl, tot, fn, ov, lbl, url):
+                _debug_installer(
+                    UTILITY_INSTALLER_POPUP,
+                    f"Z-Image models popup: label={lbl!r} file={fn[:140]!r} overall={ov:.6f} "
+                    f"downloaded={dl} total={tot} url={url[:120]}",
+                )
                 dlg.progress_update.emit(url, lbl, fn, dl, tot, ov)
 
             ok = self._model_mgr.download_models(prog)

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [4.5.3] - 2026-03-26
+### Added
+- **Debug log — installer popups**: Progress text from prerequisite / download dialogs (FFmpeg bootstrap, app update download, OpenCV install, scanner model fetch, upscaler model fetch, PyTorch/`ml_runtime` pip phases) is written **line-for-line** to the master debug log under **`Installer popup`** for easier support triage.
+
+### Changed
+- **App venv Python selection (Linux, Windows, macOS)**: When creating or recreating the private venv, the bootstrap prefers the **newest installed CPython** in the supported band (**3.9–3.13** on Linux and Windows to stay aligned with CUDA PyTorch wheels; **3.9–3.14** on macOS). Windows probes **`py -3.x`**; macOS/Linux probe **`python3.x`** then **`python3`**. If an existing venv uses a Python **outside** the allowed range and the app is **running from that venv**, recreation is skipped with a message to quit and remove the venv folder manually (no in-process self-delete).
+
 ## [4.5.2] - 2026-03-26
 ### Fixed
 - **Z-Image Pro Upscaler (AUR / release installs)**: Panel and tool icons are **vendored** in-repo (`**ui/panels/upscaler_panel.py**`, **`ui/assets/upscaler/*.png`**). No separate upscaler source tree is required; **`ZImageProUpscalerPanel`** is imported from **`ui.panels.upscaler_panel`**.

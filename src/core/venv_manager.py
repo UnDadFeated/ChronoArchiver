@@ -51,6 +51,11 @@ VENV_PACKAGES_BASE = [
     "piexif", "static-ffmpeg", "GitPython",
 ]
 
+# New venvs: prefer newest Python on the host in this inclusive range (PyTorch cu124 + common wheels).
+VENV_PYTHON_MIN = (3, 9)
+VENV_PYTHON_MAX_LINUX_WIN = (3, 13)
+VENV_PYTHON_MAX_DARWIN = (3, 14)
+
 
 def detect_gpu() -> str:
     """
@@ -270,6 +275,96 @@ def get_pip_exe() -> Path:
     if platform.system() == "Windows":
         return venv / "Scripts" / "pip.exe"
     return venv / "bin" / "pip"
+
+
+def _venv_python_ceiling() -> tuple[int, int]:
+    return VENV_PYTHON_MAX_DARWIN if platform.system() == "Darwin" else VENV_PYTHON_MAX_LINUX_WIN
+
+
+def _version_in_venv_range(ver: tuple[int, int]) -> bool:
+    return VENV_PYTHON_MIN <= ver <= _venv_python_ceiling()
+
+
+def _version_tuple_from_command(cmd_base: list[str]) -> tuple[int, int] | None:
+    try:
+        r = subprocess.run(
+            cmd_base + ["-c", "import sys; print(sys.version_info[0], sys.version_info[1])"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            **win_hide_kw(),
+        )
+        if r.returncode != 0:
+            return None
+        parts = r.stdout.strip().split()
+        if len(parts) < 2:
+            return None
+        return int(parts[0]), int(parts[1])
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError):
+        return None
+
+
+def get_venv_python_creator_cmd() -> list[str] | None:
+    """
+    argv prefix for: <cmd> -m venv <path>
+    Prefer newest 3.13 … 3.9 on PATH (or Windows `py -3.x`); None if none in range.
+    """
+    system = platform.system()
+
+    ceiling_m = _venv_python_ceiling()[1]
+
+    if system == "Windows":
+        for minor in range(ceiling_m, VENV_PYTHON_MIN[1] - 1, -1):
+            base = ["py", f"-3.{minor}"]
+            ver = _version_tuple_from_command(base)
+            if ver and _version_in_venv_range(ver):
+                debug(UTILITY_OPENCV_INSTALL, f"venv: create with {' '.join(base)} (Python {ver[0]}.{ver[1]})")
+                return base
+    else:
+        for minor in range(ceiling_m, VENV_PYTHON_MIN[1] - 1, -1):
+            exe = shutil.which(f"python3.{minor}")
+            if not exe:
+                continue
+            base = [exe]
+            ver = _version_tuple_from_command(base)
+            if ver and _version_in_venv_range(ver):
+                debug(UTILITY_OPENCV_INSTALL, f"venv: create with {exe} (Python {ver[0]}.{ver[1]})")
+                return base
+        p3 = shutil.which("python3")
+        if p3:
+            ver = _version_tuple_from_command([p3])
+            if ver and _version_in_venv_range(ver):
+                debug(UTILITY_OPENCV_INSTALL, f"venv: create with {p3} (Python {ver[0]}.{ver[1]})")
+                return [p3]
+
+    ver = _version_tuple_from_command([sys.executable])
+    if ver and _version_in_venv_range(ver):
+        debug(UTILITY_OPENCV_INSTALL, f"venv: create with sys.executable {sys.executable} ({ver[0]}.{ver[1]})")
+        return [sys.executable]
+
+    hi = _venv_python_ceiling()
+    debug(
+        UTILITY_OPENCV_INSTALL,
+        "venv: no Python in %s.%s–%s.%s range found on PATH"
+        % (VENV_PYTHON_MIN[0], VENV_PYTHON_MIN[1], hi[0], hi[1]),
+    )
+    return None
+
+
+def venv_interpreter_version() -> tuple[int, int] | None:
+    py = get_python_exe()
+    if not py.is_file():
+        return None
+    return _version_tuple_from_command([str(py)])
+
+
+def _running_inside_venv_tree(venv: Path) -> bool:
+    try:
+        pref = Path(sys.prefix).resolve()
+        root = venv.resolve()
+        return pref == root or str(pref).startswith(str(root) + os.sep)
+    except OSError:
+        return False
 
 
 def check_opencv_in_venv() -> bool:
@@ -624,15 +719,52 @@ def ensure_venv(progress_callback=None) -> bool:
         if progress_callback:
             progress_callback(phase, detail, pct)
 
+    if get_python_exe().exists():
+        ver = venv_interpreter_version()
+        if ver and not _version_in_venv_range(ver):
+            if _running_inside_venv_tree(venv):
+                hi = _venv_python_ceiling()
+                prog(
+                    "Venv Python not supported",
+                    f"This venv is Python {ver[0]}.{ver[1]}. Exit ChronoArchiver, delete this folder, "
+                    f"then restart: {venv}",
+                    0,
+                )
+                debug(
+                    UTILITY_OPENCV_INSTALL,
+                    f"ensure_venv: Python {ver[0]}.{ver[1]} outside {VENV_PYTHON_MIN}–{hi} "
+                    f"while running inside venv — recreate manually",
+                )
+                return False
+            hi = _venv_python_ceiling()
+            prog(
+                "Removing incompatible venv…",
+                f"Replacing Python {ver[0]}.{ver[1]} with {VENV_PYTHON_MIN[0]}.{VENV_PYTHON_MIN[1]}–"
+                f"{hi[0]}.{hi[1]} for installers/ML stack.",
+                0,
+            )
+            shutil.rmtree(venv, ignore_errors=True)
+
     if not (venv / "bin" / "python").exists() and not (venv / "Scripts" / "python.exe").exists():
         prog("Creating virtual environment...", "", 0)
+        creator = get_venv_python_creator_cmd()
+        if not creator:
+            hi = _venv_python_ceiling()
+            prog(
+                "No suitable Python for venv",
+                f"Install Python 3.{hi[1]} or 3.12 (any in 3.{VENV_PYTHON_MIN[1]}–3.{hi[1]}) and restart.",
+                0,
+            )
+            return False
         r = subprocess.run(
-            [sys.executable, "-m", "venv", str(venv)],
-            capture_output=True, text=True, timeout=60,
+            creator + ["-m", "venv", str(venv)],
+            capture_output=True, text=True, timeout=180,
             **win_hide_kw(),
         )
         if r.returncode != 0:
-            prog("venv creation failed", (r.stderr or r.stdout or "")[:150], 0)
+            err = ((r.stderr or "") + (r.stdout or "")).strip()[:400]
+            prog("venv creation failed", err or "unknown error", 0)
+            debug(UTILITY_OPENCV_INSTALL, f"ensure_venv: venv failed rc={r.returncode} err={err}")
             return False
 
     pip = get_pip_exe()

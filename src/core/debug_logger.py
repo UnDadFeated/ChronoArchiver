@@ -26,6 +26,8 @@ UTILITY_MASS_AV1_ENCODER = "Mass AV1 Encoder"
 UTILITY_AI_MEDIA_SCANNER = "AI Media Scanner"
 UTILITY_OPENCV_INSTALL = "OpenCV Install"
 UTILITY_MODEL_SETUP = "Model Setup"
+# Prerequisite / download popups (FFmpeg, OpenCV, models, PyTorch, updater) — mirror UI lines to master log.
+UTILITY_INSTALLER_POPUP = "Installer popup"
 
 
 def _ensure_init():
