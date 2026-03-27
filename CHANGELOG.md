@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Release workflow**: Repo **`AGENTS.md`** documents the push-update checklist (AUR push via **`git push aur HEAD:master`** from a detached worktree; Bazzite step removed).
+
 ## [4.7.3] - 2026-03-27
 
 ### Fixed
