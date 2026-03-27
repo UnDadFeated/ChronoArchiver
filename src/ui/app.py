@@ -563,11 +563,16 @@ class ChronoArchiverApp(QMainWindow):
         self.stack.addWidget(self.panel_vup)
         self.panel_scn._sig.prereqs_changed.connect(self._refresh_footer)
         _upz_sig = getattr(self.panel_upz, "_sig", None)
+        _q = Qt.ConnectionType.QueuedConnection
         if _upz_sig is not None and hasattr(_upz_sig, "setup_complete"):
-            _upz_sig.setup_complete.connect(lambda *_: QTimer.singleShot(0, self._refresh_footer))
+            _upz_sig.setup_complete.connect(
+                lambda *_: QTimer.singleShot(0, self._refresh_footer), _q
+            )
         _vup_sig = getattr(self.panel_vup, "_sig", None)
         if _vup_sig is not None and hasattr(_vup_sig, "setup_complete"):
-            _vup_sig.setup_complete.connect(lambda *_: QTimer.singleShot(0, self._refresh_footer))
+            _vup_sig.setup_complete.connect(
+                lambda *_: QTimer.singleShot(0, self._refresh_footer), _q
+            )
 
         def _tee_cb(channel: str, line: str):
             QTimer.singleShot(0, lambda: self._route_subprocess_line(channel, line))

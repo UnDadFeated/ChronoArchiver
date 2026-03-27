@@ -70,19 +70,31 @@ from core.venv_manager import get_ml_torch_install_label
 
 from ui.panels.upscaler_panel import EngineSetupDialog
 
-# Action row: REFRESH + UPSCALE (same geometry; aligns with parameter spin row).
+# REFRESH (left cluster) + UPSCALE (right): same fixed box; guide pulse only swaps border color.
 _VUP_ACTION_W = 80
 _VUP_ACTION_H = 22
 
-_VUP_REFRESH_BTN_QSS = (
-    "QPushButton {"
-    "background-color:#1a1a1a; color:#e5e7eb; border:1px solid #262626; border-radius:4px; "
-    f"font-size:9px; font-weight:800; min-width:{_VUP_ACTION_W}px; max-width:{_VUP_ACTION_W}px; "
-    f"min-height:{_VUP_ACTION_H}px; max-height:{_VUP_ACTION_H}px; padding:0px; "
-    "}"
-    "QPushButton:hover:enabled { background-color:#262626; color:#fff; }"
-    "QPushButton:disabled { color:#6b7280; background-color:#1a1a1a; border-color:#262626; }"
-)
+
+def _refresh_video_btn_stylesheet(*, pulse: bool = False) -> str:
+    """REFRESH (#vupRefreshBtn): identical geometry for idle vs pulse (no layout warp)."""
+    bd = "#ef4444" if pulse else "#262626"
+    w, h = _VUP_ACTION_W, _VUP_ACTION_H
+    return (
+        "QPushButton#vupRefreshBtn {"
+        "background-color:#1a1a1a; color:#e5e7eb; "
+        f"border:1px solid {bd}; border-radius:4px; "
+        "font-size:9px; font-weight:800; "
+        f"min-width:{w}px; max-width:{w}px; min-height:{h}px; max-height:{h}px; padding:0px; "
+        "}"
+        "QPushButton#vupRefreshBtn:hover:enabled {"
+        "background-color:#262626; color:#fff; "
+        f"border:1px solid {bd}; "
+        "}"
+        "QPushButton#vupRefreshBtn:disabled {"
+        "color:#6b7280; background-color:#1a1a1a; border:1px solid #262626; "
+        f"min-width:{w}px; max-width:{w}px; min-height:{h}px; max-height:{h}px; padding:0px; "
+        "}"
+    )
 
 
 def _run_video_btn_stylesheet(*, pulse: bool = False) -> str:
@@ -236,12 +248,15 @@ class VideoUpscalerPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._sig = _Signals()
-        self._sig.log_msg.connect(self._add_log)
-        self._sig.setup_complete.connect(self._on_setup_complete)
-        self._sig.progress_frames.connect(self._on_frame_progress)
-        self._sig.preview_frame.connect(self._on_preview_frame_result)
-        self._sig.preview_job_done.connect(self._on_preview_job_done)
-        self._sig.full_job_done.connect(self._finish_job_ui)
+        # QueuedConnection: emissions from threading.Thread must run slots on the GUI thread
+        # or labels/buttons may not repaint (weights/engine row stuck until restart).
+        _q = Qt.ConnectionType.QueuedConnection
+        self._sig.log_msg.connect(self._add_log, _q)
+        self._sig.setup_complete.connect(self._on_setup_complete, _q)
+        self._sig.progress_frames.connect(self._on_frame_progress, _q)
+        self._sig.preview_frame.connect(self._on_preview_frame_result, _q)
+        self._sig.preview_job_done.connect(self._on_preview_job_done, _q)
+        self._sig.full_job_done.connect(self._finish_job_ui, _q)
 
         self._base = settings_dir() / "ai_video_upscaler"
         try:
@@ -476,15 +491,17 @@ class VideoUpscalerPanel(QWidget):
         h_left.addWidget(field_label("Sharp", 34))
         h_left.addWidget(self._sharp)
 
+        self._btn_refresh_prev = QPushButton("REFRESH")
+        self._btn_refresh_prev.setObjectName("vupRefreshBtn")
+        self._btn_refresh_prev.setFixedSize(_VUP_ACTION_W, _VUP_ACTION_H)
+        self._btn_refresh_prev.setStyleSheet(_refresh_video_btn_stylesheet(pulse=False))
+        self._btn_refresh_prev.setToolTip("Render AI preview on the sample frame")
+        self._btn_refresh_prev.clicked.connect(self._run_preview)
+        h_left.addWidget(self._btn_refresh_prev, 0, Qt.AlignmentFlag.AlignVCenter)
+
         w_params = QWidget()
         w_params.setLayout(h_left)
         w_params.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-
-        self._btn_refresh_prev = QPushButton("REFRESH")
-        self._btn_refresh_prev.setFixedSize(_VUP_ACTION_W, _VUP_ACTION_H)
-        self._btn_refresh_prev.setStyleSheet(_VUP_REFRESH_BTN_QSS)
-        self._btn_refresh_prev.setToolTip("Render AI preview on the sample frame")
-        self._btn_refresh_prev.clicked.connect(self._run_preview)
 
         self._btn_run = QPushButton("UPSCALE")
         self._btn_run.setObjectName("btnStart")
@@ -496,9 +513,8 @@ class VideoUpscalerPanel(QWidget):
         w_actions = QWidget()
         h_actions = QHBoxLayout(w_actions)
         h_actions.setContentsMargins(0, 0, 0, 0)
-        h_actions.setSpacing(6)
+        h_actions.setSpacing(0)
         h_actions.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        h_actions.addWidget(self._btn_refresh_prev)
         h_actions.addWidget(self._btn_run)
 
         h_row = QHBoxLayout()
@@ -691,6 +707,14 @@ class VideoUpscalerPanel(QWidget):
         path = self._edit_video.text().strip()
         if not path or not os.path.isfile(path):
             return self._btn_browse
+        # Source OK: suggest preview (REFRESH) before UPSCALE when preview not filled yet.
+        w_ok = self._model_mgr.is_ready(ns)
+        if w_ok and t_ok:
+            pm = self._lbl_prev.pixmap()
+            prev_txt = (self._lbl_prev.text() or "").strip()
+            need_preview = pm is None or pm.isNull() or prev_txt in ("—", "Tap REFRESH", "")
+            if need_preview and self._btn_refresh_prev.isEnabled():
+                return self._btn_refresh_prev
         return self._btn_run
 
     def _clear_guide_glow(self, w):
@@ -699,6 +723,8 @@ class VideoUpscalerPanel(QWidget):
         ew, eh = self._eng_btn_w, self._eng_btn_h
         if w == self._btn_run:
             w.setStyleSheet(_run_video_btn_stylesheet(pulse=False))
+        elif w == self._btn_refresh_prev:
+            w.setStyleSheet(_refresh_video_btn_stylesheet(pulse=False))
         elif w == self._btn_browse:
             w.setStyleSheet("")
         elif w == self._btn_inst_torch:
@@ -715,6 +741,8 @@ class VideoUpscalerPanel(QWidget):
         target = self._get_guide_target()
         if target == self._btn_run and not self._btn_run.isEnabled():
             target = None
+        if target == self._btn_refresh_prev and not self._btn_refresh_prev.isEnabled():
+            target = None
         if target != self._guide_target:
             self._clear_guide_glow(self._guide_target)
             self._guide_target = target
@@ -728,6 +756,8 @@ class VideoUpscalerPanel(QWidget):
         if self._guide_glow_phase:
             if target == self._btn_run and target.isEnabled():
                 target.setStyleSheet(_run_video_btn_stylesheet(pulse=True))
+            elif target == self._btn_refresh_prev and target.isEnabled():
+                target.setStyleSheet(_refresh_video_btn_stylesheet(pulse=True))
             elif target == self._btn_browse:
                 target.setStyleSheet(
                     path_browse_btn_qss(
@@ -1210,5 +1240,10 @@ class VideoUpscalerPanel(QWidget):
                     f"Download did not finish successfully.\n\n{err or 'Unknown error.'}\n\n"
                     "Check your network, firewall, and that GitHub is reachable.",
                 )
+        # Defer FS-dependent row refresh to next event-loop tick so dialog teardown and
+        # disk state match what the footer sees (singleShot(0, _refresh_footer) in app).
+        QTimer.singleShot(0, self._apply_engine_row_after_setup)
+
+    def _apply_engine_row_after_setup(self) -> None:
         self._refresh_engine_labels()
         self._update_buttons()
