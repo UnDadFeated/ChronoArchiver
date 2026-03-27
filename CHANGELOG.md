@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [4.6.2] - 2026-03-26
+### Changed
+- **Upscaler defaults**: Updated defaults to **strength 0.30**, **steps 4**, **CFG 7.0**.
+
 ## [4.6.1] - 2026-03-26
 ### Changed
 - **Upscaler defaults**: Set default **steps** to **4** for faster baseline runs while keeping **strength 0.35** and **CFG 6.0**.
