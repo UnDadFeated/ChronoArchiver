@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [4.5.5] - 2026-03-27
+### Fixed
+- **PyTorch CUDA on Python 3.14**: Bundled pip install uses **`cu130`** (`download.pytorch.org/whl/cu130`) because **`cu124`** has no **cp314** wheels; Linux/Windows venv ceiling raised to **3.14** to match.
+
+### Changed
+- **`.gitignore`**: Ignore repo-root **`Settings/`** and **`Logs/`** when launching with **`chronoarchiver.pyw`** (`CHRONOARCHIVER_INSTALL_ROOT` = repo).
+
 ## [4.5.4] - 2026-03-26
 ### Added
 - **`upscaler_settings`**: Upscaler panel options persist under **`Settings/z_image_pro_upscaler/panel_settings.json`** (encoder-style JSON).
