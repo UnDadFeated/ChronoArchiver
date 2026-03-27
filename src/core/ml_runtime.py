@@ -22,6 +22,17 @@ except ImportError:
 
 ProgressCB = Callable[[str, str, int, int], None]
 
+# Linux/Windows CUDA wheels: cu124 for CPython 3.9–3.13; 3.14+ is published under cu130 only.
+_PYTORCH_CUDA_INDEX_CU124 = "https://download.pytorch.org/whl/cu124"
+_PYTORCH_CUDA_INDEX_CU130 = "https://download.pytorch.org/whl/cu130"
+
+
+def _pytorch_cuda_pip_index() -> tuple[str, str]:
+    """Returns (--index-url value, short tag for UI/log, e.g. cu124 / cu130)."""
+    if sys.version_info[:2] >= (3, 14):
+        return _PYTORCH_CUDA_INDEX_CU130, "cu130"
+    return _PYTORCH_CUDA_INDEX_CU124, "cu124"
+
 
 def _cuda_torch_supported_python() -> tuple[bool, str]:
     """
@@ -51,8 +62,9 @@ def estimate_ml_runtime_components() -> tuple[list[tuple[str, int]], int]:
     """
     use_cuda = get_ml_torch_install_variant() == "cuda"
     if use_cuda:
+        _, cu_tag = _pytorch_cuda_pip_index()
         components = [
-            ("torch (CUDA/cu124 wheel)", int(2.80 * 1024**3)),
+            (f"torch (CUDA/{cu_tag} wheel)", int(2.80 * 1024**3)),
             ("torchvision", int(0.35 * 1024**3)),
             ("diffusers + transformers stack", int(0.50 * 1024**3)),
         ]
@@ -123,15 +135,17 @@ def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Opt
             return False, py_msg
 
     if variant == "cuda":
+        cuda_index, cu_tag = _pytorch_cuda_pip_index()
+        _debug_log(UTILITY_APP, f"install_ml_runtime: PyTorch CUDA index {cu_tag} ({cuda_index})")
         torch_cmd = _pip(
             "install",
             "-U",
             "torch",
             "torchvision",
             "--index-url",
-            "https://download.pytorch.org/whl/cu124",
+            cuda_index,
         )
-        torch_phase = "Installing PyTorch (CUDA)…"
+        torch_phase = f"Installing PyTorch (CUDA {cu_tag})…"
     else:
         torch_cmd = _pip("install", "-U", "torch", "torchvision")
         torch_phase = "Installing PyTorch (CPU)…"

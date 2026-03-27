@@ -51,9 +51,9 @@ VENV_PACKAGES_BASE = [
     "piexif", "static-ffmpeg", "GitPython",
 ]
 
-# New venvs: prefer newest Python on the host in this inclusive range (PyTorch cu124 + common wheels).
+# New venvs: prefer newest Python on the host in this inclusive range (PyTorch CUDA: cu124 for 3.9–3.13, cu130 for 3.14+).
 VENV_PYTHON_MIN = (3, 9)
-VENV_PYTHON_MAX_LINUX_WIN = (3, 13)
+VENV_PYTHON_MAX_LINUX_WIN = (3, 14)
 VENV_PYTHON_MAX_DARWIN = (3, 14)
 
 
@@ -334,7 +334,7 @@ def _version_tuple_from_command(cmd_base: list[str]) -> tuple[int, int] | None:
 def get_venv_python_creator_cmd() -> list[str] | None:
     """
     argv prefix for: <cmd> -m venv <path>
-    Prefer newest 3.13 … 3.9 on PATH (or Windows `py -3.x`); None if none in range.
+    Prefer newest 3.14 … 3.9 on PATH (or Windows `py -3.x`); None if none in range.
     """
     system = platform.system()
 
