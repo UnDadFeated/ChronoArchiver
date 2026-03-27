@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-03-27
+### Changed
+- **AI Video Upscaler**: **Engine Status** strip matches **AI Image Upscaler** (84px height, 248px min width, 7:3 split with SOURCE, aligned PyTorch/Weights rows and full-width engine buttons).
+- **AI Video Upscaler**: Controls row split into parameters + action row so **Run video upscale** and **Refresh preview** are not flush against the window edge; compact spin widths; **`?`** opens a **modal guide** (no main-layout warping).
+- **Main window** width **1040px**; footer **CPU/GPU/RAM** label **min-width** increased so metrics clear the right edge.
+
 ## [4.7.0] - 2026-03-27
 ### Added
 - **AI Video Upscaler** panel: **Real-ESRGAN** (`RealESRGAN_x2plus` / `RealESRGAN_x4plus` weights), 2×/3×/4× target scale (3× uses the 4× network then Lanczos to size), per-frame color controls (saturation, brightness, contrast, sharpness), max long-edge cap (up to **4K / 3840**), tiled inference for VRAM, **Original** vs **AI preview** on a sample frame, and FFmpeg **libx264** export with optional audio mux.

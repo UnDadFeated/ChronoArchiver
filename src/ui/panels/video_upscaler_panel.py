@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
     QSizePolicy,
@@ -203,6 +204,60 @@ class RealESRGANDownloadDialog(QDialog):
         self._net_b = downloaded
 
 
+_VIDEO_UPSCALER_GUIDE_HTML = """\
+<h3 style="color:#10b981;margin-top:0;">AI Video Upscaler</h3>
+<p style="color:#e5e7eb;font-size:11px;line-height:1.45;">
+Upscale video with <b>Real-ESRGAN</b> (official x2plus / x4plus weights), then optional color and sharpening.
+Processing runs locally; nothing is uploaded.
+</p>
+<p style="color:#94a3b8;font-size:10px;line-height:1.5;"><b>1. Engine</b><br>
+Install <b>PyTorch</b> here or from <b>AI Image Upscaler</b> (same stack). After install, restart the app if prompted.
+</p>
+<p style="color:#94a3b8;font-size:10px;line-height:1.5;"><b>2. Weights</b><br>
+Tap <b>Download</b> when status shows <b>MISSING</b>. <b>2×</b> scale uses the x2 checkpoint; <b>3×</b> and <b>4×</b> use the
+x4 checkpoint (3× is resized after inference). Switching scale may require the other file — download again if needed.
+</p>
+<p style="color:#94a3b8;font-size:10px;line-height:1.5;"><b>3. Source &amp; preview</b><br>
+<b>Browse…</b> to pick a video. <b>Refresh preview</b> runs the pipeline on a <b>sample frame</b> (~10% into the clip);
+left = original, right = AI preview. Tuning matches the full export.
+</p>
+<p style="color:#94a3b8;font-size:10px;line-height:1.5;"><b>4. Parameters</b><br>
+<b>Max edge</b> caps the longest side (e.g. 3840 for 4K-class output). <b>Tile</b> lowers GPU memory use
+(try 256–512 if you hit OOM; 0 = whole frame). <b>Sat / Bright / Contrast / Sharp</b> apply after upscaling.
+</p>
+<p style="color:#94a3b8;font-size:10px;line-height:1.5;"><b>5. Export</b><br>
+<b>Run video upscale</b> asks for an output path, encodes H.264 with FFmpeg, and copies audio when possible.
+Ensure <b>FFmpeg</b> is available and OpenCV can read your file.
+</p>
+"""
+
+
+class VideoUpscalerGuideDialog(QDialog):
+    """Modal guide: does not change main panel geometry."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("AI Video Upscaler — guide")
+        self.setModal(True)
+        self.resize(440, 420)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(12, 12, 12, 10)
+        te = QTextEdit()
+        te.setReadOnly(True)
+        te.setHtml(_VIDEO_UPSCALER_GUIDE_HTML)
+        te.setStyleSheet(
+            "QTextEdit { background:#121212; color:#e5e7eb; border:1px solid #262626; font-size:11px; }"
+        )
+        v.addWidget(te)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        btn = QPushButton("Close")
+        btn.clicked.connect(self.accept)
+        row.addWidget(btn)
+        v.addLayout(row)
+        self.setStyleSheet("QDialog { background: #0d0d0d; }")
+
+
 class VideoUpscalerPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -237,6 +292,7 @@ class VideoUpscalerPanel(QWidget):
         self._last_output_path: str | None = None
 
         _ctrl_h = 24
+        _strip_eng = 84
         _ew, _eh = 82, 22
         self._eng_btn_w, self._eng_btn_h = _ew, _eh
         _combo_style = (
@@ -254,10 +310,15 @@ class VideoUpscalerPanel(QWidget):
         h_strip.setSpacing(8)
 
         grp_src = QGroupBox("SOURCE")
-        grp_src.setMinimumHeight(52)
+        grp_src.setFixedHeight(_strip_eng)
+        grp_src.setToolTip("Pick a video file; OpenCV must be able to decode it.")
         vs = QVBoxLayout(grp_src)
-        vs.setContentsMargins(9, 3, 9, 5)
+        vs.setContentsMargins(9, 1, 9, 3)
+        vs.setSpacing(0)
+        vs.addStretch(1)
         h_vid = QHBoxLayout()
+        h_vid.setSpacing(8)
+        h_vid.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         h_vid.addWidget(_field_label("Video", 40))
         self._edit_video = QLineEdit()
         self._edit_video.setPlaceholderText("Path to video…")
@@ -268,46 +329,54 @@ class VideoUpscalerPanel(QWidget):
         self._btn_browse = QPushButton("Browse…")
         self._btn_browse.setFixedSize(64, _ctrl_h)
         self._btn_browse.clicked.connect(self._browse_video)
-        h_vid.addWidget(self._btn_browse)
+        h_vid.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
         vs.addLayout(h_vid)
+        vs.addStretch(1)
 
         grp_eng = QGroupBox("Engine Status")
-        grp_eng.setMinimumWidth(260)
+        grp_eng.setFixedHeight(_strip_eng)
+        grp_eng.setMinimumWidth(248)
         ve = QVBoxLayout(grp_eng)
-        ve.setContentsMargins(4, 2, 4, 4)
-        ve.setSpacing(4)
+        ve.setContentsMargins(4, 2, 4, 0)
+        ve.setSpacing(2)
         h_pt = QHBoxLayout()
+        h_pt.setSpacing(6)
         self._lbl_torch = QLabel("CHECKING…")
         self._lbl_torch.setStyleSheet("font-size:9px; font-weight:700; color:#10b981;")
-        self._lbl_torch.setFixedWidth(100)
-        h_pt.addWidget(QLabel("PyTorch:", styleSheet="font-size:8px; color:#888;"))
+        self._lbl_torch.setFixedWidth(106)
+        lbl_pt = QLabel("PyTorch:", styleSheet="font-size:8px; color:#888;")
+        lbl_pt.setFixedWidth(44)
+        h_pt.addWidget(lbl_pt)
         h_pt.addWidget(self._lbl_torch)
         h_pt.addSpacing(4)
         self._btn_inst_torch = QPushButton("Install PyTorch")
         self._btn_inst_torch.setFixedSize(_ew, _eh)
         self._btn_inst_torch.setStyleSheet(_eng_row_btn_qss(_ew, _eh, "#aaa", "#262626"))
         self._btn_inst_torch.clicked.connect(self._on_install_torch)
-        self._btn_rm_torch = QPushButton("Uninstall")
-        self._btn_rm_torch.setFixedSize(64, _eh)
-        self._btn_rm_torch.setStyleSheet(_eng_row_btn_qss(64,_eh, "#6b7280", "#262626"))
+        self._btn_rm_torch = QPushButton("Uninstall PyTorch")
+        self._btn_rm_torch.setFixedSize(_ew, _eh)
+        self._btn_rm_torch.setStyleSheet(_eng_row_btn_qss(_ew, _eh, "#6b7280", "#262626"))
         self._btn_rm_torch.clicked.connect(self._on_uninstall_torch)
         h_pt.addWidget(self._btn_inst_torch)
         h_pt.addWidget(self._btn_rm_torch)
 
         h_md = QHBoxLayout()
+        h_md.setSpacing(6)
         self._lbl_weights = QLabel("CHECKING…")
         self._lbl_weights.setStyleSheet("font-size:9px; font-weight:700; color:#10b981;")
-        self._lbl_weights.setFixedWidth(100)
-        h_md.addWidget(QLabel("Weights:", styleSheet="font-size:8px; color:#888;"))
+        self._lbl_weights.setFixedWidth(106)
+        lbl_w = QLabel("Weights:", styleSheet="font-size:8px; color:#888;")
+        lbl_w.setFixedWidth(44)
+        h_md.addWidget(lbl_w)
         h_md.addWidget(self._lbl_weights)
         h_md.addSpacing(4)
         self._btn_dl_weights = QPushButton("Download")
         self._btn_dl_weights.setFixedSize(_ew, _eh)
         self._btn_dl_weights.setStyleSheet(_eng_row_btn_qss(_ew, _eh, "#aaa", "#262626"))
         self._btn_dl_weights.clicked.connect(self._on_download_weights)
-        self._btn_rm_weights = QPushButton("Remove")
-        self._btn_rm_weights.setFixedSize(64, _eh)
-        self._btn_rm_weights.setStyleSheet(_eng_row_btn_qss(64, _eh, "#6b7280", "#262626"))
+        self._btn_rm_weights = QPushButton("Uninstall weights")
+        self._btn_rm_weights.setFixedSize(_ew, _eh)
+        self._btn_rm_weights.setStyleSheet(_eng_row_btn_qss(_ew, _eh, "#6b7280", "#262626"))
         self._btn_rm_weights.clicked.connect(self._on_remove_weights)
         h_md.addWidget(self._btn_dl_weights)
         h_md.addWidget(self._btn_rm_weights)
@@ -315,8 +384,8 @@ class VideoUpscalerPanel(QWidget):
         ve.addLayout(h_pt)
         ve.addLayout(h_md)
 
-        h_strip.addWidget(grp_src, 5)
-        h_strip.addWidget(grp_eng, 4)
+        h_strip.addWidget(grp_src, 7)
+        h_strip.addWidget(grp_eng, 3)
         root.addLayout(h_strip)
 
         grp_prev = QGroupBox("Preview (sample frame — same tuning as full export)")
@@ -351,9 +420,11 @@ class VideoUpscalerPanel(QWidget):
         root.addWidget(grp_prev, 3)
 
         grp_ctrl = QGroupBox("Real-ESRGAN · output & color")
-        hc = QHBoxLayout(grp_ctrl)
-        hc.setContentsMargins(8, 4, 8, 6)
-        hc.setSpacing(6)
+        vc_ctrl = QVBoxLayout(grp_ctrl)
+        vc_ctrl.setContentsMargins(8, 4, 10, 6)
+        vc_ctrl.setSpacing(5)
+        h_params = QHBoxLayout()
+        h_params.setSpacing(5)
         self._combo_scale = QComboBox()
         self._combo_scale.addItem("2×", 0)
         self._combo_scale.addItem("3×", 1)
@@ -362,69 +433,82 @@ class VideoUpscalerPanel(QWidget):
         self._combo_scale.setStyleSheet(_combo_style)
         self._combo_scale.setFixedSize(52, 22)
         self._combo_scale.currentIndexChanged.connect(lambda *_: (self._refresh_engine_labels(), self._update_buttons()))
-        hc.addWidget(_field_label("Scale", 44))
-        hc.addWidget(self._combo_scale)
+        h_params.addWidget(_field_label("Scale", 40))
+        h_params.addWidget(self._combo_scale)
         self._spin_max_edge = QSpinBox()
         self._spin_max_edge.setRange(1280, 3840)
         self._spin_max_edge.setSingleStep(16)
         self._spin_max_edge.setValue(3840)
         self._spin_max_edge.setStyleSheet(_spin_style)
-        self._spin_max_edge.setFixedWidth(72)
+        self._spin_max_edge.setFixedWidth(68)
         self._spin_max_edge.setToolTip("Cap longest side after upscale (4K = 3840 on the long edge).")
-        hc.addWidget(_field_label("Max edge", 54))
-        hc.addWidget(self._spin_max_edge)
+        h_params.addWidget(_field_label("Max edge", 50))
+        h_params.addWidget(self._spin_max_edge)
         self._spin_tile = QSpinBox()
         self._spin_tile.setRange(0, 512)
         self._spin_tile.setSingleStep(32)
         self._spin_tile.setValue(400)
         self._spin_tile.setStyleSheet(_spin_style)
-        self._spin_tile.setFixedWidth(52)
+        self._spin_tile.setFixedWidth(48)
         self._spin_tile.setToolTip("Tile size for GPU memory; 0 = full frame (needs VRAM). Try 256–512.")
-        hc.addWidget(_field_label("Tile", 36))
-        hc.addWidget(self._spin_tile)
+        h_params.addWidget(_field_label("Tile", 32))
+        h_params.addWidget(self._spin_tile)
 
-        
         self._sat = QDoubleSpinBox()
         self._sat.setRange(0.0, 2.0)
         self._sat.setSingleStep(0.05)
         self._sat.setValue(1.0)
         self._sat.setDecimals(2)
         self._sat.setStyleSheet(_spin_style)
-        self._sat.setFixedWidth(52)
-        hc.addWidget(_field_label("Sat", 32))
-        hc.addWidget(self._sat)
+        self._sat.setFixedWidth(48)
+        h_params.addWidget(_field_label("Sat", 28))
+        h_params.addWidget(self._sat)
         self._bright = QDoubleSpinBox()
         self._bright.setRange(-80, 80)
         self._bright.setValue(0)
         self._bright.setStyleSheet(_spin_style)
-        self._bright.setFixedWidth(52)
-        hc.addWidget(_field_label("Bright", 44))
-        hc.addWidget(self._bright)
+        self._bright.setFixedWidth(48)
+        h_params.addWidget(_field_label("Bright", 38))
+        h_params.addWidget(self._bright)
         self._contrast = QDoubleSpinBox()
         self._contrast.setRange(0.2, 2.0)
         self._contrast.setSingleStep(0.05)
         self._contrast.setValue(1.0)
         self._contrast.setDecimals(2)
         self._contrast.setStyleSheet(_spin_style)
-        self._contrast.setFixedWidth(52)
-        hc.addWidget(_field_label("Contrast", 52))
-        hc.addWidget(self._contrast)
+        self._contrast.setFixedWidth(48)
+        h_params.addWidget(_field_label("Contrast", 46))
+        h_params.addWidget(self._contrast)
         self._sharp = QDoubleSpinBox()
         self._sharp.setRange(0.0, 1.5)
         self._sharp.setSingleStep(0.05)
         self._sharp.setValue(0.0)
         self._sharp.setDecimals(2)
         self._sharp.setStyleSheet(_spin_style)
-        self._sharp.setFixedWidth(48)
+        self._sharp.setFixedWidth(44)
         self._sharp.setToolTip("Unsharp strength for extra crispness (use lightly; 0 = off).")
-        hc.addWidget(_field_label("Sharp", 40))
-        hc.addWidget(self._sharp)
-        hc.addStretch(1)
+        h_params.addWidget(_field_label("Sharp", 34))
+        h_params.addWidget(self._sharp)
+        h_params.addStretch(1)
+        self._btn_guide = QToolButton()
+        self._btn_guide.setText("?")
+        self._btn_guide.setToolTip("Open guide (does not resize this panel)")
+        self._btn_guide.setFixedSize(22, 22)
+        self._btn_guide.setStyleSheet(
+            "QToolButton { font-size:11px; font-weight:800; color:#10b981; "
+            "background:#181818; border:1px solid #2a2a2a; border-radius:3px; }"
+        )
+        self._btn_guide.clicked.connect(self._show_guide)
+        h_params.addWidget(self._btn_guide, 0, Qt.AlignmentFlag.AlignVCenter)
 
+        h_actions = QHBoxLayout()
+        h_actions.setSpacing(8)
+        h_actions.addStretch(1)
         self._btn_refresh_prev = QPushButton("Refresh preview")
         self._btn_refresh_prev.setFixedHeight(26)
+        self._btn_refresh_prev.setMinimumWidth(108)
         self._btn_refresh_prev.clicked.connect(self._run_preview)
-        hc.addWidget(self._btn_refresh_prev)
+        h_actions.addWidget(self._btn_refresh_prev)
 
         self._btn_run = QPushButton("Run video upscale")
         self._btn_run.setObjectName("btnStart")
@@ -436,7 +520,10 @@ class VideoUpscalerPanel(QWidget):
             "QPushButton#btnStart:disabled { background-color:#1a1a1a; color:#6b7280; border:2px solid #262626; }"
         )
         self._btn_run.clicked.connect(self._run_full_job)
-        hc.addWidget(self._btn_run)
+        h_actions.addWidget(self._btn_run)
+
+        vc_ctrl.addLayout(h_params)
+        vc_ctrl.addLayout(h_actions)
         root.addWidget(grp_ctrl)
 
         h_bar = QHBoxLayout()
@@ -515,6 +602,9 @@ class VideoUpscalerPanel(QWidget):
         self._log_edit.moveCursor(self._log_edit.textCursor().End)
         self._log_edit.insertHtml(message_to_html(str(msg)))
         self._log_edit.insertPlainText("\n")
+
+    def _show_guide(self):
+        VideoUpscalerGuideDialog(self).exec()
 
     def _torch_ok(self) -> bool:
         try:
