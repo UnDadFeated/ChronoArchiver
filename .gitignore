@@ -119,6 +119,10 @@ celerybeat.pid
 # Audit venv (ruff, bandit)
 .audit_venv/
 
+# Repo-root install layout when launching with chronoarchiver.pyw (CHRONOARCHIVER_INSTALL_ROOT).
+Settings/
+Logs/
+
 # Environments
 .env
 .venv
