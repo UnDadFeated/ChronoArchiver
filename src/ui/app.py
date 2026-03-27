@@ -488,7 +488,7 @@ class ChronoArchiverApp(QMainWindow):
         super().__init__()
         init_log()
         self.setWindowTitle(f"ChronoArchiver v{__version__}")
-        self.setFixedSize(1000, 680)
+        self.setFixedSize(1040, 680)
         self.setStyleSheet(QSS)
         _icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
         if os.path.isfile(_icon_path):
@@ -630,7 +630,7 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_metrics.setStyleSheet(
             "font-size: 9px; color: #f59e0b; font-weight: 600; "
             "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
-            "min-width: 155px;")
+            "min-width: 172px;")
         self.lbl_metrics.setTextFormat(Qt.RichText)
         self.status_layout.addWidget(self.lbl_metrics, 0, Qt.AlignVCenter)
 
