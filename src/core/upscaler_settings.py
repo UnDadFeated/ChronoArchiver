@@ -16,9 +16,9 @@ DEFAULTS: dict = {
     "source_image": "",
     "prompt": DEFAULT_PROMPT,
     # Lower default to preserve source while still allowing prompt edits.
-    "strength": 0.35,
+    "strength": 0.30,
     "steps": 4,
-    "cfg": 6.0,
+    "cfg": 7.0,
     "scale_index": 0,
     "max_edge": 2048,
     "save_fmt": "PNG",
