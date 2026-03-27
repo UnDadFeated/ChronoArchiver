@@ -812,7 +812,7 @@ class ZImageProUpscalerPanel(QWidget):
             p_img = (prefs.get("source_image") or "").strip()
             if p_img:
                 if os.path.isfile(p_img):
-                    self._apply_source_path(p_img, reset_edits=True)
+                    self._apply_source_path(p_img)
                 else:
                     self._edit_image.setText(p_img)
             self._edit_prompt.setText(str(prefs.get("prompt") or self._edit_prompt.text()))

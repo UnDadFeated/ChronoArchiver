@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [4.5.7] - 2026-03-26
+### Fixed
+- **Z-Image Pro Upscaler**: Panel no longer fails at startup when restoring saved source path — removed invalid **`reset_edits`** keyword passed to **`_apply_source_path`**.
+
 ## [4.5.6] - 2026-03-26
 ### Added
 - **Upscaler / installers**: PyTorch & diffusers setup dialog and Z-Image model download dialog show **network download speed** (throughput between progress updates).
