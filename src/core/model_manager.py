@@ -320,6 +320,39 @@ class ZImageModelManager:
 
         if progress_callback:
             progress_callback(0, 0, "Verifying", 1.0, label, HF_MODEL_URL)
+
+        # Optional LaMa (shared with AI Video Upscaler): neural inpaint before Z-Image refinement.
+        try:
+            from core.app_paths import settings_dir
+            from core.lama_inpaint_models import LAMA_URL, LamaInpaintModelManager
+
+            lama_root = settings_dir() / "ai_video_upscaler" / "models"
+            lama_mgr = LamaInpaintModelManager(lama_root)
+            if not lama_mgr.is_ready():
+
+                def _lama_prog(fn: str, downloaded: int, total: int) -> None:
+                    if progress_callback:
+                        tot = max(int(total), 1)
+                        frac = min(1.0, downloaded / tot)
+                        overall = min(1.0, 0.92 + 0.08 * frac)
+                        progress_callback(
+                            downloaded,
+                            tot,
+                            fn,
+                            overall,
+                            "LaMa inpainting (cleanup)",
+                            LAMA_URL,
+                        )
+
+                ok_lama, _err = lama_mgr.download(_lama_prog, mirror_cancel=self.stop_event)
+                if not ok_lama:
+                    debug(
+                        UTILITY_MODEL_SETUP,
+                        "LaMa download skipped or failed (Telea fallback still available for cleanup).",
+                    )
+        except Exception as e:
+            debug(UTILITY_MODEL_SETUP, f"LaMa optional download hook: {e}")
+
         return self.is_up_to_date()
 
     def remove_snapshot(self) -> None:

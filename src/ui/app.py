@@ -208,6 +208,22 @@ QPushButton#navBtn[active="true"] {{
 }}
 """.format(_FONT_SANS, _FONT_MONO)
 
+# Main window nav — button text and log titles (stack index 0..4; keep in sync with panel order below).
+_NAV_BUTTON_TEXT = (
+    "MEDIA ORGANIZER",
+    "MASS AV1 ENCODER",
+    "AI MEDIA SCANNER",
+    "AI IMAGE UPSCALER",
+    "AI VIDEO UPSCALER",
+)
+_NAV_PANEL_LOG_NAME = (
+    "Media Organizer",
+    "Mass AV1 Encoder",
+    "AI Media Scanner",
+    "AI Image Upscaler",
+    "AI Video Upscaler",
+)
+
 
 def _load_bundled_fonts():
     """Register bundled Inter font for consistent rendering on all platforms."""
@@ -579,19 +595,14 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_brand.setStyleSheet("font-weight: 900; font-size: 10px; color: #3b82f6; margin-right: 10px;")
         self.nav_layout.addWidget(self.lbl_brand)
 
-        self.btn_org = self._create_nav_btn("MEDIA ORGANIZER", 0)
-        self.btn_enc = self._create_nav_btn("MASS AV1 ENCODER", 1)
-        self.btn_scn = self._create_nav_btn("AI MEDIA SCANNER", 2)
-        self.btn_upz = self._create_nav_btn("AI IMAGE UPSCALER", 3)
-        self.btn_vup = self._create_nav_btn("AI VIDEO UPSCALER", 4)
-
-        self.nav_btns = [self.btn_org, self.btn_enc, self.btn_scn, self.btn_upz, self.btn_vup]
+        self.nav_btns = [self._create_nav_btn(text, i) for i, text in enumerate(_NAV_BUTTON_TEXT)]
         
         self.nav_layout.addStretch()
 
         self.btn_update = QPushButton("CHECKING FOR UPDATES...")
         self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
-        self.btn_update.clicked.connect(self._run_updater)
+        # Lambda avoids Qt passing clicked(checked) into _run_updater’s keyword-only args.
+        self.btn_update.clicked.connect(lambda: self._run_updater(user_initiated=True))
         self.nav_layout.addWidget(self.btn_update)
         self._update_pulse_timer = QTimer(self)
         self._update_pulse_timer.setInterval(550)
@@ -722,20 +733,13 @@ class ChronoArchiverApp(QMainWindow):
             btn.setChecked(i == index)
             btn.setStyle(btn.style())  # Refresh style
         self.lbl_metrics.setVisible(True)
-        panels = [
-            "Media Organizer",
-            "Mass AV1 Encoder",
-            "AI Media Scanner",
-            "AI Image Upscaler",
-            "AI Video Upscaler",
-        ]
-        debug(UTILITY_APP, f"Panel switch: {panels[index]}")
+        debug(UTILITY_APP, f"Panel switch: {_NAV_PANEL_LOG_NAME[index]}")
         panel = self.stack.currentWidget()
         if hasattr(panel, "get_activity"):
             self._set_activity(panel.get_activity())
 
     def _set_activity(self, activity: str):
-        """Activity: 'idle' | 'encoding' | 'organizing' | 'scanning'. Footer left reflects app state."""
+        """Activity: idle | encoding | organizing | scanning | upscaling — drives footer status line."""
         self._activity = activity or "idle"
         if self._activity in ("encoding", "organizing", "scanning", "upscaling"):
             self._activity_dot = 0

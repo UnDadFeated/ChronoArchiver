@@ -67,12 +67,20 @@ def estimate_ml_runtime_components() -> tuple[list[tuple[str, int]], int]:
             (f"torch (CUDA/{cu_tag} wheel)", int(2.80 * 1024**3)),
             ("torchvision", int(0.35 * 1024**3)),
             ("diffusers + transformers stack", int(0.50 * 1024**3)),
+            (
+                "LaMa neural inpaint (.pt — not pip; after PyTorch: AI Video Upscaler → Download Weights)",
+                0,
+            ),
         ]
     else:
         components = [
             ("torch (CPU wheel)", int(0.65 * 1024**3)),
             ("torchvision", int(0.20 * 1024**3)),
             ("diffusers + transformers stack", int(0.30 * 1024**3)),
+            (
+                "LaMa neural inpaint (.pt — not pip; after PyTorch: AI Video Upscaler → Download Weights)",
+                0,
+            ),
         ]
     total = sum(s for _, s in components)
     return components, total

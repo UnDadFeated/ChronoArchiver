@@ -50,6 +50,9 @@ class ZImageUpscaleEngine:
         freckle_heavy: bool = False,
         beautify: bool = False,
         beautify_analysis: str | None = None,
+        *,
+        lama_runner: object | None = None,
+        artifact_cleanup: bool = True,
     ):
         import torch
         from diffusers import ZImageImg2ImgPipeline
@@ -79,6 +82,49 @@ class ZImageUpscaleEngine:
             log("Pipeline ready.")
 
         img = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+        if artifact_cleanup:
+            import cv2
+            import numpy as np
+
+            from core.video_artifact_detection import (
+                IMAGE_ARTIFACT_MASK_PERCENTILE_GATE,
+                IMAGE_UPSCALER_INPAINT_BLEND,
+                IMAGE_UPSCALER_LAMA_MAX_COVERAGE_FRAC,
+                IMAGE_UPSCALER_MAX_COVERAGE_FRAC,
+                detect_artifact_mask_u8,
+                prepare_source_for_realesrgan,
+            )
+
+            arr = np.asarray(img, dtype=np.uint8)
+            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            mask = detect_artifact_mask_u8(
+                bgr,
+                percentile_gate=IMAGE_ARTIFACT_MASK_PERCENTILE_GATE,
+            )
+            if mask.size > 0 and np.any(mask):
+                try:
+                    bgr2 = prepare_source_for_realesrgan(
+                        bgr,
+                        mask,
+                        lama=lama_runner,
+                        inpaint_blend=IMAGE_UPSCALER_INPAINT_BLEND,
+                        max_coverage_frac=IMAGE_UPSCALER_MAX_COVERAGE_FRAC,
+                        lama_max_coverage_frac=IMAGE_UPSCALER_LAMA_MAX_COVERAGE_FRAC,
+                    )
+                    arr2 = cv2.cvtColor(bgr2, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(arr2)
+                    if np.array_equal(bgr, bgr2):
+                        log(
+                            "Artifact cleanup: skipped — no confident defect regions, or mask "
+                            "coverage too high for local repair; Z-Image refines the original only."
+                        )
+                    else:
+                        log(
+                            "Artifact cleanup: light local blend on small defect regions only "
+                            "(LaMa only if very sparse; else Telea). Most pixels unchanged."
+                        )
+                except Exception as e:
+                    log(f"Artifact cleanup skipped: {e}")
         ow, oh = img.size
         tw, th = compute_output_size(ow, oh, scale, max_side)
         want_w, want_h = ow * scale, oh * scale

@@ -70,6 +70,8 @@ from core.ml_runtime import (
     uninstall_ml_runtime,
     estimate_ml_runtime_components,
 )
+from core.lama_inpaint_models import LamaInpaintModelManager
+from core.lama_inpaint_runner import LamaInpaintRunner
 from core.model_manager import REPO_ID, ZImageModelManager
 from core.network_status import (
     NO_NETWORK_LABEL_STYLE_9,
@@ -342,6 +344,9 @@ class AIImageUpscalerPanel(QWidget):
         except OSError:
             pass
         self._model_mgr = ZImageModelManager(self._z_settings / "models")
+        self._lama_mgr = LamaInpaintModelManager(settings_dir() / "ai_video_upscaler" / "models")
+        self._lama_runner: LamaInpaintRunner | None = None
+        self._lama_runner_key: str | None = None
         self._engine = ZImageUpscaleEngine(self._model_mgr.snapshot_dir)
         self._panel_prefs = UpscalerPanelSettings(self._z_settings)
         self._loading_panel_prefs = False
@@ -399,7 +404,8 @@ class AIImageUpscalerPanel(QWidget):
         grp_opts = QGroupBox("SOURCE")
         grp_opts.setFixedHeight(_strip_eng)
         grp_opts.setToolTip(
-            "LANCZOS resize to target resolution, then Z-Image-Turbo img2img for cleanup and detail."
+            "Optional artifact cleanup (LaMa or OpenCV Telea) on detected problem regions, then "
+            "LANCZOS resize to target resolution, then Z-Image-Turbo img2img for refinement."
         )
         v_opts = QVBoxLayout(grp_opts)
         v_opts.setContentsMargins(9, 2, 9, 3)
@@ -477,7 +483,8 @@ class AIImageUpscalerPanel(QWidget):
         lbl_md.setFixedWidth(44)
         lbl_md.setToolTip(
             "Z-Image-Turbo weights cover upscale and Beautify (same download). "
-            "OpenCV is bundled for face/freckle hints — no extra model files."
+            "Setup Models may also fetch optional LaMa weights (shared with AI Video Upscaler) for neural cleanup; "
+            "otherwise OpenCV Telea is used. OpenCV is bundled for face/freckle hints — no extra model files."
         )
         h_md.addWidget(lbl_md)
         h_md.addWidget(self._lbl_model, 1)
@@ -960,6 +967,23 @@ class AIImageUpscalerPanel(QWidget):
             self._runtime_cache_ts = now
         return self._runtime_cache_ok, self._runtime_cache_reason
 
+    def _get_lama_runner(self) -> LamaInpaintRunner | None:
+        """Neural inpainting for artifact repair; None if torch missing or LaMa weights absent."""
+        ok, _ = check_ml_runtime()
+        if not ok or not self._lama_mgr.is_ready():
+            return None
+        p = str(self._lama_mgr.path().resolve())
+        if self._lama_runner is not None and self._lama_runner_key == p:
+            return self._lama_runner
+        try:
+            self._lama_runner = LamaInpaintRunner(self._lama_mgr.path())
+        except Exception:
+            self._lama_runner = None
+            self._lama_runner_key = None
+            return None
+        self._lama_runner_key = p
+        return self._lama_runner
+
     def _refresh_engine_and_models(self):
         try:
             net_ok = is_network_reachable()
@@ -1088,7 +1112,9 @@ class AIImageUpscalerPanel(QWidget):
             "Components:",
         ]
         for label, sz in components:
-            lines.append(f"  • {label}: {fmt_bytes(sz)}")
+            lines.append(
+                f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
+            )
         lines.append("")
         lines.append(f"Estimated total download: {fmt_bytes(total_bytes)}")
         lines.append("")
@@ -1113,7 +1139,12 @@ class AIImageUpscalerPanel(QWidget):
             f"{get_ml_torch_install_label()}\n\n"
             f"{pytorch_installer_vram_guidance()}\n\n"
             "Components:\n"
-            + "\n".join([f"  • {label}: {fmt_bytes(sz)}" for (label, sz) in components])
+            + "\n".join(
+                [
+                    f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
+                    for (label, sz) in components
+                ]
+            )
             + f"\n\nEstimated total download: {fmt_bytes(total_bytes)}"
         )
         self._active_setup_dialog = dlg
@@ -1451,6 +1482,7 @@ class AIImageUpscalerPanel(QWidget):
                     _log("Beautify checked but no face detected — high-fidelity upscale, minimal change.")
                 else:
                     _log("Beautify off — high-fidelity upscale, minimal change to the original.")
+                lama = self._get_lama_runner()
                 img = self._engine.run(
                     image_path=path,
                     scale=auto.scale,
@@ -1463,6 +1495,7 @@ class AIImageUpscalerPanel(QWidget):
                     freckle_heavy=freckle_heavy,
                     beautify=beautify,
                     beautify_analysis=beautify_analysis,
+                    lama_runner=lama,
                 )
                 self._sig.upscale_done.emit(img)
             except Exception as e:
