@@ -48,6 +48,7 @@ from ui.panel_widgets import (
     format_net_speed,
     path_browse_btn_qss,
     pytorch_installer_vram_guidance,
+    upscaler_browse_btn_idle_qss,
 )
 
 from PIL import Image, ImageOps
@@ -363,6 +364,9 @@ class AIImageUpscalerPanel(QWidget):
         self._btn_browse_img.setObjectName("browseBtn")
         self._btn_browse_img.setFixedSize(64, _ctrl_h)
         self._btn_browse_img.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._btn_browse_img.setStyleSheet(
+            upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+        )
         self._btn_browse_img.clicked.connect(self._browse_image)
         h_img.addWidget(self._btn_browse_img, 0, Qt.AlignmentFlag.AlignVCenter)
         v_opts.addLayout(h_img)
@@ -659,7 +663,7 @@ class AIImageUpscalerPanel(QWidget):
         h_out_actions.addWidget(self._spin_max_edge, 0, Qt.AlignmentFlag.AlignVCenter)
         h_out_actions.addStretch(1)
 
-        self._btn_run = QPushButton("Run upscale")
+        self._btn_run = QPushButton("UPSCALE")
         self._btn_run.setObjectName("btnStart")
         self._btn_run.setFixedSize(108, 28)
         self._btn_run.setStyleSheet(_run_upscale_btn_stylesheet(pulse=False))
@@ -901,7 +905,9 @@ class AIImageUpscalerPanel(QWidget):
         if w == self._btn_run:
             w.setStyleSheet(_run_upscale_btn_stylesheet(pulse=False))
         elif w == self._btn_browse_img:
-            w.setStyleSheet("")
+            w.setStyleSheet(
+                upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+            )
         elif w == self._btn_install_engine:
             if self._engine_just_installed:
                 w.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#064e3b", "#10b981"))
