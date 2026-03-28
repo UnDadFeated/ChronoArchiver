@@ -1,14 +1,16 @@
 """
 AI Video Upscaler — Real-ESRGAN (x2plus/x4plus), industry-style target resolutions, fixed cleanup pipeline, AV1 export.
 
-Auto (no second NN): per-frame chroma/luma denoise flags; first-frame aesthetic (contrast/sat/sharpness/cast);
-optional mild YUV chroma centering for tape/WB drift.
+Auto (no second NN): one pre-scan pass per clip — per-frame noise, grade, WB cast, skin warmth, and
+artifact maps (macroblock/combing/banding/chroma/dropout); grades smoothed ±2 frames. Encode blends
+classical inpaint where the map is high, then Real-ESRGAN; temp artifact data is removed after mux.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import numpy as np
 import os
 import shutil
 import subprocess
@@ -61,6 +63,8 @@ from core.ml_runtime import (
     uninstall_ml_runtime,
     estimate_ml_runtime_components,
 )
+from core.lama_inpaint_models import APPROX_LAMA_BYTES, LAMA_FILENAME, LamaInpaintModelManager
+from core.lama_inpaint_runner import LamaInpaintRunner
 from core.realesrgan_models import (
     RealESRGANModelManager,
     expected_bytes,
@@ -79,6 +83,14 @@ from core.video_target_presets import (
     presets_above_source,
     source_video_caption_line,
     user_scale_for_preset,
+)
+from core.video_artifact_detection import prepare_source_for_realesrgan
+from core.video_frame_preanalysis import (
+    aesthetic_tuple_from_source,
+    apply_skin_tone_warmth_bgr,
+    cast_strength_from_source,
+    pre_scan_video_upscale,
+    skin_tone_strength_from_source,
 )
 from core.video_subject_detect import VideoSubjectHints, analyze_subjects_bgr
 from core.video_upscaler_settings import VideoUpscalerPanelSettings
@@ -139,7 +151,7 @@ VUP_AUTO_LUMA_GAUSS_SIGMA = 1.5
 VUP_AUTO_LUMA_HF_MEDIAN_MIN = 4.0  # uniform grain: median hf residual (0–255 scale)
 VUP_AUTO_LUMA_HF_MEAN_MIN = 7.0  # stronger mixed noise / edges+grain
 
-# First-frame “look” pass (fixed for whole encode — avoids grade flicker). No extra NN; OpenCV stats only.
+# Auto grade heuristics (also used in core.video_frame_preanalysis for per-frame + temporal smooth).
 VUP_AESTHETIC_ANALYSIS_MAX_EDGE = 640
 # Luma: lift shadows / tame highlights
 VUP_AUTO_AESTH_MEAN_Y_DARK = 52.0  # below → small brightness lift
@@ -253,98 +265,6 @@ def _resize_bgr_for_analysis(bgr, max_edge: int):
     return cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_AREA)
 
 
-def _analyze_aesthetic_from_source(bgr) -> tuple[float, float, float, float]:
-    """
-    Derive brightness / contrast / saturation / unsharp strength from one source frame.
-
-    Used once per encode (first frame) so the grade does not flicker. Complements per-frame
-    noise flags: flat footage, dull color, washed highlights, soft focus, or heavy texture.
-    """
-    import cv2
-    import numpy as np
-
-    if bgr is None or bgr.size == 0:
-        return (
-            VUP_POST_BRIGHTNESS,
-            VUP_POST_CONTRAST,
-            VUP_POST_SATURATION,
-            VUP_UNSHARP_STRENGTH,
-        )
-    sm = _resize_bgr_for_analysis(bgr, VUP_AESTHETIC_ANALYSIS_MAX_EDGE)
-    yuv = cv2.cvtColor(sm, cv2.COLOR_BGR2YUV)
-    y_u8 = yuv[:, :, 0]
-    y_f = y_u8.astype(np.float32)
-    mean_y = float(np.mean(y_f))
-    std_y = float(np.std(y_f))
-
-    hsv = cv2.cvtColor(sm, cv2.COLOR_BGR2HSV)
-    mean_s = float(np.mean(hsv[:, :, 1].astype(np.float32)))
-
-    # Laplacian on float32 + CV_64F can trigger OpenCV 4.13+ "Unsupported combination … getLinearFilter";
-    # use uint8 luma (same as typical edge detection).
-    lap = cv2.Laplacian(y_u8, cv2.CV_64F)
-    lap_var = float(lap.var())
-
-    b = float(VUP_POST_BRIGHTNESS)
-    c = float(VUP_POST_CONTRAST)
-    s = float(VUP_POST_SATURATION)
-    sh = float(VUP_UNSHARP_STRENGTH)
-
-    if mean_y < VUP_AUTO_AESTH_MEAN_Y_DARK:
-        b += min(
-            VUP_AUTO_AESTH_BRIGHTNESS_MAX_DELTA,
-            (VUP_AUTO_AESTH_MEAN_Y_DARK - mean_y) * 0.22,
-        )
-    elif mean_y > VUP_AUTO_AESTH_MEAN_Y_BRIGHT:
-        b -= min(
-            VUP_AUTO_AESTH_BRIGHTNESS_MAX_DELTA * 0.6,
-            (mean_y - VUP_AUTO_AESTH_MEAN_Y_BRIGHT) * 0.15,
-        )
-
-    if std_y < VUP_AUTO_AESTH_STD_Y_FLAT:
-        c += min(0.1, (VUP_AUTO_AESTH_STD_Y_FLAT - std_y) / 220.0)
-    elif std_y > VUP_AUTO_AESTH_STD_Y_PUNCHY:
-        c -= min(0.06, (std_y - VUP_AUTO_AESTH_STD_Y_PUNCHY) / 450.0)
-
-    c = float(np.clip(c, 1.0, 1.16))
-
-    if mean_s < VUP_AUTO_AESTH_SAT_DULL:
-        s += min(0.12, (VUP_AUTO_AESTH_SAT_DULL - mean_s) / 380.0)
-    elif mean_s > VUP_AUTO_AESTH_SAT_HOT:
-        s -= min(0.08, (mean_s - VUP_AUTO_AESTH_SAT_HOT) / 180.0)
-
-    s = float(np.clip(s, 0.9, 1.15))
-
-    if lap_var < VUP_AUTO_AESTH_LAP_SOFT:
-        sh *= 1.1
-    elif lap_var > VUP_AUTO_AESTH_LAP_CRISP:
-        sh *= 0.9
-
-    sh = float(np.clip(sh, 0.32, 0.54))
-
-    b = float(np.clip(b, -VUP_AUTO_AESTH_BRIGHTNESS_MAX_DELTA, VUP_AUTO_AESTH_BRIGHTNESS_MAX_DELTA))
-
-    return (b, c, s, sh)
-
-
-def _cast_strength_from_source(bgr) -> float:
-    """How strongly to pull U/V toward neutral (mild tape / WB cast). 0 = skip."""
-    import cv2
-    import numpy as np
-
-    if bgr is None or bgr.size == 0:
-        return 0.0
-    sm = _resize_bgr_for_analysis(bgr, VUP_AESTHETIC_ANALYSIS_MAX_EDGE)
-    yuv = cv2.cvtColor(sm, cv2.COLOR_BGR2YUV)
-    _, u, v = cv2.split(yuv)
-    du = float(np.mean(u.astype(np.float32)) - 128.0)
-    dv = float(np.mean(v.astype(np.float32)) - 128.0)
-    spread = abs(du) + abs(dv)
-    if spread < VUP_AUTO_CAST_UV_SUM_MIN:
-        return 0.0
-    return float(min(VUP_AUTO_CAST_STRENGTH_MAX, (spread - VUP_AUTO_CAST_UV_SUM_MIN) / 320.0))
-
-
 def _apply_yuv_chroma_center_bgr(bgr, strength: float):
     """Blend U/V toward 128 (reduce global green/magenta cast). strength in [0, ~0.12]."""
     import cv2
@@ -406,6 +326,22 @@ def _denoise_bgr_one_step(bgr):
         sigmaColor=VUP_DENOISE_SIGMA_COLOR,
         sigmaSpace=VUP_DENOISE_SIGMA_SPACE,
     )
+
+
+def _blend_nr_strength(bgr, strength: float, denoise_fn):
+    """Blend identity with full denoise; strength in [0, 1] (temporally smoothed per-frame scores)."""
+    import cv2
+    import numpy as np
+
+    if bgr is None or bgr.size == 0:
+        return bgr
+    a = float(np.clip(strength, 0.0, 1.0))
+    if a <= 1e-6:
+        return bgr
+    d = denoise_fn(bgr)
+    if a >= 1.0 - 1e-6:
+        return d
+    return cv2.addWeighted(bgr, 1.0 - a, d, a, 0)
 
 
 def _run_video_btn_stylesheet(*, pulse: bool = False, w: int, h: int) -> str:
@@ -583,12 +519,13 @@ class _Signals(QObject):
     log_msg = Signal(str)
     setup_complete = Signal(object)
     progress_frames = Signal(int, int)
+    noise_scan_progress = Signal(int, int)
     full_job_done = Signal()
     resource_warning = Signal(str)
 
 
 class RealESRGANDownloadDialog(QDialog):
-    """Progress for one or sequential Real-ESRGAN .pth downloads (filename, bytes done, total)."""
+    """Progress for Real-ESRGAN + optional LaMa weight downloads (filename, bytes done, total)."""
 
     progress_update = Signal(str, int, int)
 
@@ -596,7 +533,7 @@ class RealESRGANDownloadDialog(QDialog):
         super().__init__(parent)
         self._last_realesrgan_log_key: str | None = None
         self._last_realesrgan_log_ts = 0.0
-        self.setWindowTitle("Real-ESRGAN weights")
+        self.setWindowTitle("AI Video weights")
         self.setModal(False)
         self.setFixedSize(420, 180)
         v = QVBoxLayout(self)
@@ -688,6 +625,7 @@ class VideoUpscalerPanel(QWidget):
         self._sig.log_msg.connect(self._add_log, _q)
         self._sig.setup_complete.connect(self._on_setup_complete, _q)
         self._sig.progress_frames.connect(self._on_frame_progress, _q)
+        self._sig.noise_scan_progress.connect(self._on_noise_scan_progress, _q)
         self._sig.full_job_done.connect(self._finish_job_ui, _q)
         self._sig.resource_warning.connect(self._on_resource_warning, _q)
 
@@ -697,15 +635,20 @@ class VideoUpscalerPanel(QWidget):
         except OSError:
             pass
         self._model_mgr = RealESRGANModelManager(self._base / "models")
+        self._lama_mgr = LamaInpaintModelManager(self._base / "models")
         self._prefs = VideoUpscalerPanelSettings(self._base)
         self._source_dims: tuple[int, int] | None = None
         self._saved_preset_key: str = "uhd_4k"
         self._runner: RealESRGANRunner | None = None
         self._runner_key: tuple[str, int] | None = None
+        self._lama_runner: LamaInpaintRunner | None = None
+        self._lama_runner_key: str | None = None
 
         self._setup_in_progress = False
         self._job_in_progress = False
         self._job_eta_start_mono: float | None = None
+        self._noise_eta_start_mono: float | None = None
+        self._vup_upscale_eta_started = False
         self._cancel_job = threading.Event()
         self._pending_engine_install = False
         self._engine_just_installed = False
@@ -1108,16 +1051,28 @@ class VideoUpscalerPanel(QWidget):
 
         ns = net_scale_for_user_scale(self._ui_user_scale())
         wr = self._model_mgr.is_ready(ns)
+        lr = self._lama_mgr.is_ready()
         if wr:
-            self._lbl_weights.setText("READY")
             self._lbl_weights.setStyleSheet("font-size:9px;font-weight:700;color:#10b981;")
-            self._btn_dl_weights.hide()
+            if lr:
+                self._lbl_weights.setText("READY")
+                self._lbl_weights.setToolTip("Real-ESRGAN + LaMa (neural inpaint).")
+                self._btn_dl_weights.hide()
+            else:
+                self._lbl_weights.setText("READY")
+                self._lbl_weights.setToolTip(
+                    "Real-ESRGAN ready. LaMa optional — Download adds neural inpainting "
+                    "(else Telea for artifact repair)."
+                )
+                self._btn_dl_weights.show()
             self._btn_rm_weights.show()
         else:
             if not net_ok:
                 self._lbl_weights.setText(NO_NETWORK_MESSAGE)
                 self._lbl_weights.setStyleSheet(NO_NETWORK_LABEL_STYLE_9)
-                self._btn_dl_weights.setToolTip("Internet required to download Real-ESRGAN weights.")
+                self._btn_dl_weights.setToolTip(
+                    "Internet required to download Real-ESRGAN / LaMa weights."
+                )
             else:
                 self._lbl_weights.setText("MISSING")
                 self._lbl_weights.setStyleSheet("font-size:9px;font-weight:700;color:#ef4444;")
@@ -1148,6 +1103,23 @@ class VideoUpscalerPanel(QWidget):
         self._runner_key = key
         return self._runner
 
+    def _get_lama_runner(self) -> LamaInpaintRunner | None:
+        """Neural inpainting for artifact repair; None if torch missing or LaMa weights absent."""
+        ok, _ = check_ml_runtime()
+        if not ok or not self._lama_mgr.is_ready():
+            return None
+        p = str(self._lama_mgr.path().resolve())
+        if self._lama_runner is not None and self._lama_runner_key == p:
+            return self._lama_runner
+        try:
+            self._lama_runner = LamaInpaintRunner(self._lama_mgr.path())
+        except Exception:
+            self._lama_runner = None
+            self._lama_runner_key = None
+            return None
+        self._lama_runner_key = p
+        return self._lama_runner
+
     def _process_frame(
         self,
         bgr,
@@ -1155,22 +1127,38 @@ class VideoUpscalerPanel(QWidget):
         user_scale: float,
         *,
         aesthetic: tuple[float, float, float, float] | None = None,
-        cast_strength: float = 0.0,
+        cast_strength: float | None = None,
+        skin_tone_strength: float | None = None,
+        luma_nr_strength: float | None = None,
+        chroma_nr_strength: float | None = None,
+        artifact_mask: np.ndarray | None = None,
     ):
-        chroma = _auto_chroma_nr_wanted_from_source(bgr)
-        luma_nr = _auto_luma_nr_wanted_from_source(bgr)
-        up = runner.enhance(bgr, user_scale=float(user_scale))
+        if luma_nr_strength is None:
+            luma_nr_strength = 1.0 if _auto_luma_nr_wanted_from_source(bgr) else 0.0
+        if chroma_nr_strength is None:
+            chroma_nr_strength = 1.0 if _auto_chroma_nr_wanted_from_source(bgr) else 0.0
+        lama = self._get_lama_runner() if artifact_mask is not None else None
+        bgr_for_sr = (
+            prepare_source_for_realesrgan(bgr, artifact_mask, lama=lama)
+            if artifact_mask is not None
+            else bgr
+        )
+        up = runner.enhance(bgr_for_sr, user_scale=float(user_scale))
         up = _cap_long_edge_bgr(up, VUP_MAX_EDGE)
-        if chroma:
-            up = _chroma_noise_reduce_bgr(up)
-        if luma_nr:
-            up = _denoise_bgr_one_step(up)
+        up = _blend_nr_strength(up, chroma_nr_strength, _chroma_noise_reduce_bgr)
+        up = _blend_nr_strength(up, luma_nr_strength, _denoise_bgr_one_step)
         if aesthetic is None:
-            aesthetic = _analyze_aesthetic_from_source(bgr)
+            aesthetic = aesthetic_tuple_from_source(bgr)
         pb, pc, ps, psh = aesthetic
         up = _post_color_bgr(up, pb, pc, ps, psh)
+        if cast_strength is None:
+            cast_strength = cast_strength_from_source(bgr)
         if cast_strength > 1e-6:
             up = _apply_yuv_chroma_center_bgr(up, cast_strength)
+        if skin_tone_strength is None:
+            skin_tone_strength = skin_tone_strength_from_source(bgr)
+        if skin_tone_strength > 1e-6:
+            up = apply_skin_tone_warmth_bgr(up, skin_tone_strength)
         return up
 
     def _update_buttons(self):
@@ -1187,13 +1175,16 @@ class VideoUpscalerPanel(QWidget):
         except Exception:
             net_ok = True
         need_torch_net = not t_ok and not self._engine_just_installed
-        need_weights_net = not w_ok
+        need_weights_net = (not w_ok) or (not self._lama_mgr.is_ready())
         self._btn_run.setEnabled(
             path_ok and preset_ok and dims_ok and w_ok and t_ok and not busy and bool(_ffmpeg_exe())
         )
         self._btn_browse.setEnabled(not busy)
         self._btn_dl_weights.setEnabled(not busy and (not need_weights_net or net_ok))
-        self._btn_rm_weights.setEnabled(not busy and w_ok)
+        has_any_weights = (
+            self._model_mgr.is_ready(2) or self._model_mgr.is_ready(4) or self._lama_mgr.is_ready()
+        )
+        self._btn_rm_weights.setEnabled(not busy and has_any_weights)
         self._btn_inst_torch.setEnabled(
             (not busy or self._engine_just_installed) and (not need_torch_net or net_ok)
         )
@@ -1571,11 +1562,13 @@ class VideoUpscalerPanel(QWidget):
     def _set_eta_idle(self) -> None:
         self._lbl_eta_time.setText("--:--:--")
 
-    def _update_eta_remaining(self, cur: int, total: int) -> None:
+    def _update_eta_remaining(
+        self, cur: int, total: int, *, start_mono: float | None = None
+    ) -> None:
         if total <= 0 or cur <= 0:
             self._set_eta_idle()
             return
-        t0 = self._job_eta_start_mono
+        t0 = start_mono if start_mono is not None else self._job_eta_start_mono
         if t0 is None:
             self._set_eta_idle()
             return
@@ -1589,6 +1582,19 @@ class VideoUpscalerPanel(QWidget):
             return
         rem = (total - cur) / rate
         self._lbl_eta_time.setText(_format_eta_hms(rem))
+
+    def _on_noise_scan_progress(self, cur: int, total: int):
+        if self._noise_eta_start_mono is None:
+            self._noise_eta_start_mono = time.monotonic()
+        if total <= 0:
+            self._bar.setRange(0, 0)
+            self._bar.setFormat(f"Analyzing frames (noise, grade, skin)… {cur} frame(s)")
+            self._set_eta_idle()
+            return
+        self._bar.setRange(0, 100)
+        self._bar.setValue(int(100 * min(1.0, cur / total)))
+        self._bar.setFormat(f"Analyzing frames: {cur} / {total}")
+        self._update_eta_remaining(cur, total, start_mono=self._noise_eta_start_mono)
 
     def _on_frame_progress(self, cur: int, total: int):
         if total == _VUP_PROG_FFMPEG_PHASE:
@@ -1608,6 +1614,9 @@ class VideoUpscalerPanel(QWidget):
             if self._job_in_progress and cur > 0:
                 self._sync_preview_to_encode_progress(cur, self._video_frame_total or 0)
             return
+        if not self._vup_upscale_eta_started:
+            self._vup_upscale_eta_started = True
+            self._job_eta_start_mono = time.monotonic()
         self._bar.setRange(0, 100)
         self._bar.setValue(int(100 * min(1.0, cur / total)))
         self._bar.setFormat(f"{cur} / {total} frames")
@@ -1657,6 +1666,8 @@ class VideoUpscalerPanel(QWidget):
         self._pause_preview_player_for_job()
         self._job_in_progress = True
         self._job_eta_start_mono = time.monotonic()
+        self._noise_eta_start_mono = None
+        self._vup_upscale_eta_started = False
         self._set_eta_idle()
         self._bar.setRange(0, 100)
         self._bar.setValue(0)
@@ -1682,10 +1693,50 @@ class VideoUpscalerPanel(QWidget):
 
         def work():
             import cv2
-            import numpy as np
 
             tmp_vid = None
+            artifact_dir: str | None = None
             try:
+                _noise_prog_last = [0.0]
+
+                def _noise_progress(done: int, tot: int) -> None:
+                    now = time.monotonic()
+                    # First frame, last frame, and ~10 Hz so long clips do not flood the GUI thread.
+                    is_final = tot > 0 and done >= tot
+                    if done != 1 and not is_final and (now - _noise_prog_last[0]) < 0.1:
+                        return
+                    _noise_prog_last[0] = now
+                    self._sig.noise_scan_progress.emit(done, tot)
+
+                try:
+                    artifact_dir = tempfile.mkdtemp(prefix="ca_vup_art_")
+                except OSError:
+                    artifact_dir = None
+                pre = pre_scan_video_upscale(
+                    path,
+                    on_progress=_noise_progress,
+                    artifact_dir=artifact_dir,
+                )
+                if pre is None:
+                    aest_pack = None
+                    if artifact_dir and os.path.isdir(artifact_dir):
+                        shutil.rmtree(artifact_dir, ignore_errors=True)
+                    artifact_dir = None
+                    self._sig.log_msg.emit(
+                        "WARN: could not pre-scan; using per-source-frame noise and grade heuristics."
+                    )
+                else:
+                    aest_pack = pre
+                    self._sig.log_msg.emit(
+                        "Per-frame analysis: noise, grade (b/c/sat/unsharp), WB cast, skin warmth — "
+                        f"temporally smoothed ±2 frames, {len(pre['luma_nr'])} source frame(s)."
+                    )
+                    if artifact_dir:
+                        self._sig.log_msg.emit(
+                            "Artifact maps (macroblock, combing, banding, chroma, dropout) saved for "
+                            f"inpaint+AI pass; temp dir removed after encode."
+                        )
+
                 cap = cv2.VideoCapture(path)
                 if not cap.isOpened():
                     self._sig.log_msg.emit("ERROR: could not open video")
@@ -1699,21 +1750,58 @@ class VideoUpscalerPanel(QWidget):
                     self._sig.log_msg.emit("ERROR: empty video")
                     cap.release()
                     return
-                aesthetic = _analyze_aesthetic_from_source(fr0)
-                cast_st = _cast_strength_from_source(fr0)
-                self._sig.log_msg.emit(
-                    "Auto look (whole clip, from first frame): "
-                    f"brightnessΔ={aesthetic[0]:+.1f}, contrast={aesthetic[1]:.2f}, "
-                    f"sat={aesthetic[2]:.2f}, unsharp={aesthetic[3]:.2f}, "
-                    f"cast_fix={cast_st:.3f}"
-                )
+
+                def _frame_params(idx: int):
+                    """Returns (aesthetic, cast, skin, luma_nr, chroma_nr); all None if no pre-scan."""
+                    if aest_pack is None:
+                        return None, None, None, None, None
+                    ni = int(np.clip(idx, 0, len(aest_pack["luma_nr"]) - 1))
+                    aesthetic = (
+                        float(aest_pack["brightness"][ni]),
+                        float(aest_pack["contrast"][ni]),
+                        float(aest_pack["saturation"][ni]),
+                        float(aest_pack["sharpness"][ni]),
+                    )
+                    return (
+                        aesthetic,
+                        float(aest_pack["cast"][ni]),
+                        float(aest_pack["skin_tone"][ni]),
+                        float(aest_pack["luma_nr"][ni]),
+                        float(aest_pack["chroma_nr"][ni]),
+                    )
+
+                def _artifact_mask_at(idx: int) -> np.ndarray | None:
+                    if not artifact_dir:
+                        return None
+                    p = os.path.join(artifact_dir, f"{idx:06d}.npz")
+                    if not os.path.isfile(p):
+                        return None
+                    with np.load(p) as z:
+                        return np.asarray(z["mask"], dtype=np.uint8).copy()
+
+                ae0, c0, sk0, lu0, ch0 = _frame_params(0)
+                am0 = _artifact_mask_at(0)
+                if ae0 is not None:
+                    self._sig.log_msg.emit(
+                        "Example (frame 0, smoothed): "
+                        f"bΔ={ae0[0]:+.1f}, c={ae0[1]:.2f}, sat={ae0[2]:.2f}, "
+                        f"unsharp={ae0[3]:.2f} (soft↔sharp), cast={c0:.3f}, skin={sk0:.2f}"
+                    )
                 try:
                     sub = analyze_subjects_bgr(fr0)
                     self._sig.log_msg.emit(sub.log_line())
                 except Exception:
                     pass
                 out0 = self._process_frame(
-                    fr0, runner, user_sc, aesthetic=aesthetic, cast_strength=cast_st
+                    fr0,
+                    runner,
+                    user_sc,
+                    aesthetic=ae0,
+                    cast_strength=c0,
+                    skin_tone_strength=sk0,
+                    luma_nr_strength=lu0,
+                    chroma_nr_strength=ch0,
+                    artifact_mask=am0,
                 )
                 oh, ow = out0.shape[:2]
                 vcodec, vargs = _ffmpeg_av1_encoder(ff)
@@ -1779,13 +1867,25 @@ class VideoUpscalerPanel(QWidget):
                     self._sig.progress_frames.emit(done, n)
                 else:
                     self._sig.progress_frames.emit(done, 0)
+                frame_i = 1
                 while not self._cancel_job.is_set():
                     ok, fr = cap.read()
                     if not ok:
                         break
+                    ae_i, c_i, sk_i, lu_i, ch_i = _frame_params(frame_i)
+                    am_i = _artifact_mask_at(frame_i)
                     out = self._process_frame(
-                        fr, runner, user_sc, aesthetic=aesthetic, cast_strength=cast_st
+                        fr,
+                        runner,
+                        user_sc,
+                        aesthetic=ae_i,
+                        cast_strength=c_i,
+                        skin_tone_strength=sk_i,
+                        luma_nr_strength=lu_i,
+                        chroma_nr_strength=ch_i,
+                        artifact_mask=am_i,
                     )
+                    frame_i += 1
                     write_frame(out)
                     done += 1
                     if n > 0:
@@ -1955,6 +2055,8 @@ class VideoUpscalerPanel(QWidget):
                         os.unlink(tmp_vid)
                     except OSError:
                         pass
+                if artifact_dir and os.path.isdir(artifact_dir):
+                    shutil.rmtree(artifact_dir, ignore_errors=True)
                 self._sig.full_job_done.emit()
 
         threading.Thread(target=work, daemon=True).start()
@@ -1962,6 +2064,8 @@ class VideoUpscalerPanel(QWidget):
     def _finish_job_ui(self):
         self._job_in_progress = False
         self._job_eta_start_mono = None
+        self._noise_eta_start_mono = None
+        self._vup_upscale_eta_started = False
         self._set_eta_idle()
         self._bar.setRange(0, 100)
         self._bar.setFormat("Ready")
@@ -1984,7 +2088,9 @@ class VideoUpscalerPanel(QWidget):
             "Components:",
         ]
         for label, sz in components:
-            lines.append(f"  • {label}: {fmt_bytes(sz)}")
+            lines.append(
+                f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
+            )
         lines.extend(["", f"Estimated total: {fmt_bytes(total_bytes)}", "", pytorch_installer_vram_guidance(), "", "Restart may be required."])
         if (
             QMessageBox.question(
@@ -2004,7 +2110,12 @@ class VideoUpscalerPanel(QWidget):
         self._engine_setup_dialog = dlg
         dlg._lbl_components.setText(
             f"{get_ml_torch_install_label()}\n\n{pytorch_installer_vram_guidance()}\n\n"
-            + "\n".join([f"  • {lbl}: {fmt_bytes(sz)}" for lbl, sz in components])
+            + "\n".join(
+                [
+                    f"  • {lbl}: {fmt_bytes(sz)}" if sz > 0 else f"  • {lbl}"
+                    for lbl, sz in components
+                ]
+            )
             + f"\n\nEstimated total: {fmt_bytes(total_bytes)}"
         )
 
@@ -2048,13 +2159,16 @@ class VideoUpscalerPanel(QWidget):
             sz = expected_bytes(ns)
             missing.append((fn, sz))
             t_dl += sz
+        if not self._lama_mgr.is_ready():
+            missing.append((LAMA_FILENAME, APPROX_LAMA_BYTES))
+            t_dl += APPROX_LAMA_BYTES
         if not missing:
             self._refresh_engine_labels()
             self._update_buttons()
             return
 
         lines = [
-            "Download Real-ESRGAN checkpoints to:",
+            "Download AI Video Upscaler weights to:",
             str(self._model_mgr._root),
             "",
             "Files to fetch:",
@@ -2066,7 +2180,10 @@ class VideoUpscalerPanel(QWidget):
                 "",
                 f"Estimated data: ~{fmt_bytes(t_dl)}",
                 "",
-                "x2plus covers targets needing ≤2× on the long edge; larger targets use x4plus (with resize after the net). Both are required for full coverage.",
+                "Real-ESRGAN: x2plus covers targets needing ≤2× on the long edge; larger targets use x4plus "
+                "(with resize after the net). Both are required for full coverage.",
+                "",
+                f"{LAMA_FILENAME}: LaMa neural inpainting for artifact repair (optional Telea fallback if skipped).",
                 "",
                 "Proceed with download?",
             ]
@@ -2074,7 +2191,7 @@ class VideoUpscalerPanel(QWidget):
         if (
             QMessageBox.question(
                 self,
-                "Download Real-ESRGAN weights",
+                "Download AI Video weights",
                 "\n".join(lines),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -2093,6 +2210,8 @@ class VideoUpscalerPanel(QWidget):
 
         def task():
             ok, err = self._model_mgr.ensure_weights((2, 4), prog)
+            if ok and not self._lama_mgr.is_ready():
+                ok, err = self._lama_mgr.download(prog)
             self._sig.setup_complete.emit(("weights", ok, err))
 
         dlg.show()
@@ -2103,14 +2222,14 @@ class VideoUpscalerPanel(QWidget):
             QMessageBox.question(
                 self,
                 "Remove weights",
-                "Delete downloaded Real-ESRGAN .pth files?",
+                "Delete downloaded Real-ESRGAN checkpoints and LaMa inpainting (big-lama.pt)?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
             != QMessageBox.StandardButton.Yes
         ):
             return
-        for name in ("RealESRGAN_x2plus.pth", "RealESRGAN_x4plus.pth"):
+        for name in ("RealESRGAN_x2plus.pth", "RealESRGAN_x4plus.pth", LAMA_FILENAME):
             p = self._model_mgr._root / name
             try:
                 if p.is_file():
@@ -2119,6 +2238,8 @@ class VideoUpscalerPanel(QWidget):
                 pass
         self._runner = None
         self._runner_key = None
+        self._lama_runner = None
+        self._lama_runner_key = None
         self._refresh_engine_labels()
         self._update_buttons()
 
@@ -2141,17 +2262,19 @@ class VideoUpscalerPanel(QWidget):
             self._engine_just_installed = False
             self._runner = None
             self._runner_key = None
+            self._lama_runner = None
+            self._lama_runner_key = None
             self._add_log("PyTorch stack removed.")
         elif isinstance(payload, tuple) and payload and payload[0] == "weights":
             ok = bool(payload[1])
             err = str(payload[2]).strip() if len(payload) > 2 and payload[2] else ""
             if ok:
-                self._add_log("Real-ESRGAN weights ready (x2plus / x4plus as needed).")
+                self._add_log("AI Video weights ready (Real-ESRGAN x2/x4; LaMa optional).")
             else:
                 self._add_log(f"Weight download failed: {err or 'unknown error'}")
                 QMessageBox.warning(
                     self,
-                    "Real-ESRGAN weights",
+                    "AI Video weights",
                     f"Download did not finish successfully.\n\n{err or 'Unknown error.'}\n\n"
                     "Check your network, firewall, and that GitHub is reachable.",
                 )

@@ -69,7 +69,7 @@ def _find_repo_root(start: str) -> str | None:
 
 
 def _is_frozen() -> bool:
-    """True when running as PyInstaller bundle (legacy; no longer used)."""
+    """True when running as a PyInstaller onefile/onefolder bundle (used with installer path heuristics)."""
     return getattr(sys, "frozen", False)
 
 

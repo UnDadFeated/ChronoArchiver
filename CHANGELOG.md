@@ -2,12 +2,21 @@
 
 ## [Unreleased]
 
+## [4.7.14] - 2026-03-27
+
+### Added
+- **LaMa inpainting** (TorchScript **`big-lama.pt`**): shared **`lama_inpaint_models`** / **`lama_inpaint_runner`** for **AI Video Upscaler** and **AI Image Upscaler** artifact cleanup; optional download after Z-Image **Setup Models** (non-fatal on failure); **`torch.jit.load`** deprecation on Python 3.14+ suppressed for LaMa loads only.
+- **Video pre-analysis** pipeline: **`video_frame_preanalysis`**, **`video_frame_noise`** (per-frame artifact maps for inpaint + Real-ESRGAN pass).
+
 ### Changed
-- **`.gitignore`**: **`/Test_Files/`** (local media only), **`.DS_Store`**, **`Thumbs.db`**. **`.SRCINFO`** remains ignored; removed from git tracking (regenerate in the AUR clone with **`makepkg --printsrcinfo`**).
+- **AI Video Upscaler**: Heuristic **artifact mask** — macroblock layer no longer **`NORM_MINMAX`**-stretches every frame; combing layer downweighted; per-frame percentile gate; stricter inpaint threshold, coverage caps (skip inpaint if too broad), LaMa only for sparse masks; gentler Telea/LaMa blend and binary-mask erosion; order remains **local repair → Real-ESRGAN**.
+- **AI Image Upscaler (Z-Image)**: **Image-specific** stricter mask gate and blend/coverage limits so cleanup targets **minor** compression defects only; clearer log lines when cleanup is skipped vs applied.
+- **`.gitignore`**: **`/Test_Files/`**, **`.DS_Store`**, **`Thumbs.db`**; **`.SRCINFO`** not tracked in this repo (regenerate in the AUR clone).
 
 ### Fixed
-- **GitHub Actions**: **`ci.yml`** replaces **`ci-tests.yml`**; pytest skips **`Test_Files/`**-dependent tests when the media bundle is absent (CI checkout). **`ml_runtime`** integration test accepts any documented reason string.
-- **Release workflow**: Removed **`gh release delete`** (was brittle); **`softprops/action-gh-release`** uses valid **`overwrite_files`** (replaces removed **`replace_artifacts`**); uploads **exactly three** named assets (`win64` exe, `mac64` zip, `-src.zip`).
+- **LaMa / inpaint**: Soft masks no longer expand to near full-frame holes (threshold + binary composite); reduced grey/muddy regions and mis-painting.
+- **GitHub Actions**: **`ci.yml`** replaces **`ci-tests.yml`**; pytest skips **`Test_Files/`** tests when media absent; **`ml_runtime`** integration test accepts documented reason strings.
+- **Release workflow**: **`softprops/action-gh-release`** uses **`overwrite_files`**; uploads three named assets (`win64` exe, `mac64` zip, `-src.zip`).
 
 ## [4.7.13] - 2026-03-27
 
