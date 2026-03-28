@@ -346,7 +346,7 @@ class AIImageUpscalerPanel(QWidget):
             "LANCZOS resize to target resolution, then Z-Image-Turbo img2img for cleanup and detail."
         )
         v_opts = QVBoxLayout(grp_opts)
-        v_opts.setContentsMargins(9, 1, 9, 3)
+        v_opts.setContentsMargins(9, 2, 9, 3)
         v_opts.setSpacing(0)
         v_opts.addStretch(1)
 

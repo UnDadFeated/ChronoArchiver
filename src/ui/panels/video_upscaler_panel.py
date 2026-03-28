@@ -786,7 +786,7 @@ class VideoUpscalerPanel(QWidget):
             self,
             "Open video",
             "",
-            "Video (*.mp4 *.mkv *.mov *.avi *.webm);;All files (*)",
+            "Video (*.mp4 *.mkv *.mov *.avi *.webm *.3gp);;All files (*)",
         )
         if p:
             self._edit_video.setText(p)
@@ -837,12 +837,21 @@ class VideoUpscalerPanel(QWidget):
         idx = max(0, n // 10) if n > 0 else 0
         fr = _read_video_frame(path, idx)
 
+        # Build runner on the GUI thread: PyTorch/CUDA init and self._runner from a worker
+        # thread can deadlock Qt or race; inference alone runs in the worker.
+        try:
+            runner = self._get_runner(ns, tile)
+        except Exception as e:
+            self._job_in_progress = False
+            self._update_buttons()
+            self._add_log(f"Preview error: {e}")
+            return
+
         def work():
             try:
                 if fr is None:
                     self._sig.preview_frame.emit({"error": "no frame"})
                     return
-                runner = self._get_runner(ns, tile)
                 out = self._process_bgr(
                     fr,
                     runner,
@@ -915,6 +924,15 @@ class VideoUpscalerPanel(QWidget):
         c_sat = self._sat.value()
         c_sharp = self._sharp.value()
 
+        try:
+            runner = self._get_runner(ns, tile)
+        except Exception as e:
+            self._job_in_progress = False
+            self._bar.setVisible(False)
+            self._update_buttons()
+            self._add_log(f"ERROR: {e}")
+            return
+
         def work():
             import cv2
 
@@ -928,7 +946,6 @@ class VideoUpscalerPanel(QWidget):
                 fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
                 if n <= 0:
                     n = -1
-                runner = self._get_runner(ns, tile)
                 ok, fr0 = cap.read()
                 if not ok or fr0 is None:
                     self._sig.log_msg.emit("ERROR: empty video")
