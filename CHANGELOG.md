@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [4.7.9] - 2026-03-28
+
+### Changed
+- **Push update docs** (**`AGENTS.md`**, **`.cursor/rules/push-update.mdc`**): Checklist ends after AUR; no extra packaging or remote follow-up steps.
+- **AI Image Upscaler**: **Source Photo Adjustment Tools** box uses a slightly smaller bottom inset; **Console** log area **+2px** (max heights).
+- **AI Video Upscaler**: **Real-ESRGAN · output & color** inner margins tightened top/bottom (space to **Console**; log min height **103px**).
+- **CHANGELOG** (4.7.4): Release-workflow line no longer mentions Bazzite.
+
 ## [4.7.8] - 2026-03-27
 
 ### Fixed
@@ -34,7 +42,7 @@
 ### Changed
 - **Status bar**: **WEIGHTS** pre-req (Real-ESRGAN x2+x4 checkpoints for AI Video Upscaler) shown between **UPSCALER MODELS** and **READY**; startup sequence includes **CHECKING WEIGHTS…**.
 - **AI Video Upscaler**: Replaced the **`?`** modal guide with the same **red border pulse** onboarding as other panels (PyTorch → weights **Download** → **Browse…** → **Run video upscale** when ready).
-- **Release workflow**: Repo **`AGENTS.md`** documents the push-update checklist (AUR push via **`git push aur HEAD:master`** from a detached worktree; Bazzite step removed).
+- **Release workflow**: Repo **`AGENTS.md`** documents the push-update checklist (AUR push via **`git push aur HEAD:master`** from a detached worktree).
 
 ## [4.7.3] - 2026-03-27
 

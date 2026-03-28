@@ -32,6 +32,8 @@ When the user says **push update** (or clearly means that single release flow), 
    - Add a short-lived worktree on `aur/master`, copy in the updated `PKGBUILD` from `main`, regenerate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`, commit on that branch, then push.
    - **Push command:** from that worktree directory (often **detached HEAD** after `git worktree add … aur/master`), run **`git push aur HEAD:master`**. That sends the current commit to the remote branch `master`. A plain `git push aur master` can fail in detached state because there is no local `master` branch name—`HEAD:master` is explicit: “push this exact commit to `master` on `aur`.”
 
+**Done after step 5.** Stop there; do not add packaging steps, extra remotes, or follow-up instructions beyond this checklist.
+
 ## Contrast with older wording
 
 - **Not** a push update: daily commits, “push main”, “fix and push”, AUR-only refresh without a full release. Those flows **do not** bump version or rebuild GitHub installers unless the user explicitly switches to **push update**.

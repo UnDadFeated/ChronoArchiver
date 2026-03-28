@@ -424,7 +424,7 @@ class VideoUpscalerPanel(QWidget):
 
         grp_ctrl = QGroupBox("Real-ESRGAN · output & color")
         vc_ctrl = QVBoxLayout(grp_ctrl)
-        vc_ctrl.setContentsMargins(8, 4, 10, 6)
+        vc_ctrl.setContentsMargins(8, 1, 10, 2)
         vc_ctrl.setSpacing(0)
         h_left = QHBoxLayout()
         h_left.setSpacing(4)
@@ -552,7 +552,7 @@ class VideoUpscalerPanel(QWidget):
         v_log.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         v_log.setReadOnly(True)
         v_log.setAcceptRichText(True)
-        v_log.setMinimumHeight(96)
+        v_log.setMinimumHeight(103)
         vl.addWidget(v_log, 1)
         root.addWidget(grp_log, 1)
         self._log_edit = v_log
