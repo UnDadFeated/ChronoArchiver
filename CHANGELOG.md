@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [4.7.10] - 2026-03-28
+
+### Fixed
+- **AI Video Upscaler**: **REFRESH** / full export load **Real-ESRGAN** on the **GUI thread** before the worker runs inference only — avoids **Qt + PyTorch/CUDA** deadlocks and a stuck **busy** state that disabled all panel controls.
+
+### Changed
+- **AI Video Upscaler**: **Browse** video filter includes **`.3gp`**.
+- **AI Image Upscaler**: **SOURCE** strip inner layout **+1px** top inset (path row sits slightly lower in the box).
+
 ## [4.7.9] - 2026-03-28
 
 ### Changed
