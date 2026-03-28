@@ -1,6 +1,6 @@
 # Maintainer: UnDadFeated
 pkgname=chronoarchiver
-pkgver=4.7.13
+pkgver=4.7.14
 pkgrel=1
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
