@@ -566,7 +566,7 @@ class AIImageUpscalerPanel(QWidget):
 
         grp_src_tools = QGroupBox("Source Photo Adjustment Tools")
         v_src_tools = QVBoxLayout(grp_src_tools)
-        v_src_tools.setContentsMargins(7, 3, 7, 5)
+        v_src_tools.setContentsMargins(7, 3, 7, 3)
         v_src_tools.setSpacing(4)
 
         h_src_tools = QHBoxLayout()
@@ -709,7 +709,7 @@ class AIImageUpscalerPanel(QWidget):
         root.addLayout(h_tools_root)
 
         grp_log = QGroupBox("Console")
-        grp_log.setMaximumHeight(100)
+        grp_log.setMaximumHeight(102)
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(8, 3, 8, 5)
         v_log.setSpacing(0)
@@ -718,7 +718,7 @@ class AIImageUpscalerPanel(QWidget):
         self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
-        self._log_edit.setMaximumHeight(70)
+        self._log_edit.setMaximumHeight(72)
         self._log_edit.document().setMaximumBlockCount(800)
         v_log.addWidget(self._log_edit)
         root.addWidget(grp_log, 0)
