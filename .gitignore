@@ -175,5 +175,12 @@ cython_debug/
 brain/
 .gemini/
 
-# AUR-only (main repo does not need this)
+# AUR: regenerate with `makepkg --printsrcinfo` in the AUR package clone (do not commit in main).
 .SRCINFO
+
+# Optional local test media (never push). CI skips tests that need this tree.
+/Test_Files/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
