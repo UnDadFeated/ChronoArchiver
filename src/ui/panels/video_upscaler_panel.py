@@ -46,6 +46,7 @@ from ui.panel_widgets import (
     format_net_speed,
     path_browse_btn_qss,
     pytorch_installer_vram_guidance,
+    upscaler_browse_btn_idle_qss,
 )
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -70,9 +71,11 @@ from core.venv_manager import get_ml_torch_install_label
 
 from ui.panels.upscaler_panel import EngineSetupDialog
 
-# REFRESH (left cluster) + UPSCALE (right): same fixed box; guide pulse only swaps border color.
+# REFRESH: compact; UPSCALE matches image upscaler Run button (108×28).
 _VUP_ACTION_W = 80
 _VUP_ACTION_H = 22
+_VUP_RUN_W = 108
+_VUP_RUN_H = 28
 
 
 def _refresh_video_btn_stylesheet(*, pulse: bool = False) -> str:
@@ -98,14 +101,14 @@ def _refresh_video_btn_stylesheet(*, pulse: bool = False) -> str:
 
 
 def _run_video_btn_stylesheet(*, pulse: bool = False) -> str:
-    """Run video upscale (#btnStart): fixed size; guide pulse only swaps border (red ↔ green)."""
+    """Video UPSCALE (#btnStart): same geometry as image upscaler; guide pulse swaps border."""
     bd = "#ef4444" if pulse else "#10b981"
-    w, h = _VUP_ACTION_W, _VUP_ACTION_H
+    w, h = _VUP_RUN_W, _VUP_RUN_H
     return (
         "QPushButton#btnStart {"
         "background-color:#10b981; color:#064e3b; "
         f"border:2px solid {bd}; "
-        "font-size:9px; font-weight:900; "
+        "font-size:10px; font-weight:900; "
         f"min-width:{w}px; max-width:{w}px; min-height:{h}px; max-height:{h}px; padding:0px; "
         "}"
         "QPushButton#btnStart:hover:enabled {"
@@ -114,7 +117,7 @@ def _run_video_btn_stylesheet(*, pulse: bool = False) -> str:
         "}"
         "QPushButton#btnStart:disabled {"
         "background-color:#1a1a1a; color:#6b7280; border:2px solid #262626; "
-        "font-size:9px; font-weight:900; "
+        "font-size:10px; font-weight:900; "
         f"min-width:{w}px; max-width:{w}px; min-height:{h}px; max-height:{h}px; padding:0px; "
         "}"
     )
@@ -322,6 +325,9 @@ class VideoUpscalerPanel(QWidget):
         self._btn_browse = QPushButton("Browse…")
         self._btn_browse.setObjectName("browseBtn")
         self._btn_browse.setFixedSize(self._browse_btn_w, _ctrl_h)
+        self._btn_browse.setStyleSheet(
+            upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+        )
         self._btn_browse.clicked.connect(self._browse_video)
         h_vid.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
         vs.addLayout(h_vid)
@@ -368,7 +374,7 @@ class VideoUpscalerPanel(QWidget):
         self._btn_dl_weights.setFixedSize(_ew, _eh)
         self._btn_dl_weights.setStyleSheet(eng_row_btn_qss(_ew, _eh, "#aaa", "#262626"))
         self._btn_dl_weights.clicked.connect(self._on_download_weights)
-        self._btn_rm_weights = QPushButton("Uninstall weights")
+        self._btn_rm_weights = QPushButton("Uninstall Weights")
         self._btn_rm_weights.setFixedSize(_ew, _eh)
         self._btn_rm_weights.setStyleSheet(eng_row_btn_qss(_ew, _eh, "#6b7280", "#262626"))
         self._btn_rm_weights.clicked.connect(self._on_remove_weights)
@@ -392,7 +398,9 @@ class VideoUpscalerPanel(QWidget):
         vo.addWidget(QLabel("Original", objectName="previewTitle"))
         self._lbl_orig = QLabel("No video")
         self._lbl_orig.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_orig.setMinimumSize(280, 320)
+        # Shorter preview column frees ~25% vertical min vs 320px; stretch favors console below.
+        _prev_min_h = 240
+        self._lbl_orig.setMinimumSize(280, _prev_min_h)
         self._lbl_orig.setStyleSheet("color:#3f3f46; font-size:10px;")
         vo.addWidget(self._lbl_orig, 1)
         hp.addWidget(fr_o, 1)
@@ -407,11 +415,12 @@ class VideoUpscalerPanel(QWidget):
         vp.addWidget(QLabel("AI preview", objectName="previewTitle"))
         self._lbl_prev = QLabel("—")
         self._lbl_prev.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_prev.setMinimumSize(280, 320)
+        self._lbl_prev.setMinimumSize(280, _prev_min_h)
         self._lbl_prev.setStyleSheet("color:#3f3f46; font-size:10px;")
         vp.addWidget(self._lbl_prev, 1)
         hp.addWidget(fr_p, 1)
-        root.addWidget(grp_prev, 5)
+        # ~25% less slack to preview vs old 5:0; console gets stretch so it grows with the window.
+        root.addWidget(grp_prev, 3)
 
         grp_ctrl = QGroupBox("Real-ESRGAN · output & color")
         vc_ctrl = QVBoxLayout(grp_ctrl)
@@ -505,7 +514,7 @@ class VideoUpscalerPanel(QWidget):
 
         self._btn_run = QPushButton("UPSCALE")
         self._btn_run.setObjectName("btnStart")
-        self._btn_run.setFixedSize(_VUP_ACTION_W, _VUP_ACTION_H)
+        self._btn_run.setFixedSize(_VUP_RUN_W, _VUP_RUN_H)
         self._btn_run.setStyleSheet(_run_video_btn_stylesheet(pulse=False))
         self._btn_run.setToolTip("Export full video (H.264 + audio when possible)")
         self._btn_run.clicked.connect(self._run_full_job)
@@ -537,16 +546,15 @@ class VideoUpscalerPanel(QWidget):
         root.addLayout(h_bar)
 
         grp_log = QGroupBox("Console")
-        grp_log.setMaximumHeight(100)
         vl = QVBoxLayout(grp_log)
         v_log = QTextEdit()
         v_log.setObjectName("panelConsole")
         v_log.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         v_log.setReadOnly(True)
         v_log.setAcceptRichText(True)
-        v_log.setMaximumHeight(70)
-        vl.addWidget(v_log)
-        root.addWidget(grp_log, 0)
+        v_log.setMinimumHeight(96)
+        vl.addWidget(v_log, 1)
+        root.addWidget(grp_log, 1)
         self._log_edit = v_log
 
         self._load_prefs()
@@ -726,7 +734,9 @@ class VideoUpscalerPanel(QWidget):
         elif w == self._btn_refresh_prev:
             w.setStyleSheet(_refresh_video_btn_stylesheet(pulse=False))
         elif w == self._btn_browse:
-            w.setStyleSheet("")
+            w.setStyleSheet(
+                upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+            )
         elif w == self._btn_inst_torch:
             if self._engine_just_installed:
                 w.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#064e3b", "#10b981"))

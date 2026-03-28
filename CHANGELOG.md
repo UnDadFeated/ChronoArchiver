@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [4.7.8] - 2026-03-27
+
+### Fixed
+- **AI Image Upscaler / AI Video Upscaler**: Guide pulse no longer **shrinks/grows** the row — **Browse…** idle uses the same fixed **`upscaler_browse_btn_idle_qss`** box as the pulse (not an empty stylesheet falling back to global **`QPushButton`** padding). **`path_browse_btn_qss`** sets **`margin:0px`** for consistent sizing.
+
+### Changed
+- **AI Image Upscaler**: Primary action label **Run upscale** → **UPSCALE**.
+- **AI Video Upscaler**: **UPSCALE** button matches image upscaler geometry (**108×28**, **10px** font); preview column min height **240** (was **320**) with **3:1** stretch vs **Console** so the log can grow; **Uninstall weights** → **Uninstall Weights**.
+
 ## [4.7.7] - 2026-03-27
 
 ### Changed
