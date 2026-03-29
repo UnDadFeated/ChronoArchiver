@@ -167,6 +167,7 @@ cython_debug/
 !/CHANGELOG.md
 !/README.md
 !/AGENTS.md
+!/tests/README.md
 
 # Cursor/IDE (local only)
 .cursor/
