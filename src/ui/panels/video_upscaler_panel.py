@@ -2,8 +2,10 @@
 AI Video Upscaler — Real-ESRGAN (x2plus/x4plus), industry-style target resolutions, fixed cleanup pipeline, AV1 export.
 
 Auto (no second NN): one pre-scan pass per clip — per-frame noise, grade, WB cast, skin warmth, and
-artifact maps (macroblock/combing/banding/chroma/dropout); grades smoothed ±2 frames. Encode blends
-classical inpaint where the map is high, then Real-ESRGAN; temp artifact data is removed after mux.
+artifact maps (macroblock/combing/banding/chroma/dropout); grades smoothed ±3 frames, then median /
+step-limited in time to cut flicker on sharp edges (e.g. stripes). Encode blends classical inpaint
+where the map is high, then Real-ESRGAN (wider tile overlap); chroma NR is weakened on high
+luma-contrast frames. Temp artifact data is removed after mux.
 """
 
 from __future__ import annotations
@@ -92,7 +94,7 @@ from core.video_frame_preanalysis import (
     pre_scan_video_upscale,
     skin_tone_strength_from_source,
 )
-from core.video_subject_detect import VideoSubjectHints, analyze_subjects_bgr
+from core.video_subject_detect import VideoSubjectHints, analyze_subjects_bgr, subject_tracks_log_line
 from core.video_upscaler_settings import VideoUpscalerPanelSettings
 from core.debug_logger import (
     INSTALLER_APP_AI_VIDEO_UPSCALER,
@@ -112,7 +114,7 @@ _vup_log = logging.getLogger("ChronoArchiver.video_upscaler")
 # --- AI Video Upscaler: Real-ESRGAN + OpenCV (hard-coded pipeline) ---
 # Inference matches xinntao RealESRGANer defaults: tile overlap + pre-pad; FP16 on CUDA when available.
 VUP_REALESRGAN_TILE = 400  # px tile edge (0 = full frame; 400 balances VRAM vs speed for HD/4K)
-VUP_REALESRGAN_TILE_PAD = 10  # tile seam overlap (official / community default)
+VUP_REALESRGAN_TILE_PAD = 18  # wider overlap → fewer seam-related inconsistencies on busy textures
 VUP_REALESRGAN_PRE_PAD = 10  # reflect pad before RRDB (official default)
 VUP_REALESRGAN_HALF = True  # FP16 on CUDA; CPU path stays FP32 inside RealESRGANRunner
 
@@ -120,15 +122,15 @@ VUP_REALESRGAN_HALF = True  # FP16 on CUDA; CPU path stays FP32 inside RealESRGA
 VUP_MAX_EDGE = 7680
 
 # Post–SR OpenCV chain (order: downscale-if-needed INTER_AREA → bilateral → unsharp). RRDB already denoises.
-# Slightly lighter bilateral + stronger unsharp + mild contrast = a bit more perceived detail without harsh halos.
+# Mild contrast + moderate unsharp (slightly softer than before) to avoid oversharpened edges.
 VUP_DENOISE_BILATERAL_D = 5
 VUP_DENOISE_SIGMA_COLOR = 42
 VUP_DENOISE_SIGMA_SPACE = 42
 VUP_POST_BRIGHTNESS = 0.0
 VUP_POST_CONTRAST = 1.03
 VUP_POST_SATURATION = 1.0
-VUP_UNSHARP_STRENGTH = 0.46
-VUP_UNSHARP_GAUSSIAN_SIGMA = 2.65  # slightly tighter mask than 3.0 → finer edge emphasis
+VUP_UNSHARP_STRENGTH = 0.37  # softer halos → less temporal shimmer on high-contrast edges when unsharp varies
+VUP_UNSHARP_GAUSSIAN_SIGMA = 2.95  # wider Gaussian pairs with lower strength
 
 # Chroma-only denoise (low-light red/green/magenta speckle, VHS & analog color noise).
 # Same principle as editors' "chroma noise reduction" / AviSynth CNR2: smooth U & V in YUV, leave Y sharp.
@@ -342,6 +344,26 @@ def _blend_nr_strength(bgr, strength: float, denoise_fn):
     if a >= 1.0 - 1e-6:
         return d
     return cv2.addWeighted(bgr, 1.0 - a, d, a, 0)
+
+
+def _chroma_nr_strength_after_edge_gate(bgr_src, strength: float) -> float:
+    """
+    YUV chroma bilateral can smear or shift at sharp B/W boundaries when strength flickers frame to frame.
+    On high Laplacian energy (stripes, text), reduce effective chroma NR.
+    """
+    import cv2
+    import numpy as np
+
+    if bgr_src is None or bgr_src.size == 0 or strength <= 1e-6:
+        return float(strength)
+    sm = _resize_bgr_for_analysis(bgr_src, 560)
+    yuv = cv2.cvtColor(sm, cv2.COLOR_BGR2YUV)
+    y = yuv[:, :, 0]
+    lap = cv2.Laplacian(y, cv2.CV_32F)
+    e = float(np.mean(np.abs(lap)))
+    # e ~5–12 calm; dense stripes / print often 20–50+
+    t = float(np.clip((e - 8.0) / 30.0, 0.0, 1.0))
+    return float(strength * (1.0 - 0.72 * t))
 
 
 def _run_video_btn_stylesheet(*, pulse: bool = False, w: int, h: int) -> str:
@@ -1137,6 +1159,7 @@ class VideoUpscalerPanel(QWidget):
             luma_nr_strength = 1.0 if _auto_luma_nr_wanted_from_source(bgr) else 0.0
         if chroma_nr_strength is None:
             chroma_nr_strength = 1.0 if _auto_chroma_nr_wanted_from_source(bgr) else 0.0
+        chroma_nr_strength = _chroma_nr_strength_after_edge_gate(bgr, float(chroma_nr_strength))
         lama = self._get_lama_runner() if artifact_mask is not None else None
         bgr_for_sr = (
             prepare_source_for_realesrgan(bgr, artifact_mask, lama=lama)
@@ -1729,8 +1752,18 @@ class VideoUpscalerPanel(QWidget):
                     aest_pack = pre
                     self._sig.log_msg.emit(
                         "Per-frame analysis: noise, grade (b/c/sat/unsharp), WB cast, skin warmth — "
-                        f"temporally smoothed ±2 frames, {len(pre['luma_nr'])} source frame(s)."
+                        f"temporally smoothed ±3 frames + edge-flicker stabilization, {len(pre['luma_nr'])} source frame(s)."
                     )
+                    try:
+                        self._sig.log_msg.emit(
+                            subject_tracks_log_line(
+                                pre["subject_face"],
+                                pre["subject_full_body"],
+                                pre["subject_hair"],
+                            )
+                        )
+                    except Exception:
+                        pass
                     if artifact_dir:
                         self._sig.log_msg.emit(
                             "Artifact maps (macroblock, combing, banding, chroma, dropout) saved for "
@@ -1787,11 +1820,14 @@ class VideoUpscalerPanel(QWidget):
                         f"bΔ={ae0[0]:+.1f}, c={ae0[1]:.2f}, sat={ae0[2]:.2f}, "
                         f"unsharp={ae0[3]:.2f} (soft↔sharp), cast={c0:.3f}, skin={sk0:.2f}"
                     )
-                try:
-                    sub = analyze_subjects_bgr(fr0)
-                    self._sig.log_msg.emit(sub.log_line())
-                except Exception:
-                    pass
+                if aest_pack is None:
+                    try:
+                        sub = analyze_subjects_bgr(fr0)
+                        self._sig.log_msg.emit(
+                            "Pre-scan unavailable — subject hint from opening frame only. " + sub.log_line()
+                        )
+                    except Exception:
+                        pass
                 out0 = self._process_frame(
                     fr0,
                     runner,

@@ -364,6 +364,10 @@ class AIImageUpscalerPanel(QWidget):
 
         # Photo edit / preview state (rotate / crop / flip / zoom).
         self._preview_zoom: float = 1.0
+        self._preview_resize_timer = QTimer(self)
+        self._preview_resize_timer.setSingleShot(True)
+        self._preview_resize_timer.setInterval(75)
+        self._preview_resize_timer.timeout.connect(self._refresh_previews_for_zoom_only)
         self._work_pil: Image.Image | None = None
         self._edited_path: str | None = None
         # Working edited image written under Settings so the engine always uses final adjusted pixels.
@@ -440,7 +444,7 @@ class AIImageUpscalerPanel(QWidget):
         grp_mod.setToolTip(
             "All inference is local.\n\n"
             "• Z-Image-Turbo (Setup Models) — one HF snapshot for upscale, cleanup, and Beautify "
-            "(same weights; Beautify uses built-in retouch text + auto parameters).\n"
+            "(same weights; Beautify uses stronger img2img + magazine-style prompts than plain upscale).\n"
             "• OpenCV — face region for Beautify crops.\n"
             "• BLIP (image-captioning-base) — full face + split facial regions (heuristic zones) before img2img; "
             "first run downloads ~1 GB into the Hugging Face cache.\n\n"
@@ -515,8 +519,8 @@ class AIImageUpscalerPanel(QWidget):
         self._lbl_engine_local.setStyleSheet("font-size:7px; color:#71717a;")
         self._lbl_engine_local.setWordWrap(True)
         self._lbl_engine_local.setToolTip(
-            "Beautify uses Z-Image for the actual edit. OpenCV finds the face; BLIP (optional, ~1 GB first download) "
-            "captions skin and makeup/grooming cues from the crop, then Z-Image runs. If BLIP fails, built-in retouch text is used."
+            "Beautify uses Z-Image with higher denoise than plain upscale. OpenCV finds the face; BLIP (optional) "
+            "captions scene + skin + grooming; if BLIP fails, built-in movie-star / editorial text is used."
         )
         v_mod.addWidget(self._lbl_engine_local)
         left_strip_col = QWidget()
@@ -679,9 +683,10 @@ class AIImageUpscalerPanel(QWidget):
         self._chk_beautify = QCheckBox("Beautify")
         self._chk_beautify.setChecked(False)
         self._chk_beautify.setToolTip(
-            "When a face is detected: built-in retouch text follows Freepik Pikaso “high-end skin retouch & makeup” intent "
-            f"(editorial polish; not a Freepik API). Reference: {PIKASO_HIGH_END_SKIN_SPACE_URL}\n"
-            "Unchecked: high-detail upscale, minimal change."
+            "When a face is detected: magazine / movie-star editorial polish (stronger refinement than plain upscale) — "
+            "dimensional light, luminous skin, camera-ready grooming, same person (identity preserved). "
+            f"Pikaso-style skin reference (not an API): {PIKASO_HIGH_END_SKIN_SPACE_URL}\n"
+            "Unchecked: high-detail upscale only, minimal img2img change."
         )
         self._chk_beautify.setStyleSheet("color:#d4d4d8; font-size:9px; font-weight:600;")
         self._chk_beautify.setFixedHeight(28)
@@ -764,6 +769,11 @@ class AIImageUpscalerPanel(QWidget):
         self._refresh_engine_and_models()
         self._update_buttons()
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self._get_active_image_path():
+            self._preview_resize_timer.start()
+
     def _panel_prefs_payload(self) -> dict:
         return {
             "source_image": "",
@@ -791,7 +801,7 @@ class AIImageUpscalerPanel(QWidget):
                 self._work_pil = ImageOps.exif_transpose(im).convert("RGB")
         except Exception:
             self._work_pil = None
-        self._show_original_preview(p)
+        QTimer.singleShot(0, lambda p=p: self._show_original_preview(p))
         self._lbl_up.clear()
         self._lbl_up.setText("—")
         self._last_result = None
@@ -1245,9 +1255,14 @@ class AIImageUpscalerPanel(QWidget):
         if p:
             self._apply_source_path(p)
 
-    def _preview_target_size(self) -> tuple[int, int]:
+    def _preview_target_size_for_label(self, label: QLabel) -> tuple[int, int]:
+        """Max size for scaled pixmap: fit the preview label (× zoom); square fallback before layout."""
         z = max(0.75, min(float(self._preview_zoom), 1.75))
-        return int(320 * z), int(240 * z)
+        w = label.width()
+        h = label.height()
+        if w < 16 or h < 16:
+            w, h = 320, 320
+        return max(64, int(w * z)), max(64, int(h * z))
 
     def _get_active_image_path(self) -> str:
         if self._edited_path and os.path.isfile(self._edited_path):
@@ -1259,7 +1274,7 @@ class AIImageUpscalerPanel(QWidget):
         if pix.isNull():
             self._lbl_orig.setText("Could not load")
             return
-        w, h = self._preview_target_size()
+        w, h = self._preview_target_size_for_label(self._lbl_orig)
         scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self._lbl_orig.setPixmap(scaled)
         self._lbl_orig.setText("")
@@ -1273,7 +1288,7 @@ class AIImageUpscalerPanel(QWidget):
         if pix.isNull():
             self._lbl_up.setText("Preview error")
             return
-        tw, th = self._preview_target_size()
+        tw, th = self._preview_target_size_for_label(self._lbl_up)
         scaled = pix.scaled(tw, th, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self._lbl_up.setPixmap(scaled)
         self._lbl_up.setText("")
@@ -1470,15 +1485,15 @@ class AIImageUpscalerPanel(QWidget):
                 _log(auto.summary)
                 beautify_analysis: str | None = None
                 if beautify and portrait and face_bbox:
-                    _log("Beautify: analyzing full face + facial zones with local BLIP…")
+                    _log("Beautify: analyzing scene (whole image) + full face + facial zones with local BLIP…")
                     notes = analyze_beautify_imperfections(path, face_bbox, _log)
                     beautify_analysis = notes if notes else None
                     if beautify_analysis:
-                        _log("Beautify: applying Z-Image img2img using analysis + retouch template.")
+                        _log("Beautify: applying magazine-style glam (Z-Image + analysis + identity-locked prompt).")
                     else:
                         _log(
-                            "Beautify: no BLIP notes — using Pikaso-style retouch template "
-                            "(Freepik space reference in Beautify tooltip)."
+                            "Beautify: no BLIP notes — using built-in movie-star / editorial template "
+                            "(see Beautify tooltip)."
                         )
                     if freckle_heavy:
                         _log("Freckle-dense heuristic: extra soften line in retouch text.")

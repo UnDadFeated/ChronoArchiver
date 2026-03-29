@@ -1,10 +1,13 @@
 """
-Local BLIP image-captioning for Beautify: full-face skin/makeup passes plus per-region facial detail.
+Local BLIP image-captioning for Beautify: **whole-image scene** caption, full-face skin/makeup,
+and per-region facial detail.
 
 Uses ``Salesforce/blip-image-captioning-base`` (transformers stack; first run downloads weights
 into the Hugging Face cache, same as Z-Image). Runs on CPU to leave GPU memory for Z-Image.
 
-Face subregions use heuristic splits inside the OpenCV face box (no landmark model).
+The unconditional pass describes **subjects, setting, and lighting** so the retouch prompt can
+stay consistent with the photo. Face subregions use heuristic splits inside the OpenCV face box
+(no landmark model).
 """
 
 from __future__ import annotations
@@ -60,6 +63,31 @@ def _sanitize_analysis_notes(s: str, *, max_len: int = 280) -> str:
     return s
 
 
+def _unconditional_scene_caption(
+    processor,
+    model,
+    pil_rgb: Image.Image,
+    *,
+    max_side: int = 384,
+    max_gen_length: int = 80,
+) -> str:
+    """BLIP image-only caption: scene, people, objects, general lighting (no face box required)."""
+    import torch
+
+    pil = pil_rgb.copy()
+    w, h = pil.size
+    m = max(w, h, 1)
+    if m > max_side:
+        s = max_side / m
+        pil = pil.resize((max(1, int(w * s)), max(1, int(h * s))), Image.Resampling.LANCZOS)
+    inputs = processor(images=pil, return_tensors="pt")
+    inputs = {k: v.to("cpu") for k, v in inputs.items()}
+    with torch.no_grad():
+        out_ids = model.generate(**inputs, max_length=max_gen_length, num_beams=4, do_sample=False)
+    raw = processor.decode(out_ids[0], skip_special_tokens=True)
+    return _sanitize_analysis_notes(raw.strip(), max_len=360)
+
+
 def _conditional_caption(
     processor,
     model,
@@ -93,7 +121,7 @@ def _conditional_caption(
 # Full-face prefixes (wide crop).
 _SKIN_PREFIX = "This portrait shows skin and complexion issues such as"
 _MAKEUP_PREFIX = (
-    "For this face, balanced editorial makeup and grooming appropriate to the source photo could include"
+    "For red-carpet and magazine-cover grooming while keeping the same person unchanged, appropriate polish could include"
 )
 
 
@@ -210,6 +238,10 @@ def analyze_beautify_imperfections(
             return ""
 
         parts: list[str] = []
+
+        scene_notes = _unconditional_scene_caption(processor, model, pil)
+        if scene_notes:
+            parts.append(f"Scene and subjects (match this context): {scene_notes}")
 
         skin_raw = _conditional_caption(processor, model, crop_full, _SKIN_PREFIX, max_gen_length=100)
         skin_notes = _sanitize_analysis_notes(skin_raw, max_len=280)

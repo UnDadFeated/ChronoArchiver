@@ -1,5 +1,8 @@
 """
-First-frame subject hints for AI Video Upscaler (OpenCV only — no extra model downloads).
+Per-frame subject hints for AI Video Upscaler (OpenCV only — no extra model downloads).
+
+Used during **full clip pre-scan** (every decoded frame) for logging; **does not** drive noise,
+grade, or Real-ESRGAN parameters (those come from per-frame stats in ``video_frame_preanalysis``).
 
 - **Face**: Haar frontal cascade (shared with image upscaler).
 - **Human / person**: HOG pedestrian detector (full-body; complements face for distant figures).
@@ -11,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from core.zimage_portrait import detect_faces_bgr
 
 
@@ -20,7 +25,7 @@ def _yn(b: bool) -> str:
 
 @dataclass(frozen=True)
 class VideoSubjectHints:
-    """Cheap scene hints from one BGR frame (typically first frame)."""
+    """Scene hints from one BGR frame (e.g. preview thumb)."""
 
     face: bool
     person_full_body: bool
@@ -31,18 +36,45 @@ class VideoSubjectHints:
         return self.face or self.person_full_body
 
     def summary_line(self) -> str:
-        """Second line under source caption (compact)."""
+        """Second line under source caption (compact). Preview frame only — not whole-clip stats."""
         return (
-            f"Subjects: human {_yn(self.human)} · face {_yn(self.face)} · "
+            f"Preview frame: human {_yn(self.human)} · face {_yn(self.face)} · "
             f"full-body {_yn(self.person_full_body)} · hair (est.) {_yn(self.hair_likely)}"
         )
 
     def log_line(self) -> str:
-        """Console line for encode start (matches UI facts)."""
+        """Single-frame log line (e.g. fallback when pre-scan failed)."""
         return (
-            f"Scene detection (first frame): human={_yn(self.human)}, face={_yn(self.face)}, "
+            f"Scene detection (single frame): human={_yn(self.human)}, face={_yn(self.face)}, "
             f"full-body person={_yn(self.person_full_body)}, hair (heuristic)={_yn(self.hair_likely)}"
         )
+
+
+def subject_tracks_log_line(
+    face: np.ndarray,
+    full_body: np.ndarray,
+    hair: np.ndarray,
+) -> str:
+    """
+    Summarize per-frame subject flags from pre-scan (counts how often each hint is true).
+
+    Informational only — upscale math does not use these arrays.
+    """
+    f = np.asarray(face, dtype=np.float64).ravel()
+    b = np.asarray(full_body, dtype=np.float64).ravel()
+    h = np.asarray(hair, dtype=np.float64).ravel()
+    n = int(f.size)
+    if n <= 0 or b.size != n or h.size != n:
+        return "Scene detection: no per-frame subject data."
+    # Stored as 0/1 uint8 or float
+    mf = float(np.mean(f > 0.5))
+    mb = float(np.mean(b > 0.5))
+    mh = float(np.mean(h > 0.5))
+    return (
+        f"Scene detection ({n} frames, informational): "
+        f"face≈{100.0 * mf:.0f}% of frames, full-body person≈{100.0 * mb:.0f}%, "
+        f"hair (heuristic)≈{100.0 * mh:.0f}% — does not affect noise/grade/AI upscale"
+    )
 
 
 def _hog_person_present(gray_small, *, max_side: int = 800) -> bool:
