@@ -2,6 +2,13 @@
 Automatic Z-Image img2img parameters (scale, max edge, strength, steps, CFG).
 
 Heuristics from source size, portrait/beautify, and freckle hint only (no user prompt field).
+
+**Reference (public guides):** Z-Image Turbo img2img “polish” passes often use **strength ~0.15–0.25**
+and **~8 steps**; text-to-image recipes for this family frequently use **very low guidance** (0–2).
+Beautify needs **stronger** text steering than plain upscale (magazine / glamour intent) but still
+**below** typical SD portrait CFG — use **~3** so negatives and positives both apply without the
+muddy reds/greys seen at CFG 6+ on this checkpoint. **Plain upscale** keeps **lower strength** and
+**cfg=0** for maximum fidelity.
 """
 
 from __future__ import annotations
@@ -50,27 +57,28 @@ def infer_zimage_params(
     """
     :param ow, oh: Source image dimensions (pixels).
     :param portrait_detected: True when a face was found (used only with ``beautify``).
-    :param freckle_heavy: Heuristic — small steps/CFG bump when Beautify + portrait.
-    :param beautify: If True and a face exists, use soft beautify params; otherwise minimal-change upscale.
+    :param freckle_heavy: Heuristic — slightly lower strength/CFG when Beautify + portrait (dense freckles).
+    :param beautify: If True and a face exists, use **magazine-style** img2img (higher strength than plain upscale).
     """
     scale, max_side = _pick_scale_and_max_side(ow, oh)
     if beautify and portrait_detected:
-        # Subtle img2img (~0.2–0.35 strength) + moderate CFG (~6–7): natural retouch, less color drift.
-        strength = 0.26
-        steps = 8
-        cfg = 6.0
+        # Clear separation from plain upscale: “controlled glam” band (~0.27–0.32 in public Z-Image img2img guides).
+        strength = 0.29
+        steps = 9
+        cfg = 3.0
         if freckle_heavy:
-            steps = min(9, steps + 1)
-            cfg = min(6.5, cfg + 0.25)
-            strength = _clamp(strength - 0.01, 0.24, 0.30)
+            # Dense freckles: less denoise + slightly lower CFG so color stays coherent.
+            steps = 9
+            cfg = 2.55
+            strength = _clamp(strength - 0.06, 0.20, 0.32)
         summary = (
-            f"Beautify (subtle retouch){' + freckle hint' if freckle_heavy else ''}: "
+            f"Beautify (magazine / glam){' + freckle hint' if freckle_heavy else ''}: "
             f"{scale}×, max edge {max_side}px, "
-            f"strength={strength:.2f}, steps={steps}, cfg={cfg:.1f}"
+            f"strength={strength:.2f}, steps={steps}, cfg={cfg:.2f}"
         )
     else:
-        # Beautify off or no face: maximum fidelity, minimal img2img drift.
-        strength = 0.21
+        # Plain upscale: weaker img2img than Beautify so the two modes feel clearly different.
+        strength = 0.18
         steps = 6
         cfg = 0.0
         summary = (
@@ -80,8 +88,8 @@ def infer_zimage_params(
     return ZImageAutoParams(
         scale=scale,
         max_side=max_side,
-        strength=strength,
+        strength=round(float(strength), 2),
         steps=steps,
-        cfg=cfg,
+        cfg=round(float(cfg), 2),
         summary=summary,
     )

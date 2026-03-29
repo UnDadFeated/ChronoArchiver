@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-03-27
+
+### Changed
+- **AI Image Upscaler**: Original preview fits the preview label; **Beautify** uses magazine-style prompts and stronger img2img settings than plain upscale, with identity-locked copy; plain upscale uses lower denoise and explicit “no glam” wording; auto parameters and negatives retuned; optional BLIP prefixes and scene caption path updated.
+- **AI Video Upscaler**: Pre-scan applies temporal median and neighbor step limits on grade and NR tracks; wider Real-ESRGAN tile overlap; gentler unsharp; chroma NR weakened on high luma-edge frames; **per-frame** subject hints (face / HOG / hair) with clip-wide log summary; UI caption labels preview frame only.
+
 ## [4.8.0] - 2026-03-28
 
 ### Fixed

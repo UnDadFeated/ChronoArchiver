@@ -141,7 +141,8 @@ class ZImageUpscaleEngine:
         _faithful_upscale = (
             "very high detail photorealistic upscale, faithful to the source photograph, minimal change, "
             "preserve original colors skin tone and texture, sharp fine detail, clean edges, "
-            "subtle denoise only, no beautification, no added redness or color cast, no new spots or freckles"
+            "subtle denoise only, no beautification or magazine retouch, no glamour relighting, "
+            "no added redness or color cast, no new spots or freckles"
         )
 
         if apply_beautify:
