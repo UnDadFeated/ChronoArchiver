@@ -20,7 +20,7 @@ ChronoArchiver provides five core pillars for managing large media libraries:
 | Module | Purpose |
 |--------|---------|
 | **Media Organizer** | Sorts photos and videos into date-based folder hierarchies using EXIF, filename, or metadata. |
-| **Mass AV1 Encoder** | Batch-transcodes video to AV1 with optional hardware acceleration. |
+| **Mass AV1 Encoder** | Batch transcodes video to AV1 with optional hardware acceleration. |
 | **AI Media Scanner** | Classifies images by subject presence (faces, animals) for bulk triage and archival. |
 | **AI Image Upscaler** | Z-Image-Turbo–style refinement (optional PyTorch/diffusers + HF models). |
 | **AI Video Upscaler** | Real-ESRGAN (x2/x4+) frame upscaling with color tuning, original vs sample-frame preview, FFmpeg export (optional PyTorch + weight download). |
@@ -42,11 +42,11 @@ Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/relea
 | Windows x64 | `ChronoArchiver-Setup-4.9.0-win64.exe` |
 | macOS | `ChronoArchiver-Setup-4.9.0-mac64.zip` |
 
-The setup is small; first run may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
+The installer is lightweight; the first launch may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
 
 ### Git clone (Linux, Windows, macOS)
 
-**Needs Python 3.10+.** FFmpeg is bundled.
+**Python 3.10+ is required.** FFmpeg is bundled.
 
 ```bash
 git clone https://github.com/UnDadFeated/ChronoArchiver.git
@@ -54,7 +54,7 @@ cd ChronoArchiver
 python src/bootstrap.py
 ```
 
-First launch creates an app-private venv (e.g. `~/.local/share/ChronoArchiver/venv` on Linux). Updates: `git pull` and restart when prompted.
+First launch creates an app-private venv (e.g. `~/.local/share/ChronoArchiver/venv` on Linux). Updates: run `git pull` and restart when prompted.
 
 ### Arch Linux (AUR)
 
@@ -82,7 +82,7 @@ Run [from git](#git-clone-linux-windows-macos) in toolbox/distrobox, or use an A
 | **Media Organizer** | Date-based folders (nested or flat); EXIF, video metadata, filename, mtime; move / copy / symlink; duplicates and dry-run |
 | **AI Media Scanner** | OpenCV YuNet + optional YOLO ONNX; keep/move lists; models under user data (`Setup Models` / `Install OpenCV` in-app) |
 | **Mass AV1 Encoder** | Queue with folder structure preserved; **SVT-AV1**, **NVENC** (e.g. RTX 40+), **VAAPI** / **AMF** where available; pause/resume |
-| **AI Image Upscaler** | LANCZOS + Z-Image-Turbo img2img; realtime source edits; prompt-aware mode (**blank = cleanup/upscale only**); in-app PyTorch/model setup with progress/speed telemetry |
+| **AI Image Upscaler** | LANCZOS + Z-Image-Turbo img2img; real-time source edits; prompt-aware mode (**blank = cleanup/upscale only**); in-app PyTorch/model setup with progress/speed telemetry |
 | **AI Video Upscaler** | Official **Real-ESRGAN** RRDB weights (2× / 4× nets, 3× via resize); HSV saturation + brightness/contrast + optional unsharp; **Original** vs **AI preview** on a sample frame; H.264 export via FFmpeg with optional audio copy |
 | **Requirements** | **GPU optional** — hardware AV1/NVENC when supported; full software path otherwise |
 
