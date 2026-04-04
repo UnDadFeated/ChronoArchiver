@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [5.1.3] - 2026-04-04
+
+### Changed
+- **AI Image Upscaler / AI Video Upscaler**: **SOURCE** and **Engine Status** strips use the same fixed height (**72px**, aligned across both panels). Video upscaler engine strip reduced from 84px; video SOURCE layout tightened (no filler stretches; margins aligned with image upscaler). **Console** vertical stretch increased relative to preview in both panels.
+
 ## [5.1.2] - 2026-04-04
 
 ### Changed
