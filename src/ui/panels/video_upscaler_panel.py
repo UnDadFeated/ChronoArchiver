@@ -669,6 +669,13 @@ class _Video21x9PreviewHolder(QWidget):
             w, h = w_if_full_h, ah
         else:
             w, h = aw, (aw * self._RH) // self._RW
+        # Slightly larger than tight fit while staying inside the holder (preserves 21:9).
+        w2 = min(aw, (w * 104) // 100)
+        h2 = (w2 * self._RH) // self._RW
+        if h2 > ah:
+            h2 = ah
+            w2 = (ah * self._RW) // self._RH
+        w, h = w2, h2
         w = max(160, w)
         h = max(68, h)
         self._label.setFixedSize(w, h)
@@ -800,7 +807,9 @@ class VideoUpscalerPanel(QWidget):
         self._btn_browse.setObjectName("browseBtn")
         self._btn_browse.setFixedSize(_browse_w, _browse_h)
         self._btn_browse.setStyleSheet(
-            path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
+            path_browse_btn_qss(
+                self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
+            )
         )
         self._btn_browse.clicked.connect(self._browse_video)
         h_src.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -989,7 +998,9 @@ class VideoUpscalerPanel(QWidget):
         v_log.setReadOnly(True)
         v_log.setAcceptRichText(True)
         _fm = v_log.fontMetrics()
-        v_log.setMinimumHeight(max(88, int(_fm.lineSpacing() * 4 + 28)))
+        _ls = int(_fm.lineSpacing())
+        _cons_min = max(88, int(_fm.lineSpacing() * 4 + 28)) - _ls * 2
+        v_log.setMinimumHeight(max(_ls * 4 + 20, _cons_min))
         v_log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         vl.setContentsMargins(8, 4, 8, 6)
         vl.addWidget(v_log, 1)
@@ -1469,7 +1480,9 @@ class VideoUpscalerPanel(QWidget):
             )
         elif w == self._btn_browse:
             w.setStyleSheet(
-                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
+                path_browse_btn_qss(
+                    self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
+                )
             )
         elif w == self._btn_inst_torch:
             if self._engine_just_installed:
