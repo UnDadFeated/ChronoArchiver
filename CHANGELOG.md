@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [5.1.4] - 2026-04-04
+
+### Changed
+- **AI Video Upscaler**: **SOURCE** path row matches **AI Image Upscaler** (28px field, 60×28 **Browse**, shared line-edit styling). **Source video** preview uses a centered **21:9** viewport (letterboxed horizontally when wide); preview vs **Console** layout stretch favors **taller preview** while the console keeps a **minimum height of at least four text lines**.
+
 ## [5.1.3] - 2026-04-04
 
 ### Changed

@@ -53,7 +53,6 @@ from ui.panel_widgets import (
     format_net_speed,
     path_browse_btn_qss,
     pytorch_installer_vram_guidance,
-    upscaler_browse_btn_idle_qss,
 )
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -637,6 +636,46 @@ def _format_eta_hms(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+class _Video21x9PreviewHolder(QWidget):
+    """Centers the preview label and sizes it to the largest 21:9 rectangle that fits (letterbox sides)."""
+
+    _RW, _RH = 21, 9
+
+    def __init__(self, panel: "VideoUpscalerPanel", label: QLabel, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._panel = panel
+        self._label = label
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        row.addStretch(1)
+        row.addWidget(label, 0, Qt.AlignmentFlag.AlignCenter)
+        row.addStretch(1)
+        lay.addStretch(1)
+        lay.addLayout(row)
+        lay.addStretch(1)
+        label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        aw = max(1, self.width())
+        ah = max(1, self.height())
+        w_if_full_h = (ah * self._RW) // self._RH
+        if w_if_full_h <= aw:
+            w, h = w_if_full_h, ah
+        else:
+            w, h = aw, (aw * self._RH) // self._RW
+        w = max(160, w)
+        h = max(68, h)
+        self._label.setFixedSize(w, h)
+        if self._panel._last_frame_bgr is not None:
+            self._panel._display_frame_bgr(cache=False)
+
+
 class VideoUpscalerPanel(QWidget):
     def __init__(self, parent=None, status_callback=None):
         super().__init__(parent)
@@ -692,13 +731,19 @@ class VideoUpscalerPanel(QWidget):
         self._play_timer.timeout.connect(self._on_play_tick)
         self._preview_seek_last_mono = 0.0
 
-        _ctrl_h = 24
+        # Source path row: match AI Image Upscaler (28px bar, 60×28 Browse).
+        _bar_h = 28
+        _browse_w, _browse_h = 60, _bar_h
+        _src_edit_ss = (
+            f"color:#fff; font-size:11px; font-weight:500; background:#121212; border:1px solid #1a1a1a; "
+            f"padding:2px 6px; min-height:{_bar_h}px; max-height:{_bar_h}px;"
+        )
         # SOURCE + Engine Status: same fixed height as AI Image Upscaler engine strip (PyTorch + weights rows).
         _strip = 72
         _ew, _eh = 82, 22
         self._eng_btn_w, self._eng_btn_h = _ew, _eh
-        self._path_bar_h = _ctrl_h
-        self._browse_btn_w = 64
+        self._path_bar_h = _bar_h
+        self._browse_btn_w = _browse_w
         _combo_style = COMBO_BOX_PANEL_QSS
 
         self._guide_pulse_timer = QTimer(self)
@@ -741,20 +786,21 @@ class VideoUpscalerPanel(QWidget):
         vs.setSpacing(0)
 
         h_src = QHBoxLayout()
-        h_src.setSpacing(8)
+        h_src.setSpacing(6)
         h_src.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         h_src.addWidget(field_label("Video", 40))
         self._edit_video = QLineEdit()
         self._edit_video.setPlaceholderText("Path to video…")
-        self._edit_video.setFixedHeight(_ctrl_h)
+        self._edit_video.setStyleSheet(_src_edit_ss)
+        self._edit_video.setFixedHeight(_bar_h)
         self._edit_video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._edit_video.textChanged.connect(self._on_video_path_changed)
         h_src.addWidget(self._edit_video, 1)
-        self._btn_browse = QPushButton("Browse…")
+        self._btn_browse = QPushButton("Browse")
         self._btn_browse.setObjectName("browseBtn")
-        self._btn_browse.setFixedSize(self._browse_btn_w, _ctrl_h)
+        self._btn_browse.setFixedSize(_browse_w, _browse_h)
         self._btn_browse.setStyleSheet(
-            upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+            path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
         )
         self._btn_browse.clicked.connect(self._browse_video)
         h_src.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -852,13 +898,12 @@ class VideoUpscalerPanel(QWidget):
         vo.setSpacing(4)
         self._lbl_video = QLabel("No video")
         self._lbl_video.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_video.setMinimumSize(280, 260)
-        self._lbl_video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._lbl_video.setStyleSheet(
             "color:#a1a1aa; font-size:11px; background-color:#0a0a0a; border:1px solid #262626;"
         )
         self._lbl_video.setScaledContents(False)
-        vo.addWidget(self._lbl_video, 1)
+        self._video_21x9_holder = _Video21x9PreviewHolder(self, self._lbl_video)
+        vo.addWidget(self._video_21x9_holder, 1)
         h_ctrl = QHBoxLayout()
         h_ctrl.setSpacing(8)
         self._btn_play = QPushButton("▶")
@@ -893,8 +938,8 @@ class VideoUpscalerPanel(QWidget):
         self._lbl_orig_info.setStyleSheet("color:#737373; font-size:9px; margin-top: 2px;")
         vo.addWidget(self._lbl_orig_info, 0)
         hp.addWidget(fr_o, 1)
-        # Preview vs console: bias vertical stretch toward the console (strip above is compact).
-        root.addWidget(grp_prev, 13)
+        # Preview vs console: tall 21:9 preview; console keeps a minimum line count (see below).
+        root.addWidget(grp_prev, 18)
 
         h_bar = QHBoxLayout()
         h_bar.setSpacing(10)
@@ -943,11 +988,12 @@ class VideoUpscalerPanel(QWidget):
         v_log.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         v_log.setReadOnly(True)
         v_log.setAcceptRichText(True)
-        v_log.setMinimumHeight(96)
+        _fm = v_log.fontMetrics()
+        v_log.setMinimumHeight(max(88, int(_fm.lineSpacing() * 4 + 28)))
         v_log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         vl.setContentsMargins(8, 4, 8, 6)
         vl.addWidget(v_log, 1)
-        root.addWidget(grp_log, 7)
+        root.addWidget(grp_log, 4)
         self._log_edit = v_log
 
         self._load_prefs()
@@ -1423,7 +1469,7 @@ class VideoUpscalerPanel(QWidget):
             )
         elif w == self._btn_browse:
             w.setStyleSheet(
-                upscaler_browse_btn_idle_qss(self._path_bar_h, self._browse_btn_w)
+                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
             )
         elif w == self._btn_inst_torch:
             if self._engine_just_installed:
