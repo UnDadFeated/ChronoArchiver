@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-04-03
+
+### Changed
+- **Major version** (5.0.0): release numbering reflects the full scope of the application—batch AV1 transcoding, multi-model AI-assisted workflows, and a PySide6 desktop UI on Windows, Linux, and macOS.
+
+### Project
+- Architecture review baseline for ongoing reliability: FFmpeg child-process lifecycle and application shutdown behavior, worker-thread boundaries for long-running scans and inference, model download integrity and defensive loading, bootstrap and app-private virtual environment recovery, serialized or queued Media Organizer filesystem work, hardware encoder discovery aligned with UI options, and disk-space awareness for large video upscaling workloads.
+
 ## [4.9.0] - 2026-03-27
 
 ### Changed
