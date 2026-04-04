@@ -837,6 +837,31 @@ def add_ffmpeg_to_path() -> bool:
         return False
 
 
+def check_venv_bootstrap_prereqs(py_exe: Path) -> tuple[bool, str]:
+    """
+    Verify the host Python can create a venv with pip (ensurepip / venv module).
+    On some Linux distros users must install the ``python-venv`` / ``python-ensurepip`` package.
+    """
+    if not py_exe.is_file():
+        return False, f"Interpreter not found: {py_exe}"
+    try:
+        r = subprocess.run(
+            [str(py_exe), "-c", "import venv, ensurepip"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            **win_hide_kw(),
+        )
+        if r.returncode == 0:
+            return True, ""
+        err = ((r.stderr or "") + (r.stdout or "")).strip()[:500]
+        return False, err or "venv/ensurepip not available"
+    except FileNotFoundError:
+        return False, f"Interpreter not found: {py_exe}"
+    except Exception as e:
+        return False, str(e)[:500]
+
+
 def is_venv_runnable() -> bool:
     """True if venv exists and can run the app (PySide6, PIL, requests). Does NOT require OpenCV."""
     if _is_frozen():
@@ -906,6 +931,17 @@ def ensure_venv(progress_callback=None) -> bool:
                 f"Install Python 3.{hi[1]} or 3.12 (any in 3.{VENV_PYTHON_MIN[1]}–3.{hi[1]}) and restart.",
                 0,
             )
+            return False
+        py_create = Path(creator[0])
+        ok_pre, err_pre = check_venv_bootstrap_prereqs(py_create)
+        if not ok_pre:
+            prog(
+                "Python venv prerequisites missing",
+                (err_pre or "Install python-venv / ensurepip on your system.")
+                + f"  Interpreter: {py_create}",
+                0,
+            )
+            debug(UTILITY_OPENCV_INSTALL, f"ensure_venv: bootstrap prereq failed: {err_pre}")
             return False
         r = subprocess.run(
             creator + ["-m", "venv", str(venv)],

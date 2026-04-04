@@ -10,7 +10,7 @@ import threading
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox,
-    QProgressBar, QFileDialog, QTextEdit, QSizePolicy,
+    QProgressBar, QFileDialog, QTextEdit, QSizePolicy, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QTextCursor
@@ -18,6 +18,7 @@ from PySide6.QtGui import QTextCursor
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
+from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
@@ -46,6 +47,7 @@ class MediaOrganizerPanel(QWidget):
         self._engine = None  # Initialized in _run_job
         self._is_running = False
         self._last_stats = (0, 0, 0)
+        self._fs_holding_org = False
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
         _bar_h = 28
@@ -352,6 +354,15 @@ class MediaOrganizerPanel(QWidget):
         dup_keys = ("rename", "skip", "keep_newer", "overwrite", "overwrite_same")
         duplicate_policy = dup_keys[self._combo_dup.currentIndex()]
         debug(UTILITY_MEDIA_ORGANIZER, f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}")
+        if not try_acquire_fs_heavy():
+            QMessageBox.warning(
+                self,
+                "Busy",
+                "Another file-heavy operation is in progress (Mass AV1 Encoder or AI Video Upscaler). "
+                "Wait for it to finish.",
+            )
+            return
+        self._fs_holding_org = True
         self._is_running = True
         if self._status_cb:
             self._status_cb("organizing")
@@ -412,6 +423,9 @@ class MediaOrganizerPanel(QWidget):
 
     def _on_finished(self):
         self._is_running = False
+        if self._fs_holding_org:
+            release_fs_heavy()
+            self._fs_holding_org = False
         if self._status_cb:
             self._status_cb("idle")
         self._update_start_enabled()

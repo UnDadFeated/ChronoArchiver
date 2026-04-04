@@ -17,6 +17,49 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_MASS_AV1_ENCODER
 
+
+def terminate_ffmpeg_process_tree(proc: subprocess.Popen | None, *, log: logging.Logger | None = None) -> None:
+    """
+    Terminate FFmpeg and any child processes so they do not outlive the app after crash/close.
+    Uses psutil when available; falls back to Popen.terminate()/kill().
+    """
+    if proc is None:
+        return
+    if proc.poll() is not None:
+        return
+    try:
+        parent = psutil.Process(proc.pid)
+        children = parent.children(recursive=True)
+        for p in children:
+            try:
+                p.terminate()
+            except psutil.Error:
+                pass
+        try:
+            parent.terminate()
+        except psutil.Error:
+            pass
+        try:
+            to_wait = list(children) + [parent]
+            _, survivors = psutil.wait_procs(to_wait, timeout=3)
+            for p in survivors:
+                try:
+                    p.kill()
+                except psutil.Error:
+                    pass
+        except psutil.NoSuchProcess:
+            pass
+    except psutil.NoSuchProcess:
+        pass
+    except Exception as e:
+        if log:
+            log.warning("FFmpeg tree terminate: %s", e)
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 @dataclass
 class EncodingProgress:
     file_name: str
@@ -46,6 +89,11 @@ class AV1EncoderEngine:
             self.logger.info(f"HW encoder: {self._hw_encoder}")
         else:
             self.logger.info("HW encoder: none, using libsvtav1")
+
+    @property
+    def has_hardware_av1_encoder(self) -> bool:
+        """True if FFmpeg reports an AV1 NVENC/VAAPI/AMF encoder (probe at engine init)."""
+        return self._hw_encoder is not None
 
     def _get_encoders_output(self) -> str:
         try:
@@ -113,7 +161,7 @@ class AV1EncoderEngine:
         with self._lock:
             if self._current_process:
                 try:
-                    self._current_process.terminate()
+                    terminate_ffmpeg_process_tree(self._current_process, log=self.logger)
                     self.logger.info(f"Engine State [Job {self.job_id}]: Process cancelled/terminated")
                 except Exception as e:
                     self.logger.error(f"Engine Error [Job {self.job_id}]: Failed to cancel process: {e}")
@@ -234,7 +282,8 @@ class AV1EncoderEngine:
                 if time.time() - _last_output[0] > STALL_TIMEOUT:
                     self.logger.error(f"Engine Error [Job {self.job_id}]: ffmpeg stalled. Force killing.")
                     with self._lock:
-                        if self._current_process: self._current_process.kill()
+                        if self._current_process:
+                            terminate_ffmpeg_process_tree(self._current_process, log=self.logger)
                     break
 
         threading.Thread(target=_watchdog, daemon=True).start()

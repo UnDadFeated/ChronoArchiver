@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import threading
 from collections.abc import Callable
@@ -22,6 +23,10 @@ X4PLUS_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/Re
 
 APPROX_X2_BYTES = 67 * 1024 * 1024
 APPROX_X4_BYTES = 67 * 1024 * 1024
+
+# SHA-256 of official GitHub release assets (xinntao/Real-ESRGAN)
+SHA256_X2PLUS = "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb"
+SHA256_X4PLUS = "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1"
 
 _MIN_VALID_BYTES = 8 * 1024 * 1024
 _DOWNLOAD_TIMEOUT_SEC = 360
@@ -47,6 +52,18 @@ def model_url_for_net_scale(net_scale: int) -> str:
 
 def expected_bytes(net_scale: int) -> int:
     return APPROX_X2_BYTES if net_scale == 2 else APPROX_X4_BYTES
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _expected_sha256_for_net_scale(net_scale: int) -> str:
+    return SHA256_X2PLUS if net_scale == 2 else SHA256_X4PLUS
 
 
 class RealESRGANModelManager:
@@ -186,6 +203,22 @@ class RealESRGANModelManager:
             except OSError:
                 pass
             return False, f"could not save file: {e}"
+
+        try:
+            got = _sha256_file(dest)
+            want = _expected_sha256_for_net_scale(net_scale)
+            if got != want:
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+                return False, "SHA-256 mismatch (incomplete or corrupt download); try again"
+        except OSError as e:
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+            return False, f"checksum read failed: {e}"
 
         if not self.is_ready(net_scale):
             try:
