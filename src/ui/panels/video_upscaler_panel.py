@@ -693,7 +693,8 @@ class VideoUpscalerPanel(QWidget):
         self._preview_seek_last_mono = 0.0
 
         _ctrl_h = 24
-        _strip_eng = 84
+        # SOURCE + Engine Status: same fixed height as AI Image Upscaler engine strip (PyTorch + weights rows).
+        _strip = 72
         _ew, _eh = 82, 22
         self._eng_btn_w, self._eng_btn_h = _ew, _eh
         self._path_bar_h = _ctrl_h
@@ -731,14 +732,13 @@ class VideoUpscalerPanel(QWidget):
         )
 
         grp_src = QGroupBox("SOURCE")
-        grp_src.setFixedHeight(_strip_eng)
+        grp_src.setFixedHeight(_strip)
         grp_src.setToolTip(
             "Pick a video (Browse is at the end of the path field). Scale and UPSCALE sit under the preview."
         )
         vs = QVBoxLayout(grp_src)
-        vs.setContentsMargins(20, 2, 20, 2)
+        vs.setContentsMargins(9, 2, 9, 3)
         vs.setSpacing(0)
-        vs.addStretch(1)
 
         h_src = QHBoxLayout()
         h_src.setSpacing(8)
@@ -759,7 +759,6 @@ class VideoUpscalerPanel(QWidget):
         self._btn_browse.clicked.connect(self._browse_video)
         h_src.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
         vs.addLayout(h_src)
-        vs.addStretch(1)
 
         self._vup_upscale_btn_w = _run_w
         self._vup_upscale_btn_h = _run_h
@@ -787,7 +786,7 @@ class VideoUpscalerPanel(QWidget):
         self._btn_stop.clicked.connect(self._on_stop_encode)
 
         grp_eng = QGroupBox("Engine Status")
-        grp_eng.setFixedHeight(_strip_eng)
+        grp_eng.setFixedHeight(_strip)
         grp_eng.setMinimumWidth(248)
         ve = QVBoxLayout(grp_eng)
         ve.setContentsMargins(4, 2, 4, 0)
@@ -894,8 +893,8 @@ class VideoUpscalerPanel(QWidget):
         self._lbl_orig_info.setStyleSheet("color:#737373; font-size:9px; margin-top: 2px;")
         vo.addWidget(self._lbl_orig_info, 0)
         hp.addWidget(fr_o, 1)
-        # Preview vs console: compensate for ETA row under the bar so console sits ~pre-ETA vertically.
-        root.addWidget(grp_prev, 15)
+        # Preview vs console: bias vertical stretch toward the console (strip above is compact).
+        root.addWidget(grp_prev, 13)
 
         h_bar = QHBoxLayout()
         h_bar.setSpacing(10)
@@ -937,16 +936,18 @@ class VideoUpscalerPanel(QWidget):
         root.addLayout(h_bar)
 
         grp_log = QGroupBox("Console")
+        grp_log.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         vl = QVBoxLayout(grp_log)
         v_log = QTextEdit()
         v_log.setObjectName("panelConsole")
         v_log.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         v_log.setReadOnly(True)
         v_log.setAcceptRichText(True)
-        v_log.setMinimumHeight(20)
+        v_log.setMinimumHeight(96)
+        v_log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         vl.setContentsMargins(8, 4, 8, 6)
         vl.addWidget(v_log, 1)
-        root.addWidget(grp_log, 4)
+        root.addWidget(grp_log, 7)
         self._log_edit = v_log
 
         self._load_prefs()

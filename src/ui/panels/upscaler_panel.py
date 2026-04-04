@@ -381,11 +381,9 @@ class AIImageUpscalerPanel(QWidget):
         # Undo stack (pixel edits only) — keep last 10 steps.
         self._undo_stack: deque[Image.Image] = deque(maxlen=10)
 
-        # SOURCE strip: single path row (28px) + GroupBox chrome — shorter than Engine Status.
-        # Engine Status: PyTorch + Models rows only (no footer hint label).
+        # SOURCE and Engine Status share one fixed strip height (matches video upscaler engine row).
         # Source path row: same height as Media Organizer / Encoder / Scanner (_bar_h=28, browse 60×28).
-        _strip_src = 56
-        _strip_eng = 72
+        _strip = 72
         _bar_h = 28
         _browse_w, _browse_h = 60, _bar_h
         _src_edit_ss = (
@@ -413,7 +411,7 @@ class AIImageUpscalerPanel(QWidget):
         h_strip.setSpacing(8)
 
         grp_opts = QGroupBox("SOURCE")
-        grp_opts.setFixedHeight(_strip_src)
+        grp_opts.setFixedHeight(_strip)
         grp_opts.setToolTip(
             "Optional artifact cleanup (LaMa or OpenCV Telea) on detected problem regions, then "
             "LANCZOS resize to target resolution, then Z-Image-Turbo img2img for refinement."
@@ -445,7 +443,7 @@ class AIImageUpscalerPanel(QWidget):
         v_opts.addLayout(h_img)
 
         grp_mod = QGroupBox("Engine Status")
-        grp_mod.setFixedHeight(_strip_eng)
+        grp_mod.setFixedHeight(_strip)
         grp_mod.setMinimumWidth(248)
         grp_mod.setToolTip(
             "All inference is local.\n\n"
@@ -520,7 +518,7 @@ class AIImageUpscalerPanel(QWidget):
         h_md.addWidget(self._btn_uninstall_models)
         v_mod.addLayout(h_md)
         left_strip_col = QWidget()
-        left_strip_col.setFixedHeight(_strip_src)
+        left_strip_col.setFixedHeight(_strip)
         v_left_strip = QVBoxLayout(left_strip_col)
         v_left_strip.setContentsMargins(0, 0, 0, 0)
         v_left_strip.setSpacing(0)
@@ -591,7 +589,7 @@ class AIImageUpscalerPanel(QWidget):
         self._lbl_up.setStyleSheet("color:#3f3f46; font-size:10px;")
         vu.addWidget(self._lbl_up, 1)
         h_prev.addWidget(fr_u, 1)
-        root.addWidget(grp_prev, 3)
+        root.addWidget(grp_prev, 2)
 
         h_tools_root = QHBoxLayout()
         h_tools_root.setContentsMargins(0, 0, 0, 0)
@@ -749,7 +747,7 @@ class AIImageUpscalerPanel(QWidget):
         )
         self._log_edit.document().setMaximumBlockCount(800)
         v_log.addWidget(self._log_edit, 1)
-        root.addWidget(grp_log, 2)
+        root.addWidget(grp_log, 3)
 
         self._loading_panel_prefs = True
         try:
