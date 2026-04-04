@@ -309,7 +309,13 @@ class ScannerEngine:
     def _init_subject_detector(self):
         """Initialize subject detector using YOLOv8-nano ONNX (person + animals)."""
         model_path = self._get_model_path('yolov8n.onnx')
-        net = cv2.dnn.readNetFromONNX(model_path)
+        try:
+            net = cv2.dnn.readNetFromONNX(model_path)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load YOLO ONNX (file may be corrupt): {model_path}. "
+                f"Use Setup Models to re-download. ({e})"
+            ) from e
         backend, target = self._get_dnn_backend_target()
         try:
             net.setPreferableBackend(backend)

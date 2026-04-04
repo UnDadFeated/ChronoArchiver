@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-04-03
+
+### Added
+- **`core/fs_task_lock`**: Global lock so at most one filesystem-heavy task runs at a time (Mass AV1 Encoder, Media Organizer, AI Video Upscaler).
+- **`bootstrap.py`**: `--reset-venv` removes the app-private venv so setup can recreate a broken environment.
+- **Real-ESRGAN weights**: SHA-256 verification after download (official `RealESRGAN_x2plus.pth` / `RealESRGAN_x4plus.pth` release hashes).
+- **AI Video Upscaler**: Rough disk-space check before upscale (frame count × resolution heuristic vs `shutil.disk_usage`, with ~20% margin prompt).
+
+### Changed
+- **Mass AV1 Encoder**: FFmpeg subprocesses terminated via **process tree** (`psutil`) on cancel, stall watchdog, and app quit; main window **`closeEvent`** stops encoder engines. **HW Accelerated Decode** disabled when FFmpeg reports no AV1 hardware encoder (`av1_nvenc` / `av1_vaapi` / `av1_amf`).
+- **Media Organizer / AI Video Upscaler**: Respect the shared FS lock; show a **Busy** dialog if another heavy task is active.
+- **venv setup**: Preflight `import venv, ensurepip` on the chosen interpreter before `python -m venv` with a clearer error when `python-venv` / ensurepip is missing (e.g. Arch).
+
+### Fixed
+- **AI Media Scanner**: YOLO ONNX load failures surface as a clear error suggesting **Setup Models** re-download (`cv2.dnn.readNetFromONNX`).
+
 ## [5.0.0] - 2026-04-03
 
 ### Changed

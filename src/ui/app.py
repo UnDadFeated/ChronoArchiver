@@ -1299,6 +1299,16 @@ class ChronoArchiverApp(QMainWindow):
         debug(UTILITY_APP, "Update spawn done, quitting app")
         QApplication.instance().quit()
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        try:
+            enc = getattr(self, "panel_enc", None)
+            if enc is not None and hasattr(enc, "shutdown_ffmpeg_on_quit"):
+                enc.shutdown_ffmpeg_on_quit()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
+
 if __name__ == "__main__":
     from core.single_instance import ensure_single_instance, release_single_instance
 

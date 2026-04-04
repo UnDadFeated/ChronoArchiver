@@ -25,6 +25,7 @@ from PySide6.QtGui import QCloseEvent, QShowEvent, QTextCursor
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
+from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from ui.panel_widgets import COMBO_BOX_PANEL_QSS, path_browse_btn_qss
 from core.av1_settings import AV1Settings
@@ -142,6 +143,7 @@ class AV1EncoderPanel(QWidget):
         self._gpu_cache      = "N/A"
         self._gpu_counter    = 0
         self._source_scanned = False
+        self._fs_heavy_held = False
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
         _slbl  = "font-size: 9px; font-weight: 700; color: #aaa;"
@@ -349,6 +351,15 @@ class AV1EncoderPanel(QWidget):
         self._chk_hw.setChecked(self._settings.get("hw_accel_decode"))
         self._chk_hw.stateChanged.connect(lambda v: self._settings.set("hw_accel_decode", bool(v)))
         v_opts.addWidget(_mk_opt(self._chk_hw, "Use GPU for demux / decode stage"))
+        _probe_enc = AV1EncoderEngine()
+        if not _probe_enc.has_hardware_av1_encoder:
+            self._chk_hw.setChecked(False)
+            self._settings.set("hw_accel_decode", False)
+            self._chk_hw.setEnabled(False)
+            self._chk_hw.setToolTip(
+                "No AV1 hardware encoder in this FFmpeg build (av1_nvenc / av1_vaapi / av1_amf). "
+                "Using software libsvtav1."
+            )
 
         # Rejects
         w_rej = QWidget(); h_rej = QHBoxLayout(w_rej)
@@ -799,6 +810,15 @@ class AV1EncoderPanel(QWidget):
         except OSError as e:
             self._add_log(f"WARNING: Could not check disk space: {e}. Proceeding anyway.")
 
+        if not try_acquire_fs_heavy():
+            self._add_log(
+                "ERROR: Another file-heavy task is running (Media Organizer or AI Video Upscaler). "
+                "Wait for it to finish."
+            )
+            debug(UTILITY_MASS_AV1_ENCODER, "Start blocked: fs_task_lock busy")
+            return
+        self._fs_heavy_held = True
+
         self._queue_sizes = {p: s for p, s in self._queue}
         self._total_q_bytes   = sum(s for _, s in self._queue)
         self._done_bytes      = 0.0
@@ -870,6 +890,9 @@ class AV1EncoderPanel(QWidget):
             self._status_cb("idle")
         for eng in self._engine_pool:
             eng.cancel()
+        if self._fs_heavy_held:
+            release_fs_heavy()
+            self._fs_heavy_held = False
         self._btn_start.setText("START ENCODING")
         self._btn_start.setObjectName("btnStart")
         self._btn_start.setStyle(self.style())
@@ -1110,6 +1133,9 @@ class AV1EncoderPanel(QWidget):
         if not self._is_encoding:
             return
         self._is_encoding = False
+        if self._fs_heavy_held:
+            release_fs_heavy()
+            self._fs_heavy_held = False
         if self._status_cb:
             self._status_cb("idle")
         self._bar_master.setRange(0, 1)
@@ -1123,6 +1149,17 @@ class AV1EncoderPanel(QWidget):
         debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
 
     # ── telemetry ─────────────────────────────────────────────────────────────
+
+    def shutdown_ffmpeg_on_quit(self):
+        """Terminate encoder subprocess trees on application exit (avoid orphan FFmpeg)."""
+        try:
+            self._is_encoding = False
+            for eng in getattr(self, "_engine_pool", None) or []:
+                eng.cancel()
+        finally:
+            if self._fs_heavy_held:
+                release_fs_heavy()
+                self._fs_heavy_held = False
 
     def _poll_telemetry(self):
         try:

@@ -67,6 +67,7 @@ from core.ml_runtime import (
 )
 from core.lama_inpaint_models import APPROX_LAMA_BYTES, LAMA_FILENAME, LamaInpaintModelManager
 from core.lama_inpaint_runner import LamaInpaintRunner
+from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from core.realesrgan_models import (
     RealESRGANModelManager,
     expected_bytes,
@@ -668,6 +669,7 @@ class VideoUpscalerPanel(QWidget):
 
         self._setup_in_progress = False
         self._job_in_progress = False
+        self._fs_holding_vup = False
         self._job_eta_start_mono: float | None = None
         self._noise_eta_start_mono: float | None = None
         self._vup_upscale_eta_started = False
@@ -1685,6 +1687,51 @@ class VideoUpscalerPanel(QWidget):
                 "Output path must differ from the source video (same file would corrupt the input).",
             )
             return
+
+        try:
+            runner = self._get_runner(ns)
+        except Exception as e:
+            self._add_log(f"ERROR: {e}")
+            QMessageBox.warning(self, "Engine", str(e))
+            QTimer.singleShot(0, self._reload_preview_after_job)
+            return
+
+        out_dir = os.path.dirname(os.path.abspath(dest)) or "."
+        try:
+            import cv2
+
+            n = int(self._video_frame_total or 0)
+            if n <= 0:
+                cap = cv2.VideoCapture(path)
+                n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                cap.release()
+            raw = max(1, sw) * max(1, sh) * 3
+            est = max(n * raw * 2, os.path.getsize(path) * 6)
+            du = shutil.disk_usage(out_dir)
+            if du.free < est * 1.20:
+                r = QMessageBox.question(
+                    self,
+                    "Low disk space",
+                    f"Rough working-space estimate: ~{est / (1024**3):.1f} GB.\n"
+                    f"Free on output drive: ~{du.free / (1024**3):.1f} GB (aim for ~20% headroom).\n"
+                    f"Continue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if r != QMessageBox.StandardButton.Yes:
+                    return
+        except OSError:
+            pass
+
+        if not try_acquire_fs_heavy():
+            QMessageBox.warning(
+                self,
+                "Busy",
+                "Another file-heavy operation is in progress (Mass AV1 Encoder or Media Organizer).",
+            )
+            return
+        self._fs_holding_vup = True
+
         self._cancel_job.clear()
         self._pause_preview_player_for_job()
         self._job_in_progress = True
@@ -1698,21 +1745,6 @@ class VideoUpscalerPanel(QWidget):
         self._update_buttons()
         self._notify_activity("upscaling")
         self._add_log(f"Starting upscale → {dest} ({pr.combo_label()}, {user_sc:.3f}×)")
-
-        try:
-            runner = self._get_runner(ns)
-        except Exception as e:
-            self._job_in_progress = False
-            self._job_eta_start_mono = None
-            self._set_eta_idle()
-            self._bar.setRange(0, 100)
-            self._bar.setValue(0)
-            self._bar.setFormat("Ready")
-            self._update_buttons()
-            self._notify_activity("idle")
-            self._add_log(f"ERROR: {e}")
-            QTimer.singleShot(0, self._reload_preview_after_job)
-            return
 
         def work():
             import cv2
@@ -2099,6 +2131,9 @@ class VideoUpscalerPanel(QWidget):
 
     def _finish_job_ui(self):
         self._job_in_progress = False
+        if self._fs_holding_vup:
+            release_fs_heavy()
+            self._fs_holding_vup = False
         self._job_eta_start_mono = None
         self._noise_eta_start_mono = None
         self._vup_upscale_eta_started = False

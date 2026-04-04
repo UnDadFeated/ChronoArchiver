@@ -2,8 +2,10 @@
 bootstrap.py — First-run venv setup (stdlib + optional tkinter).
 Run before main app when venv does not exist.
 """
+import argparse
 import os
 import platform
+import shutil
 import sys
 from pathlib import Path
 
@@ -112,6 +114,20 @@ def _get_gui_python_exe() -> Path:
 
 
 def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--reset-venv",
+        action="store_true",
+        help="Delete the app-private venv and recreate it on next setup (fixes broken pip/venv).",
+    )
+    args, argv_rest = parser.parse_known_args()
+    sys.argv = [sys.argv[0]] + argv_rest
+
+    venv_path = get_venv_path()
+    if args.reset_venv and venv_path.exists():
+        print(f"Removing app venv: {venv_path}", file=sys.stderr)
+        shutil.rmtree(venv_path, ignore_errors=True)
+
     get_venv_path()
     py = _get_gui_python_exe()
     app_py = _find_app_py()
