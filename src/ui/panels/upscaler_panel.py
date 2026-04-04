@@ -436,7 +436,9 @@ class AIImageUpscalerPanel(QWidget):
         self._btn_browse_img.setFixedSize(_browse_w, _browse_h)
         self._btn_browse_img.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._btn_browse_img.setStyleSheet(
-            path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
+            path_browse_btn_qss(
+                self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
+            )
         )
         self._btn_browse_img.clicked.connect(self._browse_image)
         h_img.addWidget(self._btn_browse_img, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -920,7 +922,9 @@ class AIImageUpscalerPanel(QWidget):
             w.setStyleSheet(_run_upscale_btn_stylesheet(pulse=False))
         elif w == self._btn_browse_img:
             w.setStyleSheet(
-                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
+                path_browse_btn_qss(
+                    self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
+                )
             )
         elif w == self._btn_install_engine:
             if self._engine_just_installed:
