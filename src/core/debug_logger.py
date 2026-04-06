@@ -10,12 +10,14 @@ and mirroring of important panel lines into the legacy pipe format.
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
 import sys
 import threading
 import traceback
 from datetime import datetime
+from typing import Any
 
 try:
     from .app_paths import logs_dir
@@ -28,10 +30,15 @@ MAX_LOG_FILES = 5
 _log_dir = None
 _log_path = None
 _file = None
+_jsonl_path = None
+_jsonl_file = None
 
 _hooks_installed = False
 _prev_sys_excepthook = None
 _prev_thread_excepthook = None
+
+# Best-effort UI context for uncaught exceptions (set from the main window).
+_activity_context = ""
 
 _uncaught = logging.getLogger("ChronoArchiver.uncaught")
 
@@ -70,14 +77,22 @@ def log_installer_popup(app: str, dialog: str, event: str, detail: str = "") -> 
         pass
 
 
+def _structured_jsonl_enabled() -> bool:
+    v = (os.environ.get("CHRONOARCHIVER_JSON_LOG") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
 def _ensure_init():
-    global _log_dir, _log_path, _file
+    global _log_dir, _log_path, _file, _jsonl_path, _jsonl_file
     if _log_path is not None:
         return
     _log_dir = str(logs_dir())
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     _log_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}{LOG_SUFFIX}")
     _file = open(_log_path, "a", encoding="utf-8")
+    if _structured_jsonl_enabled():
+        _jsonl_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}_structured.jsonl")
+        _jsonl_file = open(_jsonl_path, "a", encoding="utf-8")
     _prune_old_logs()
 
 
@@ -104,6 +119,37 @@ def debug(utility: str, message: str):
         line = f"{ts} | {utility} | {message}\n"
         _file.write(line)
         _file.flush()
+        if _jsonl_file is not None:
+            rec = {"ts": ts, "utility": utility, "message": message, "kind": "debug"}
+            _jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            _jsonl_file.flush()
+    except Exception:
+        pass
+
+
+def structured_event(event: str, **fields: Any) -> None:
+    """
+    Append one JSON line to ``*_structured.jsonl`` when ``CHRONOARCHIVER_JSON_LOG`` is enabled.
+
+    Use for major state transitions (encode start/complete, model verify, etc.). Values must be JSON-serializable.
+    """
+    if not _structured_jsonl_enabled():
+        return
+    try:
+        _ensure_init()
+        if _jsonl_file is None:
+            return
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        safe: dict[str, Any] = {}
+        for k, v in fields.items():
+            try:
+                json.dumps(v)
+                safe[k] = v
+            except (TypeError, ValueError):
+                safe[k] = repr(v)[:500]
+        rec: dict[str, Any] = {"kind": "event", "ts": ts, "event": event, **safe}
+        _jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        _jsonl_file.flush()
     except Exception:
         pass
 
@@ -117,6 +163,19 @@ def get_log_path() -> str:
     """Return the current debug log file path."""
     _ensure_init()
     return _log_path
+
+
+def set_activity_context(text: str) -> None:
+    """Set a short description of current panel/activity for crash logs (main thread)."""
+    global _activity_context
+    try:
+        _activity_context = (text or "").strip()[:500]
+    except Exception:
+        _activity_context = ""
+
+
+def get_activity_context() -> str:
+    return _activity_context
 
 
 def append_multiline(utility: str, title: str, body: str, *, max_chars: int = 32000) -> None:
@@ -175,6 +234,18 @@ def _log_uncaught_tb(exc_type, exc_value, exc_tb, context: str) -> None:
         tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         _file.write(f"{ts} | {UTILITY_APP} | UNCAUGHT [{context}]\n{tb_str}")
+        ctx = get_activity_context()
+        if ctx:
+            _file.write(f"{ts} | {UTILITY_APP} | CRASH CONTEXT | {ctx}\n")
+        try:
+            from version import __version__
+
+            _file.write(
+                f"{ts} | {UTILITY_APP} | CRASH VERSION | ChronoArchiver {__version__} | "
+                f"Python {sys.version.splitlines()[0]}\n"
+            )
+        except Exception:
+            pass
         _file.flush()
         _uncaught.error("UNCAUGHT [%s]\n%s", context, tb_str.strip())
     except Exception:
@@ -234,11 +305,7 @@ def mirror_panel_line(panel: str, msg: str, *, max_len: int = 8000) -> None:
         s = s[:max_len]
     u = s.upper()
     if not (
-        u.startswith("ERROR")
-        or u.startswith("WARNING")
-        or u.startswith("FAILED")
-        or "FFMPEG" in u
-        or "TRACEBACK" in u
+        u.startswith("ERROR") or u.startswith("WARNING") or u.startswith("FAILED") or "FFMPEG" in u or "TRACEBACK" in u
     ):
         return
     try:

@@ -20,9 +20,7 @@ https://www.freepik.com/pikaso/spaces/a160e7da-e42e-41a9-bcfb-c0ae347984e0
 from __future__ import annotations
 
 # Canonical Pikaso space (utm params optional for sharing).
-PIKASO_HIGH_END_SKIN_SPACE_URL = (
-    "https://www.freepik.com/pikaso/spaces/a160e7da-e42e-41a9-bcfb-c0ae347984e0"
-)
+PIKASO_HIGH_END_SKIN_SPACE_URL = "https://www.freepik.com/pikaso/spaces/a160e7da-e42e-41a9-bcfb-c0ae347984e0"
 
 # Negatives: quality/anatomy/uncanny + identity drift + color blotches. “Heavy makeup” = garish/clowny;
 # editorial makeup is steered in the positive.
@@ -77,8 +75,5 @@ def build_beautify_positive(
     base = f"Beautify — magazine / movie-star polish (identity-locked): {core}"
     notes = (analysis_notes or "").strip()
     if notes:
-        return (
-            f"{base} "
-            f"Local scene and face analysis (hints only — do not override identity): {notes}"
-        )
+        return f"{base} Local scene and face analysis (hints only — do not override identity): {notes}"
     return base

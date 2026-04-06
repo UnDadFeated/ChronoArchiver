@@ -16,21 +16,46 @@ import webbrowser
 import psutil
 
 # Add app root and app-private venv to path (v3.0: all Python deps in venv)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.venv_manager import (
-    add_venv_to_path, add_ffmpeg_to_path,
-    check_opencv_in_venv, check_ffmpeg_in_venv, ensure_bundled_ffmpeg,
-    get_pip_exe, _is_frozen,
+    add_venv_to_path,
+    add_ffmpeg_to_path,
+    check_opencv_in_venv,
+    check_ffmpeg_in_venv,
+    ensure_bundled_ffmpeg,
+    get_pip_exe,
+    _is_frozen,
 )
+
 add_venv_to_path()
 
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QStackedWidget, QFrame, QMessageBox, QProgressBar,
-    QDialog, QTextEdit, QDialogButtonBox,
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QStackedWidget,
+    QFrame,
+    QMessageBox,
+    QProgressBar,
+    QDialog,
+    QTextEdit,
+    QDialogButtonBox,
+    QFileDialog,
 )
-from PySide6.QtCore import Qt, QTimer, Signal, QSettings, QCoreApplication
-from PySide6.QtGui import QCloseEvent, QIcon, QFontDatabase, QShowEvent
+from PySide6.QtCore import Qt, QTimer, Signal, QSettings, QCoreApplication, QUrl
+from PySide6.QtGui import (
+    QCloseEvent,
+    QDesktopServices,
+    QFontDatabase,
+    QIcon,
+    QKeySequence,
+    QShortcut,
+    QShowEvent,
+)
 
 from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
@@ -52,6 +77,7 @@ from core.debug_logger import (
     install_global_exception_hooks,
     install_qt_message_handler,
     log_installer_popup,
+    set_activity_context,
     UTILITY_APP,
 )
 from core.app_paths import (
@@ -62,14 +88,29 @@ from core.app_paths import (
     settings_dir as _app_settings_dir,
     remove_empty_windows_legacy_config_nest,
 )
+from core.fs_task_lock import fs_heavy_holder_label
+from core.debug_info import format_debug_bundle
+from core.diagnostics_export import write_diagnostic_zip
+from core.user_error_log_handler import install_user_error_banner_on_logger
+from ui.health_summary_dialog import HealthSummaryDialog, SECURITY_POLICY_URL
+from ui.keyboard_shortcuts_dialog import KeyboardShortcutsDialog
+from ui.whats_new_dialog import WhatsNewDialog
 from core.logger import setup_logger
 from core.ml_runtime import check_ml_runtime
 from core.model_manager import ZImageModelManager
 from core.realesrgan_models import RealESRGANModelManager
 
 # Font stack: Inter if bundled, else Windows-native for readability
-_FONT_SANS = "'Inter', 'Segoe UI', 'Lucida Grande', sans-serif" if platform.system() == "Windows" else "'Inter', 'Ubuntu', sans-serif"
-_FONT_MONO = "'JetBrains Mono', 'Consolas', 'Cascadia Code', monospace" if platform.system() == "Windows" else "'JetBrains Mono', 'DejaVu Sans Mono', monospace"
+_FONT_SANS = (
+    "'Inter', 'Segoe UI', 'Lucida Grande', sans-serif"
+    if platform.system() == "Windows"
+    else "'Inter', 'Ubuntu', sans-serif"
+)
+_FONT_MONO = (
+    "'JetBrains Mono', 'Consolas', 'Cascadia Code', monospace"
+    if platform.system() == "Windows"
+    else "'JetBrains Mono', 'DejaVu Sans Mono', monospace"
+)
 
 # Global Stylesheet (Mass AV1 Encoder QSS)
 # Use .format() to avoid f-string parsing CSS braces as Python expressions (NameError on Windows)
@@ -236,6 +277,7 @@ def _load_bundled_fonts():
 
 class DonateNavWidget(QWidget):
     """Header donate link: only the heart blinks red and is slightly larger than the label text."""
+
     clicked = Signal()
 
     def __init__(self, parent=None):
@@ -244,12 +286,10 @@ class DonateNavWidget(QWidget):
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(0)
         self._heart = QLabel("\u2665")
-        self._heart.setStyleSheet(
-            "font-size: 11px; color: #b91c1c; background: transparent; border: none; padding: 0;")
+        self._heart.setStyleSheet("font-size: 11px; color: #b91c1c; background: transparent; border: none; padding: 0;")
         self._heart.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self._lbl = QLabel("Support Developer!")
-        self._lbl.setStyleSheet(
-            "font-size: 9px; color: #6b7280; background: transparent; border: none;")
+        self._lbl.setStyleSheet("font-size: 9px; color: #6b7280; background: transparent; border: none;")
         self._lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         h.addWidget(self._heart, 0, Qt.AlignVCenter)
         h.addWidget(self._lbl, 0, Qt.AlignVCenter)
@@ -262,8 +302,7 @@ class DonateNavWidget(QWidget):
 
     def _set_heart_color(self, bright: bool):
         c = "#ef4444" if bright else "#b91c1c"
-        self._heart.setStyleSheet(
-            f"font-size: 11px; color: {c}; background: transparent; border: none; padding: 0;")
+        self._heart.setStyleSheet(f"font-size: 11px; color: {c}; background: transparent; border: none; padding: 0;")
 
     def _start_heartbeat_cycle(self):
         # Two fast beats.
@@ -285,6 +324,7 @@ class DonateNavWidget(QWidget):
 
 class PreReqDialog(QDialog):
     """Popup to download prerequisites (FFmpeg). User clicks Download to start."""
+
     download_complete = Signal()
 
     def __init__(self, parent=None):
@@ -380,7 +420,9 @@ class PreReqDialog(QDialog):
             try:
                 while True:
                     phase, pct, detail = ffmpeg_queue.get_nowait()
-                    self._lbl_phase.setText(phase.replace("downloading", "Downloading").replace("extracting", "Extracting"))
+                    self._lbl_phase.setText(
+                        phase.replace("downloading", "Downloading").replace("extracting", "Extracting")
+                    )
                     self._bar.setValue(min(100, pct))
                     self._bar.setFormat("%p%")
                     self._lbl_detail.setText(detail[:120] if detail else "")
@@ -530,9 +572,7 @@ class UpdateDownloadDialog(QDialog):
                 pass
 
         def _worker():
-            ok = updater.download_installer_with_progress(
-                url, dest, size_bytes, _on_progress
-            )
+            ok = updater.download_installer_with_progress(url, dest, size_bytes, _on_progress)
             try:
                 self._progress_queue.put_nowait(("done", ok, None, None))
             except queue.Full:
@@ -596,7 +636,7 @@ class ChronoArchiverApp(QMainWindow):
         self.nav_layout.addWidget(self.lbl_brand)
 
         self.nav_btns = [self._create_nav_btn(text, i) for i, text in enumerate(_NAV_BUTTON_TEXT)]
-        
+
         self.nav_layout.addStretch()
 
         self.btn_update = QPushButton("CHECKING FOR UPDATES...")
@@ -618,7 +658,9 @@ class ChronoArchiverApp(QMainWindow):
         # ── STACKED PANELS ──
         self.stack = QStackedWidget()
         self.panel_org = MediaOrganizerPanel(log_callback=self._log, status_callback=self._set_activity)
-        self.panel_enc = AV1EncoderPanel(log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity)
+        self.panel_enc = AV1EncoderPanel(
+            log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity
+        )
         self.panel_scn = AIScannerPanel(log_callback=self._log, status_callback=self._set_activity)
         self.panel_upz = self._make_ai_image_panel()
         self.panel_vup = self._make_video_upscaler_panel()
@@ -632,14 +674,10 @@ class ChronoArchiverApp(QMainWindow):
         _upz_sig = getattr(self.panel_upz, "_sig", None)
         _q = Qt.ConnectionType.QueuedConnection
         if _upz_sig is not None and hasattr(_upz_sig, "setup_complete"):
-            _upz_sig.setup_complete.connect(
-                lambda *_: QTimer.singleShot(0, self._refresh_footer), _q
-            )
+            _upz_sig.setup_complete.connect(lambda *_: QTimer.singleShot(0, self._refresh_footer), _q)
         _vup_sig = getattr(self.panel_vup, "_sig", None)
         if _vup_sig is not None and hasattr(_vup_sig, "setup_complete"):
-            _vup_sig.setup_complete.connect(
-                lambda *_: QTimer.singleShot(0, self._refresh_footer), _q
-            )
+            _vup_sig.setup_complete.connect(lambda *_: QTimer.singleShot(0, self._refresh_footer), _q)
 
         def _tee_cb(channel: str, line: str):
             QTimer.singleShot(0, lambda: self._route_subprocess_line(channel, line))
@@ -666,6 +704,30 @@ class ChronoArchiverApp(QMainWindow):
         self._activity_timer.timeout.connect(self._animate_activity)
         self._precheck_done = False
         self.status_layout.addWidget(self.lbl_status, 0, Qt.AlignVCenter)
+        self.lbl_fs_task = QLabel("")
+        self.lbl_fs_task.setStyleSheet("font-size: 8px; color: #64748b; max-width: 280px;")
+        self.lbl_fs_task.setWordWrap(False)
+        self.lbl_fs_task.hide()
+        self.lbl_fs_task.setToolTip("Filesystem-heavy task currently holding the global lock (only one at a time)")
+        self.lbl_fs_task.setAccessibleDescription("Shows which background filesystem task is active")
+        self.status_layout.addWidget(self.lbl_fs_task, 0, Qt.AlignVCenter)
+        self.lbl_last_error = QLabel("")
+        self.lbl_last_error.setStyleSheet("font-size: 8px; color: #f87171; max-width: 420px;")
+        self.lbl_last_error.setWordWrap(True)
+        self.lbl_last_error.setMaximumHeight(36)
+        self.lbl_last_error.hide()
+        self.lbl_last_error.setAccessibleDescription("Most recent error line from the current session log")
+        self.btn_clear_last_error = QPushButton("×")
+        self.btn_clear_last_error.setFixedSize(20, 20)
+        self.btn_clear_last_error.setStyleSheet(
+            "font-size: 12px; color: #9ca3af; border: none; background: transparent;"
+        )
+        self.btn_clear_last_error.setToolTip("Dismiss error banner")
+        self.btn_clear_last_error.setAccessibleName("Dismiss last error")
+        self.btn_clear_last_error.hide()
+        self.btn_clear_last_error.clicked.connect(self._clear_last_error_banner)
+        self.status_layout.addWidget(self.lbl_last_error, 0, Qt.AlignVCenter)
+        self.status_layout.addWidget(self.btn_clear_last_error, 0, Qt.AlignVCenter)
         self._bar_ffmpeg = QProgressBar()
         self._bar_ffmpeg.setFixedSize(72, 13)
         self._bar_ffmpeg.setRange(0, 100)
@@ -689,12 +751,53 @@ class ChronoArchiverApp(QMainWindow):
         self.btn_copy_console = QPushButton("COPY CONSOLE")
         self.btn_copy_console.setStyleSheet("font-size: 8px; color: #eab308; border:none; background:transparent;")
         self.btn_copy_console.setToolTip("Copy current panel console to clipboard")
+        self.btn_copy_console.setAccessibleName("Copy console to clipboard")
         self.btn_copy_console.clicked.connect(self._copy_console)
         self.status_layout.addWidget(self.btn_copy_console, 0, Qt.AlignVCenter)
+
+        self.btn_copy_debug_info = QPushButton("COPY DEBUG INFO")
+        self.btn_copy_debug_info.setStyleSheet("font-size: 8px; color: #38bdf8; border:none; background:transparent;")
+        self.btn_copy_debug_info.setToolTip(
+            "Copy app version, OS, Python, venv paths, and FFmpeg resolution for bug reports"
+        )
+        self.btn_copy_debug_info.clicked.connect(self._copy_debug_info)
+        self.btn_copy_debug_info.setAccessibleName("Copy debug info to clipboard")
+        self.status_layout.addWidget(self.btn_copy_debug_info, 0, Qt.AlignVCenter)
+
+        self.btn_health = QPushButton("HEALTH")
+        self.btn_health.setStyleSheet("font-size: 8px; color: #a78bfa; border:none; background:transparent;")
+        self.btn_health.setToolTip("Show environment and disk summary (nothing is uploaded)")
+        self.btn_health.setAccessibleName("Health summary")
+        self.btn_health.clicked.connect(self._open_health_summary)
+        self.status_layout.addWidget(self.btn_health, 0, Qt.AlignVCenter)
+
+        self.btn_shortcuts = QPushButton("SHORTCUTS")
+        self.btn_shortcuts.setStyleSheet("font-size: 8px; color: #fcd34d; border:none; background:transparent;")
+        self.btn_shortcuts.setToolTip("Keyboard shortcuts (Ctrl+/)")
+        self.btn_shortcuts.setAccessibleName("Keyboard shortcuts")
+        self.btn_shortcuts.clicked.connect(self._open_keyboard_shortcuts)
+        self.status_layout.addWidget(self.btn_shortcuts, 0, Qt.AlignVCenter)
+
+        self.btn_security = QPushButton("SECURITY")
+        self.btn_security.setStyleSheet("font-size: 8px; color: #94a3b8; border:none; background:transparent;")
+        self.btn_security.setToolTip("Open security and privacy policy in browser")
+        self.btn_security.setAccessibleName("Security policy")
+        self.btn_security.clicked.connect(self._open_security_policy)
+        self.status_layout.addWidget(self.btn_security, 0, Qt.AlignVCenter)
+
+        self.btn_export_diag = QPushButton("EXPORT DIAGNOSTICS")
+        self.btn_export_diag.setStyleSheet("font-size: 8px; color: #86efac; border:none; background:transparent;")
+        self.btn_export_diag.setToolTip(
+            "Save a local ZIP (environment + log tail) for issue reports. Not sent automatically."
+        )
+        self.btn_export_diag.setAccessibleName("Export diagnostics ZIP file")
+        self.btn_export_diag.clicked.connect(self._export_diagnostics)
+        self.status_layout.addWidget(self.btn_export_diag, 0, Qt.AlignVCenter)
 
         self.btn_debug = QPushButton("DEBUG")
         self.btn_debug.setStyleSheet("font-size: 8px; color: #ef4444; border:none; background:transparent;")
         self.btn_debug.setToolTip(f"Open debug log folder\n{os.path.dirname(get_log_path())}")
+        self.btn_debug.setAccessibleName("Open debug log folder")
         self.btn_debug.clicked.connect(self._open_debug_folder)
         self.status_layout.addWidget(self.btn_debug, 0, Qt.AlignVCenter)
 
@@ -703,11 +806,25 @@ class ChronoArchiverApp(QMainWindow):
         self.lbl_metrics.setStyleSheet(
             "font-size: 9px; color: #f59e0b; font-weight: 600; "
             "font-family: 'JetBrains Mono', 'DejaVu Sans Mono', monospace; "
-            "min-width: 172px;")
+            "min-width: 172px;"
+        )
         self.lbl_metrics.setTextFormat(Qt.RichText)
         self.status_layout.addWidget(self.lbl_metrics, 0, Qt.AlignVCenter)
 
         self.layout.addWidget(self.status_bar)
+
+        self._shortcut_copy_debug = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        self._shortcut_copy_debug.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._shortcut_copy_debug.activated.connect(self._copy_debug_info)
+        self._shortcut_shortcuts = QShortcut(QKeySequence("Ctrl+/"), self)
+        self._shortcut_shortcuts.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._shortcut_shortcuts.activated.connect(self._open_keyboard_shortcuts)
+
+        self._user_error_log_handler = install_user_error_banner_on_logger(
+            self.logger,
+            lambda m: QTimer.singleShot(0, lambda msg=m: self._apply_last_error_banner(msg)),
+            lambda: QTimer.singleShot(0, self._clear_last_error_banner),
+        )
 
         # Init
         self._switch_panel(0)
@@ -716,15 +833,119 @@ class ChronoArchiverApp(QMainWindow):
         self._metrics_timer = QTimer(self)
         self._metrics_timer.timeout.connect(self._poll_metrics)
         self._metrics_timer.start(2000)
-        QTimer.singleShot(2000, lambda: self._run_updater(user_initiated=False))
+        QTimer.singleShot(0, self._refresh_fs_task_label)
+        if os.environ.get("CHRONOARCHIVER_CI") != "1":
+            QTimer.singleShot(2000, lambda: self._run_updater(user_initiated=False))
 
     def _create_nav_btn(self, text, index):
         btn = QPushButton(text)
         btn.setObjectName("navBtn")
         btn.setCheckable(True)
+        btn.setAccessibleName(text.replace("/", " ").strip())
+        if 0 <= index < len(_NAV_PANEL_LOG_NAME):
+            btn.setAccessibleDescription(f"Opens the {_NAV_PANEL_LOG_NAME[index]} panel")
         btn.clicked.connect(lambda: self._switch_panel(index))
         self.nav_layout.addWidget(btn)
         return btn
+
+    def _update_crash_context(self):
+        try:
+            i = int(self.stack.currentIndex())
+            name = _NAV_PANEL_LOG_NAME[i] if 0 <= i < len(_NAV_PANEL_LOG_NAME) else "?"
+            set_activity_context(f"panel={name} activity={self._activity}")
+        except Exception:
+            pass
+
+    def _maybe_show_health_summary(self):
+        if os.environ.get("CHRONOARCHIVER_CI") == "1":
+            return
+        s = QSettings()
+        if s.value("health_summary_v1_dismissed", False, type=bool):
+            return
+        dlg = HealthSummaryDialog(self, show_dismiss_checkbox=True)
+        dlg.exec()
+        chk = getattr(dlg, "_chk_dismiss", None)
+        if chk is not None and chk.isChecked():
+            s.setValue("health_summary_v1_dismissed", True)
+
+    def _last_seen_app_version_path(self):
+        return _app_settings_dir() / "last_seen_app_version.txt"
+
+    def _maybe_show_whats_new(self):
+        """After an upgrade, show a dismissible summary from CHANGELOG (skipped in CI / first launch)."""
+        if os.environ.get("CHRONOARCHIVER_CI") == "1":
+            return
+        s = QSettings()
+        if s.value("whats_new_suppress", False, type=bool):
+            self._write_last_seen_app_version_file()
+            return
+
+        path = self._last_seen_app_version_path()
+        prev: str | None = None
+        try:
+            if path.is_file():
+                prev = path.read_text(encoding="utf-8").strip() or None
+        except OSError:
+            pass
+
+        if prev is None:
+            self._write_last_seen_app_version_file()
+            return
+
+        if prev == __version__:
+            return
+
+        dlg = WhatsNewDialog(self, version=__version__)
+        dlg.exec()
+        if dlg.suppress_future():
+            s.setValue("whats_new_suppress", True)
+        self._write_last_seen_app_version_file()
+
+    def _write_last_seen_app_version_file(self) -> None:
+        try:
+            self._last_seen_app_version_path().write_text(__version__, encoding="utf-8")
+        except OSError:
+            pass
+
+    def _open_health_summary(self):
+        dlg = HealthSummaryDialog(self, show_dismiss_checkbox=False)
+        dlg.exec()
+
+    def _apply_last_error_banner(self, msg: str):
+        self.lbl_last_error.setText(msg)
+        self.lbl_last_error.setToolTip(msg)
+        self.lbl_last_error.show()
+        self.btn_clear_last_error.show()
+
+    def _clear_last_error_banner(self):
+        self.lbl_last_error.clear()
+        self.lbl_last_error.hide()
+        self.btn_clear_last_error.hide()
+
+    def _open_keyboard_shortcuts(self):
+        KeyboardShortcutsDialog(self).exec()
+
+    def _open_security_policy(self):
+        QDesktopServices.openUrl(QUrl(SECURITY_POLICY_URL))
+
+    def _export_diagnostics(self):
+        from pathlib import Path as Pth
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export diagnostic archive",
+            f"chronoarchiver-diagnostics-{__version__}.zip",
+            "ZIP archive (*.zip)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        try:
+            write_diagnostic_zip(Pth(path))
+            QMessageBox.information(self, APP_NAME, f"Saved diagnostic archive:\n{path}")
+        except Exception as e:
+            QMessageBox.warning(self, APP_NAME, f"Could not write archive:\n{e}")
 
     def _switch_panel(self, index):
         self.stack.setCurrentIndex(index)
@@ -737,6 +958,7 @@ class ChronoArchiverApp(QMainWindow):
         panel = self.stack.currentWidget()
         if hasattr(panel, "get_activity"):
             self._set_activity(panel.get_activity())
+        self._update_crash_context()
 
     def _set_activity(self, activity: str):
         """Activity: idle | encoding | organizing | scanning | upscaling — drives footer status line."""
@@ -748,6 +970,7 @@ class ChronoArchiverApp(QMainWindow):
         elif self._precheck_done:
             self._activity_timer.stop()
             self.lbl_status.setText("IDLE")
+        self._update_crash_context()
 
     def _animate_activity(self):
         if self._activity == "idle":
@@ -792,6 +1015,7 @@ class ChronoArchiverApp(QMainWindow):
 
     def _check_prereqs(self):
         """Run pre-req checks (order matches footer): PySide6, FFmpeg, OpenCV, PyTorch, scanner models, upscaler models, video Real-ESRGAN weights, then footer + idle."""
+
         def step_opencv():
             self.lbl_status.setText("CHECKING OPENCV…")
             QTimer.singleShot(400, step_pytorch)
@@ -819,6 +1043,8 @@ class ChronoArchiverApp(QMainWindow):
             if hasattr(self, "panel_scn") and hasattr(self.panel_scn, "_check_models"):
                 self.panel_scn._check_models()  # Deferred from init — was blocking main thread during FFmpeg install
             QTimer.singleShot(3000, _go_idle)
+            QTimer.singleShot(500, self._maybe_show_health_summary)
+            QTimer.singleShot(4500, self._maybe_show_whats_new)
 
         def _go_idle():
             if self._activity == "idle":
@@ -835,7 +1061,9 @@ class ChronoArchiverApp(QMainWindow):
         def _finish_ffmpeg(ok: bool):
             if ok and check_ffmpeg_in_venv():
                 add_ffmpeg_to_path()
-                debug(UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)" if not _is_frozen() else "Pre-reqs: FFmpeg=ok (bundled)")
+                debug(
+                    UTILITY_APP, "Pre-reqs: FFmpeg=ok (venv)" if not _is_frozen() else "Pre-reqs: FFmpeg=ok (bundled)"
+                )
                 step_opencv()
                 return
             if get_pip_exe().exists() or _is_frozen():
@@ -955,7 +1183,7 @@ class ChronoArchiverApp(QMainWindow):
             )
             status = "  ·  ".join(parts)
             if ffmpeg_ok:
-                status += "  ·  <span style=\"color:#10b981\">READY</span>"
+                status += '  ·  <span style="color:#10b981">READY</span>'
             self.lbl_prereq.setTextFormat(Qt.RichText)
             self.lbl_prereq.setText(status)
 
@@ -986,6 +1214,7 @@ class ChronoArchiverApp(QMainWindow):
         else:
             try:
                 from core.scanner import OPENCV_AVAILABLE
+
                 opencv_ok = bool(OPENCV_AVAILABLE)
             except Exception:
                 opencv_ok = False
@@ -1010,6 +1239,10 @@ class ChronoArchiverApp(QMainWindow):
             text = ""
         QApplication.clipboard().setText(text)
 
+    def _copy_debug_info(self):
+        QApplication.clipboard().setText(format_debug_bundle())
+        QMessageBox.information(self, APP_NAME, "Debug info copied to clipboard.")
+
     def _open_debug_folder(self):
         folder = os.path.dirname(get_log_path())
         if not os.path.exists(folder):
@@ -1024,9 +1257,18 @@ class ChronoArchiverApp(QMainWindow):
         except Exception:
             pass
 
+    def _refresh_fs_task_label(self):
+        h = fs_heavy_holder_label()
+        if h:
+            self.lbl_fs_task.setText(f"FS task: {h}")
+            self.lbl_fs_task.show()
+        else:
+            self.lbl_fs_task.hide()
+
     def _poll_metrics(self):
         """App-level metrics for footer (CPU, GPU, RAM) — shown on all panels."""
         try:
+            self._refresh_fs_task_label()
             cpu_val = psutil.cpu_percent()
             ram_val = psutil.virtual_memory().percent
             self._metrics_gpu_counter += 1
@@ -1087,7 +1329,9 @@ class ChronoArchiverApp(QMainWindow):
 
     def _open_donate(self):
         try:
-            url = "https://www.paypal.com/donate?business=jscheema%40gmail.com&amount=5&currency_code=USD&locale.x=en_US"
+            url = (
+                "https://www.paypal.com/donate?business=jscheema%40gmail.com&amount=5&currency_code=USD&locale.x=en_US"
+            )
             webbrowser.open(url)
         except Exception:
             pass
@@ -1125,16 +1369,14 @@ class ChronoArchiverApp(QMainWindow):
             self._pulse_update_button()
         elif latest is None:
             self._update_pulse_timer.stop()
-            from core.network_status import NO_NETWORK_MESSAGE, is_network_reachable
+            from core.network_status import is_network_reachable
 
             manual = getattr(self, "_update_check_user_initiated", False)
             if manual and not is_network_reachable(force_refresh=True):
                 self._flash_no_network_on_update_button()
             else:
                 self.btn_update.setText("UPDATE CHECK UNAVAILABLE")
-                self.btn_update.setStyleSheet(
-                    "font-size: 9px; color: #4b5563; border:none; background:transparent;"
-                )
+                self.btn_update.setStyleSheet("font-size: 9px; color: #4b5563; border:none; background:transparent;")
         else:
             self._update_pulse_timer.stop()
             self.btn_update.setText("CHRONOARCHIVER IS UP TO DATE")
@@ -1224,10 +1466,12 @@ class ChronoArchiverApp(QMainWindow):
             dlg.setWindowTitle(f"Update Available — v{latest}")
             dlg.setMinimumSize(440, 320)
             v = QVBoxLayout(dlg)
-            v.addWidget(QLabel(
-                "The app will download the installer, close, run it, then restart. "
-                "No need to visit the Releases page."
-            ))
+            v.addWidget(
+                QLabel(
+                    "The app will download the installer, close, run it, then restart. "
+                    "No need to visit the Releases page."
+                )
+            )
             te = QTextEdit()
             te.setReadOnly(True)
             te.setPlainText(changelog_text)
@@ -1332,6 +1576,10 @@ if __name__ == "__main__":
         sys.exit(1)
     remove_empty_windows_legacy_config_nest()
     app = QApplication(sys.argv)
+    try:
+        app.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    except Exception:
+        pass
     app.setStyle("Fusion")
     app.aboutToQuit.connect(release_single_instance)
     _load_bundled_fonts()

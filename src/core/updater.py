@@ -27,13 +27,14 @@ from version import __version__
 
 try:
     from .app_paths import install_root, uses_install_layout
+    from .changelog_notes import CHANGELOG_RAW_URL
 except ImportError:
     from core.app_paths import install_root, uses_install_layout
+    from core.changelog_notes import CHANGELOG_RAW_URL
 
 # Use tags API — releases/latest 404s when no GitHub Releases exist (only tags are pushed)
 TAGS_API_URL = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/tags?per_page=30"
 RELEASES_BY_TAG_URL = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/releases/tags/v{version}"
-CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchiver/main/CHANGELOG.md"
 
 
 def _parse_version(v: str) -> tuple:
@@ -258,6 +259,7 @@ class ApplicationUpdater:
         Caller should poll the queue from the main thread (e.g. via QTimer).
         Uses a watchdog to ensure result is queued even if the request hangs.
         """
+
         def _put_result(latest, changelog):
             try:
                 result_queue.put_nowait((latest, changelog))
@@ -283,7 +285,7 @@ class ApplicationUpdater:
                     except urllib.error.HTTPError as e:
                         last_err = e
                         if e.code in (429, 503) and attempt < 2:
-                            time.sleep(2 ** attempt)
+                            time.sleep(2**attempt)
                         else:
                             raise
                 if data is None and last_err:
@@ -304,6 +306,7 @@ class ApplicationUpdater:
             except Exception as e:
                 try:
                     from core.debug_logger import debug, UTILITY_APP
+
                     debug(UTILITY_APP, f"Update check failed: {e}")
                 except Exception:
                     pass
@@ -487,7 +490,11 @@ fi
             end = m.end() + next_m.start() if next_m else len(text)
             sections.append((v, text[start:end].strip()))
         sections.sort(key=lambda x: _parse_version(x[0]), reverse=True)
-        result = "\n\n".join(s for _, s in sections) if sections else f"Changelog for v{latest} — see CHANGELOG.md on GitHub."
+        result = (
+            "\n\n".join(s for _, s in sections)
+            if sections
+            else f"Changelog for v{latest} — see CHANGELOG.md on GitHub."
+        )
         return result
 
     def perform_update_and_restart(self, on_error=None):
@@ -512,7 +519,9 @@ fi
             term = _find_linux_terminal()
             if not helper and not term:
                 if on_error:
-                    on_error("No AUR helper (paru/yay) or terminal found. Run 'paru -Sy chronoarchiver' or 'yay -Sy chronoarchiver' manually.")
+                    on_error(
+                        "No AUR helper (paru/yay) or terminal found. Run 'paru -Sy chronoarchiver' or 'yay -Sy chronoarchiver' manually."
+                    )
                 return
             self._spawn_aur_updater(helper, term, launch_cmd)
         else:
@@ -525,7 +534,7 @@ fi
     def _spawn_git_updater(self, repo_root: str, launch_cmd: list):
         """Spawn detached process: wait for app exit, git pull (via GitPython), restart."""
         # Use venv Python (has GitPython) to run helper; no system git required
-        helper_body = '''import os
+        helper_body = """import os
 import sys
 import time
 import subprocess
@@ -559,7 +568,7 @@ if os.name == "nt":
 else:
     os.chdir(repo_root)
     os.execv(launch_cmd[0], launch_cmd)
-'''
+"""
         fd, path = tempfile.mkstemp(suffix=".py")
         try:
             try:
@@ -596,6 +605,7 @@ else:
         """Spawn process that runs AUR update then restarts app."""
         try:
             from core.debug_logger import debug, UTILITY_APP
+
             debug(UTILITY_APP, f"AUR updater: spawning terminal={term or 'none'}, helper={helper or 'pkexec pacman'}")
         except Exception:
             pass

@@ -63,7 +63,7 @@ def detect_faces_bgr(
         minSize=(40, 40),
     )
     out: list[tuple[int, int, int, int]] = []
-    for (x, y, fw, fh) in faces:
+    for x, y, fw, fh in faces:
         ox = int(round(x * inv))
         oy = int(round(y * inv))
         ow = int(round(fw * inv))

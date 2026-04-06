@@ -53,6 +53,8 @@ from PIL import Image, ImageOps
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from core.app_paths import settings_dir
+from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from ui.panel_start_hint import apply_start_button_hint
 from core.debug_logger import (
     INSTALLER_APP_AI_IMAGE_UPSCALER,
     UTILITY_APP,
@@ -351,6 +353,7 @@ class AIImageUpscalerPanel(QWidget):
         self._loading_panel_prefs = False
         self._setup_in_progress = False
         self._upscale_in_progress = False
+        self._fs_heavy_held = False
         self._last_result = None
         self._source_path = ""
         self._engine_just_installed = False
@@ -436,9 +439,7 @@ class AIImageUpscalerPanel(QWidget):
         self._btn_browse_img.setFixedSize(_browse_w, _browse_h)
         self._btn_browse_img.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._btn_browse_img.setStyleSheet(
-            path_browse_btn_qss(
-                self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
-            )
+            path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1)
         )
         self._btn_browse_img.clicked.connect(self._browse_image)
         h_img.addWidget(self._btn_browse_img, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -605,9 +606,7 @@ class AIImageUpscalerPanel(QWidget):
         h_src_tools = QHBoxLayout()
         h_src_tools.setSpacing(6)
         # UNDO + counter (left aligned)
-        self._btn_undo = _mk_tool_btn(
-            QStyle.StandardPixmap.SP_ArrowBack, "Undo last edit", self._undo_last, None
-        )
+        self._btn_undo = _mk_tool_btn(QStyle.StandardPixmap.SP_ArrowBack, "Undo last edit", self._undo_last, None)
         self._lbl_undo_left = QLabel("0")
         self._lbl_undo_left.setToolTip("Undos left")
         self._lbl_undo_left.setFixedWidth(16)
@@ -744,9 +743,7 @@ class AIImageUpscalerPanel(QWidget):
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
         self._log_edit.setMinimumHeight(96)
-        self._log_edit.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._log_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._log_edit.document().setMaximumBlockCount(800)
         v_log.addWidget(self._log_edit, 1)
         root.addWidget(grp_log, 3)
@@ -921,11 +918,7 @@ class AIImageUpscalerPanel(QWidget):
         if w == self._btn_run:
             w.setStyleSheet(_run_upscale_btn_stylesheet(pulse=False))
         elif w == self._btn_browse_img:
-            w.setStyleSheet(
-                path_browse_btn_qss(
-                    self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
-                )
-            )
+            w.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1))
         elif w == self._btn_install_engine:
             if self._engine_just_installed:
                 w.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#064e3b", "#10b981"))
@@ -955,9 +948,7 @@ class AIImageUpscalerPanel(QWidget):
                 target.setStyleSheet(_run_upscale_btn_stylesheet(pulse=True))
             elif target == self._btn_browse_img:
                 target.setStyleSheet(
-                    path_browse_btn_qss(
-                        self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444", border_px=1
-                    )
+                    path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444", border_px=1)
                 )
             elif target == self._btn_install_engine and self._engine_just_installed:
                 target.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#34d399", "#10b981"))
@@ -1019,30 +1010,22 @@ class AIImageUpscalerPanel(QWidget):
                 txt, col = "NOT INSTALLED", "#ef4444"
                 self._lbl_pytorch.setText(txt)
                 self._lbl_pytorch.setStyleSheet(f"font-size:9px; font-weight:700; color:{col};")
-                self._btn_install_engine.setToolTip(
-                    f"{get_ml_torch_install_label()} + diffusers stack (pip)"
-                )
+                self._btn_install_engine.setToolTip(f"{get_ml_torch_install_label()} + diffusers stack (pip)")
             elif reason == "missing_diffusers":
                 txt, col = "NO DIFFUSERS", "#ef4444"
                 self._lbl_pytorch.setText(txt)
                 self._lbl_pytorch.setStyleSheet(f"font-size:9px; font-weight:700; color:{col};")
-                self._btn_install_engine.setToolTip(
-                    f"{get_ml_torch_install_label()} + diffusers stack (pip)"
-                )
+                self._btn_install_engine.setToolTip(f"{get_ml_torch_install_label()} + diffusers stack (pip)")
             elif reason == "no_cuda":
                 txt, col = "NO CUDA GPU", "#eab308"
                 self._lbl_pytorch.setText(txt)
                 self._lbl_pytorch.setStyleSheet(f"font-size:9px; font-weight:700; color:{col};")
-                self._btn_install_engine.setToolTip(
-                    f"{get_ml_torch_install_label()} + diffusers stack (pip)"
-                )
+                self._btn_install_engine.setToolTip(f"{get_ml_torch_install_label()} + diffusers stack (pip)")
             else:
                 txt, col = "ERROR", "#ef4444"
                 self._lbl_pytorch.setText(txt)
                 self._lbl_pytorch.setStyleSheet(f"font-size:9px; font-weight:700; color:{col};")
-                self._btn_install_engine.setToolTip(
-                    f"{get_ml_torch_install_label()} + diffusers stack (pip)"
-                )
+                self._btn_install_engine.setToolTip(f"{get_ml_torch_install_label()} + diffusers stack (pip)")
             self._btn_install_engine.show()
             self._btn_uninstall_engine.hide()
         else:
@@ -1079,6 +1062,20 @@ class AIImageUpscalerPanel(QWidget):
             self._btn_uninstall_models.hide()
             self._btn_update_models.hide()
 
+    def _image_upscale_start_reasons(self) -> list[str]:
+        if self._setup_in_progress or self._upscale_in_progress:
+            return []
+        r = []
+        active = self._get_active_image_path()
+        if not active or not os.path.isfile(active):
+            r.append("select a source image (Browse)")
+        if not self._model_mgr.is_up_to_date():
+            r.append("download Z-Image models (Setup Models)")
+        runtime_ok, reason = self._get_runtime_cached()
+        if not runtime_ok:
+            r.append((reason or "install the AI engine").strip())
+        return r
+
     def _update_buttons(self):
         active = self._get_active_image_path()
         path_ok = bool(active and os.path.isfile(active))
@@ -1094,15 +1091,17 @@ class AIImageUpscalerPanel(QWidget):
 
         can_run = path_ok and models_ok and runtime_ok and not busy
         self._btn_run.setEnabled(can_run)
+        apply_start_button_hint(
+            self._btn_run,
+            enabled=can_run,
+            reasons_when_disabled=self._image_upscale_start_reasons(),
+            enabled_tip="Run Z-Image upscale or Beautify on the source image",
+        )
         self._btn_save.setEnabled(self._last_result is not None and not self._upscale_in_progress)
         self._combo_save_fmt.setEnabled(not self._upscale_in_progress)
 
-        self._btn_install_engine.setEnabled(
-            not busy and (not need_engine_net or net_ok or self._engine_just_installed)
-        )
-        self._btn_uninstall_engine.setEnabled(
-            not busy and not self._engine_just_installed and runtime_ok
-        )
+        self._btn_install_engine.setEnabled(not busy and (not need_engine_net or net_ok or self._engine_just_installed))
+        self._btn_uninstall_engine.setEnabled(not busy and not self._engine_just_installed and runtime_ok)
         self._btn_setup_models.setEnabled(not busy and (not need_models_net or net_ok))
         self._btn_uninstall_models.setEnabled(not busy and models_ok)
         self._btn_update_models.setEnabled(not busy and models_ok)
@@ -1124,9 +1123,7 @@ class AIImageUpscalerPanel(QWidget):
             "Components:",
         ]
         for label, sz in components:
-            lines.append(
-                f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
-            )
+            lines.append(f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}")
         lines.append("")
         lines.append(f"Estimated total download: {fmt_bytes(total_bytes)}")
         lines.append("")
@@ -1151,12 +1148,7 @@ class AIImageUpscalerPanel(QWidget):
             f"{get_ml_torch_install_label()}\n\n"
             f"{pytorch_installer_vram_guidance()}\n\n"
             "Components:\n"
-            + "\n".join(
-                [
-                    f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
-                    for (label, sz) in components
-                ]
-            )
+            + "\n".join([f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}" for (label, sz) in components])
             + f"\n\nEstimated total download: {fmt_bytes(total_bytes)}"
         )
         self._active_setup_dialog = dlg
@@ -1198,8 +1190,7 @@ class AIImageUpscalerPanel(QWidget):
             reply = QMessageBox.question(
                 self,
                 "Models present",
-                "Weights already look complete. Re-download anyway?\n\n"
-                f"Target folder:\n{self._model_mgr.snapshot_dir}",
+                f"Weights already look complete. Re-download anyway?\n\nTarget folder:\n{self._model_mgr.snapshot_dir}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -1444,11 +1435,35 @@ class AIImageUpscalerPanel(QWidget):
         self._add_log("AI models removed.")
         self._update_buttons()
 
+    def _release_fs_if_held(self):
+        if self._fs_heavy_held:
+            release_fs_heavy()
+            self._fs_heavy_held = False
+
     def _run_upscale(self):
         path = self._get_active_image_path()
         if not path or not os.path.isfile(path):
             self._add_log("ERROR: Select a valid image file.")
             return
+
+        beautify = self._chk_beautify.isChecked()
+        try:
+            with Image.open(path) as im:
+                ow, oh = im.size
+        except Exception:
+            self._add_log("ERROR: Could not read image dimensions.")
+            return
+
+        if not try_acquire_fs_heavy("AI Image Upscaler"):
+            _busy = (
+                "Another file-heavy task is running (Organizer, Encoder, Scanner, or Image/Video Upscaler). "
+                "Wait for it to finish."
+            )
+            QMessageBox.warning(self, "Busy", _busy)
+            self._add_log(f"ERROR: {_busy}")
+            return
+        self._fs_heavy_held = True
+
         self._upscale_in_progress = True
         self._bar.setVisible(True)
         self._lbl_exec.setVisible(True)
@@ -1461,17 +1476,6 @@ class AIImageUpscalerPanel(QWidget):
         def _log(msg: str):
             self._sig.log_msg.emit(msg)
 
-        beautify = self._chk_beautify.isChecked()
-        try:
-            with Image.open(path) as im:
-                ow, oh = im.size
-        except Exception:
-            self._upscale_in_progress = False
-            self._bar.setVisible(False)
-            self._lbl_exec.setVisible(False)
-            self._update_buttons()
-            self._add_log("ERROR: Could not read image dimensions.")
-            return
         portrait, freckle_heavy, face_bbox = portrait_signals_from_path_detailed(path)
         auto = infer_zimage_params(
             ow=ow,
@@ -1524,6 +1528,7 @@ class AIImageUpscalerPanel(QWidget):
         threading.Thread(target=_work, daemon=True).start()
 
     def _on_upscale_done(self, img):
+        self._release_fs_if_held()
         self._last_result = img
         self._upscale_in_progress = False
         self._bar.setRange(0, 100)
@@ -1545,6 +1550,7 @@ class AIImageUpscalerPanel(QWidget):
             self._lbl_exec.setVisible(False)
 
     def _on_upscale_failed(self, err: str):
+        self._release_fs_if_held()
         self._upscale_in_progress = False
         self._bar.setRange(0, 100)
         self._bar.setValue(0)
@@ -1573,7 +1579,7 @@ class AIImageUpscalerPanel(QWidget):
     def _save_result(self):
         if self._last_result is None:
             return
-        fmt = (self._combo_save_fmt.currentText().strip().upper() if hasattr(self, "_combo_save_fmt") else "PNG")
+        fmt = self._combo_save_fmt.currentText().strip().upper() if hasattr(self, "_combo_save_fmt") else "PNG"
         ext = ".jpg" if fmt == "JPG" else ".png"
         default = ""
         if self._source_path:

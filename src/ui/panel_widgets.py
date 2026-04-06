@@ -17,9 +17,7 @@ COMBO_BOX_PANEL_QSS = (
 )
 
 # Compact spin row (image + video upscalers).
-SPIN_BOX_COMPACT_QSS = (
-    "font-size:8px; padding-left:2px; padding-right:4px; min-height:18px; max-height:18px;"
-)
+SPIN_BOX_COMPACT_QSS = "font-size:8px; padding-left:2px; padding-right:4px; min-height:18px; max-height:18px;"
 
 
 def field_label(text: str, width: int) -> QLabel:
@@ -90,6 +88,4 @@ def pytorch_installer_vram_guidance() -> str:
             "8 GB GDDR may work with smaller max resolution — lower it if you hit OOM. "
             "Real-ESRGAN (tiled video upscale) often needs ~4+ GB free VRAM at 1080p-class frames; reduce resolution/tile on OOM."
         )
-    return (
-        "CPU PyTorch: no GDDR. Prefer 32 GB+ system RAM for practical Z-Image runs; CPU is far slower than CUDA."
-    )
+    return "CPU PyTorch: no GDDR. Prefer 32 GB+ system RAM for practical Z-Image runs; CPU is far slower than CUDA."

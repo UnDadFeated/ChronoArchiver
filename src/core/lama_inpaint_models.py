@@ -13,9 +13,7 @@ from core.lama_inpaint_runner import invalidate_lama_checkpoint_cache, validate_
 
 # TorchScript export used by simple-lama-inpainting (MIT); compatible with LaMa big-lama.
 LAMA_FILENAME = "big-lama.pt"
-LAMA_URL = (
-    "https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt"
-)
+LAMA_URL = "https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt"
 APPROX_LAMA_BYTES = 196 * 1024 * 1024
 
 _MIN_VALID_BYTES = 40 * 1024 * 1024
@@ -96,6 +94,7 @@ class LamaInpaintModelManager:
                     total = est
 
                 block = 256 * 1024
+
                 def _abort() -> bool:
                     if self._cancel.is_set():
                         return True

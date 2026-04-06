@@ -236,7 +236,8 @@ class RealESRGANRunner:
                 input_tile_height = input_end_y - input_start_y
 
                 input_tile = self.img[
-                    :, :,
+                    :,
+                    :,
                     input_start_y_pad:input_end_y_pad,
                     input_start_x_pad:input_end_x_pad,
                 ]
@@ -256,7 +257,8 @@ class RealESRGANRunner:
 
                 assert self.output is not None
                 self.output[:, :, output_start_y:output_end_y, output_start_x:output_end_x] = output_tile[
-                    :, :,
+                    :,
+                    :,
                     output_start_y_tile:output_end_y_tile,
                     output_start_x_tile:output_end_x_tile,
                 ]

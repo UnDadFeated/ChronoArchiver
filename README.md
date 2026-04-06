@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-5.1.5-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-5.4.1-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -31,16 +31,16 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Installation
 
-Release **5.1.5** — installers and AUR `pkgver` are aligned on this version.
+Release **5.4.1** — installers and AUR `pkgver` are aligned on this version.
 
 ### GitHub (Windows / macOS installers)
 
-Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v5.1.5`**):
+Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v5.4.1`**):
 
 | Platform | Asset |
 |----------|--------|
-| Windows x64 | `ChronoArchiver-Setup-5.1.5-win64.exe` |
-| macOS | `ChronoArchiver-Setup-5.1.5-mac64.zip` |
+| Windows x64 | `ChronoArchiver-Setup-5.4.1-win64.exe` |
+| macOS | `ChronoArchiver-Setup-5.4.1-mac64.zip` |
 
 The installer is lightweight; the first launch may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
 
@@ -62,7 +62,7 @@ Maintainers: sync semver across `src/version.py`, `pyproject.toml`, `README.md`,
 
 ### Arch Linux (AUR)
 
-Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **5.1.5**:
+Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **5.4.1**:
 
 ```bash
 paru -S chronoarchiver
@@ -92,6 +92,8 @@ Run [from git](#git-clone-linux-windows-macos) in toolbox/distrobox, or use an A
 
 **Privacy note (AI Media Scanner):** analysis runs locally on your machine. Selected images are processed on-device using OpenCV/ONNX and are not uploaded to any server.
 
+**Diagnostics:** Use **COPY DEBUG INFO** or **EXPORT DIAGNOSTICS** in the footer to copy or save a local report. ChronoArchiver does **not** send this data to a server; attach it to a [GitHub issue](https://github.com/UnDadFeated/ChronoArchiver/issues) only if you choose. Security and privacy expectations: [SECURITY.md](SECURITY.md).
+
 Full release notes: [CHANGELOG.md](CHANGELOG.md).
 
 **Updates:** AUR (`paru`/`yay`), git clone (`git pull`), or Windows/macOS setup installer — see [CHANGELOG.md](CHANGELOG.md).
@@ -101,6 +103,34 @@ Full release notes: [CHANGELOG.md](CHANGELOG.md).
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md). On Arch, the changelog is also installed at `/usr/share/doc/chronoarchiver/CHANGELOG.md`.
+
+---
+
+## Troubleshooting
+
+| Issue | What to try |
+|--------|-------------|
+| **FFmpeg / prerequisites** | Wait for the footer line to show **READY** after startup. Use **HEALTH** in the footer for a quick summary. Open the **DEBUG** button to view session logs. |
+| **Bundled FFmpeg missing or outdated** | From git installs, the app downloads **static-ffmpeg** into the venv on first run; ensure disk space and (for downloads) network access. |
+| **GPU / CUDA / PyTorch** | GPU is optional. AI panels fall back to CPU; PyTorch and models can be installed from in-app flows. If you see **out of memory**, reduce resolution or close other GPU-heavy apps. |
+| **Models or OpenCV** | Use each panel’s **Setup** / **Install** actions. **AI Media Scanner** needs OpenCV in the app venv; weights are stored under the app data directory. |
+| **Offline** | Panels that need downloads show a **NO NETWORK** state; work that uses only local files still runs. |
+| **Reporting bugs** | Use **COPY DEBUG INFO** or **EXPORT DIAGNOSTICS** (footer), then open an issue with steps to reproduce. |
+| **Structured logs** | Set environment variable **`CHRONOARCHIVER_JSON_LOG=1`** before launch to also write `*_structured.jsonl` next to the session `.log` (machine-readable lines; still local only). |
+| **Footer error line** | Recent **`ERROR:`** lines from the session logger appear briefly; they clear after a successful completion log for the same kind of task, or use **×**. **SHORTCUTS** (**Ctrl+/**) lists keys; **SECURITY** links to policy from the health dialog. |
+| **Release notes** | After upgrading to a newer version, a one-time **what’s new** dialog may list highlights from **CHANGELOG.md** (not on a totally fresh install; dismissible; optional **do not show** for future upgrades). |
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting, privacy, and supply-chain notes.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the release checklist and what CI enforces.
 
 ---
 

@@ -10,9 +10,12 @@ from pathlib import Path
 from typing import Callable, Optional
 
 try:
-    from .debug_logger import debug, UTILITY_MODEL_SETUP
+    from .debug_logger import debug, structured_event, UTILITY_MODEL_SETUP
+    from .http_utils import requests_get_stream_with_retries
 except ImportError:
-    from core.debug_logger import debug, UTILITY_MODEL_SETUP
+    from core.debug_logger import debug, structured_event, UTILITY_MODEL_SETUP
+    from core.http_utils import requests_get_stream_with_retries
+
 
 class ModelManager:
     """Handles checking and downloading AI models for the scanner."""
@@ -36,7 +39,7 @@ class ModelManager:
             "approx_size": 12_800_000,  # ~12.2 MB
         },
     }
-    
+
     def __init__(self, model_dir: str):
         self.model_dir = pathlib.Path(model_dir)
         self.logger = logging.getLogger("ChronoArchiver.Scanner")
@@ -51,7 +54,9 @@ class ModelManager:
                     sha256_hash.update(byte_block)
             actual_sha = sha256_hash.hexdigest()
             if actual_sha != expected_sha:
-                self.logger.warning(f"Hash mismatch for {file_path.name}! Expected: {expected_sha}, Actual: {actual_sha}")
+                self.logger.warning(
+                    f"Hash mismatch for {file_path.name}! Expected: {expected_sha}, Actual: {actual_sha}"
+                )
                 return False
             return True
         except Exception as e:
@@ -122,8 +127,7 @@ class ModelManager:
                 if dest.exists():
                     dest.unlink()
 
-                with requests.get(url, stream=True, timeout=(10, 60)) as response:
-                    response.raise_for_status()
+                with requests_get_stream_with_retries(url, timeout=(10, 120), attempts=3) as response:
                     try:
                         total_size = int(response.headers.get("content-length", 0) or 0)
                     except (TypeError, ValueError):
@@ -145,7 +149,9 @@ class ModelManager:
                                 overall = (done_bytes + downloaded) / max(total_bytes, 1) if total_bytes else 0
                                 overall = min(1.0, overall)
                                 if progress_callback:
-                                    status = "Extracting... please wait..." if (is_tar and overall >= 0.99) else dl_dest.name
+                                    status = (
+                                        "Extracting... please wait..." if (is_tar and overall >= 0.99) else dl_dest.name
+                                    )
                                     progress_callback(downloaded, total_size, status, overall, label, url)
 
                 if self.stop_event.is_set():
@@ -159,7 +165,9 @@ class ModelManager:
                     if progress_callback:
                         overall = (done_bytes + total_size) / max(total_bytes, 1)
                         overall = min(1.0, overall)
-                        progress_callback(total_size, total_size, "Installing models... please wait...", overall, label, url)
+                        progress_callback(
+                            total_size, total_size, "Installing models... please wait...", overall, label, url
+                        )
                         time.sleep(0.25)
                     with tarfile.open(dl_dest, "r:gz") as tar:
                         try:
@@ -176,14 +184,85 @@ class ModelManager:
                 if progress_callback:
                     progress_callback(0, 0, "Installing models... please wait...", 1.0, "Verifying", url)
                     time.sleep(0.25)
-                if not self.verify_hash(dest, info["sha256"]):
-                    self.logger.error(f"Integrity check failed for {info['filename']}")
-                    debug(UTILITY_MODEL_SETUP, f"Model hash mismatch: {info['filename']}")
-                    if dest.exists():
-                        dest.unlink()
-                    return False
+                hash_ok = self.verify_hash(dest, info["sha256"])
+                if not hash_ok:
+                    self.logger.warning(f"Integrity check failed for {info['filename']}, retrying download once")
+                    debug(UTILITY_MODEL_SETUP, f"Model hash mismatch, retry: {info['filename']}")
+                    try:
+                        if dest.exists():
+                            dest.unlink()
+                    except OSError:
+                        pass
+                    if dl_dest is not None and dl_dest.exists():
+                        try:
+                            dl_dest.unlink()
+                        except OSError:
+                            pass
+                    with requests_get_stream_with_retries(url, timeout=(10, 120), attempts=3) as response:
+                        try:
+                            total_size = int(response.headers.get("content-length", 0) or 0)
+                        except (TypeError, ValueError):
+                            total_size = 0
+                        if total_size <= 0:
+                            total_size = model_size
+                        is_tar = "tar_extract" in info
+                        dl_dest = dest if not is_tar else dest.with_suffix(".tar.gz")
+                        with open(dl_dest, "wb") as f:
+                            downloaded = 0
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if self.stop_event.is_set():
+                                    break
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    overall = (done_bytes + downloaded) / max(total_bytes, 1) if total_bytes else 0
+                                    overall = min(1.0, overall)
+                                    if progress_callback:
+                                        st = (
+                                            "Extracting... please wait..."
+                                            if (is_tar and overall >= 0.99)
+                                            else dl_dest.name
+                                        )
+                                        progress_callback(downloaded, total_size, st, overall, label, url)
+                    if self.stop_event.is_set():
+                        if dl_dest.exists():
+                            dl_dest.unlink()
+                        return False
+                    if "tar_extract" in info:
+                        if progress_callback:
+                            overall = (done_bytes + total_size) / max(total_bytes, 1)
+                            overall = min(1.0, overall)
+                            progress_callback(
+                                total_size, total_size, "Installing models... please wait...", overall, label, url
+                            )
+                            time.sleep(0.25)
+                        with tarfile.open(dl_dest, "r:gz") as tar:
+                            try:
+                                member = tar.getmember(info["tar_extract"])
+                            except KeyError:
+                                raise ValueError(f"Archive missing expected member: {info['tar_extract']}")
+                            member.name = dest.name
+                            if hasattr(tarfile, "data_filter"):
+                                tar.extract(member, path=dest.parent, filter="data")
+                            else:
+                                tar.extract(member, path=dest.parent)
+                        dl_dest.unlink()
+                    if progress_callback:
+                        progress_callback(0, 0, "Installing models... please wait...", 1.0, "Verifying", url)
+                        time.sleep(0.25)
+                    if not self.verify_hash(dest, info["sha256"]):
+                        self.logger.error(f"Integrity check failed for {info['filename']} after retry")
+                        debug(UTILITY_MODEL_SETUP, f"Model hash mismatch after retry: {info['filename']}")
+                        if dest.exists():
+                            dest.unlink()
+                        return False
 
                 done_bytes += total_size if total_size > 0 else model_size
+                structured_event(
+                    "scanner_model_ready",
+                    model_key=key,
+                    filename=info["filename"],
+                )
 
             except Exception as e:
                 self.logger.error(f"Failed to download {info['filename']}: {e}")
@@ -361,4 +440,3 @@ class ZImageModelManager:
                 shutil.rmtree(self.snapshot_dir, ignore_errors=False)
             except OSError:
                 pass
-

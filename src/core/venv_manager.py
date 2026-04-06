@@ -24,8 +24,10 @@ import urllib.request
 
 try:
     from .debug_logger import debug, UTILITY_OPENCV_INSTALL
+    from .http_utils import requests_get_stream_with_retries
 except ImportError:
     from core.debug_logger import debug, UTILITY_OPENCV_INSTALL
+    from core.http_utils import requests_get_stream_with_retries
 
 try:
     from .subprocess_tee import tee_line, win_hide_kw
@@ -47,8 +49,15 @@ OPENCV_CUDA_FALLBACK_BYTES = 506 * 1024 * 1024
 
 # Base venv only — no OpenCV. AI Scanner installs: NVIDIA → CUDA wheel + stack; AMD/Intel/other → opencv-python (OpenCL), same as before.
 VENV_PACKAGES_BASE = [
-    "PySide6-Essentials", "numpy", "psutil", "requests", "Pillow", "platformdirs",
-    "piexif", "static-ffmpeg", "GitPython",
+    "PySide6-Essentials",
+    "numpy",
+    "psutil",
+    "requests",
+    "Pillow",
+    "platformdirs",
+    "piexif",
+    "static-ffmpeg",
+    "GitPython",
 ]
 
 # New venvs: prefer newest Python on the host in this inclusive range (PyTorch CUDA: cu124 for 3.9–3.13, cu130 for 3.14+).
@@ -229,7 +238,10 @@ def detect_gpu() -> str:
         smi = shutil.which("nvidia-smi")
         if smi:
             r = subprocess.run(
-                [smi, "-L"], capture_output=True, text=True, timeout=3,
+                [smi, "-L"],
+                capture_output=True,
+                text=True,
+                timeout=3,
                 **win_hide_kw(),
             )
             if r.returncode == 0 and re.search(r"\bNVIDIA\b", (r.stdout or "") + (r.stderr or ""), re.I):
@@ -281,7 +293,10 @@ def detect_gpu() -> str:
     try:
         if not (found["nvidia"] or found["amd"] or found["intel"]):
             r = subprocess.run(
-                ["lspci", "-nnk"], capture_output=True, text=True, timeout=4,
+                ["lspci", "-nnk"],
+                capture_output=True,
+                text=True,
+                timeout=4,
                 **win_hide_kw(),
             )
             out = (r.stdout or "") if r.returncode == 0 else ""
@@ -301,8 +316,7 @@ def detect_gpu() -> str:
     try:
         debug(
             UTILITY_OPENCV_INSTALL,
-            "detect_gpu: " +
-            f"nvidia={found['nvidia']} amd={found['amd']} intel={found['intel']}"
+            "detect_gpu: " + f"nvidia={found['nvidia']} amd={found['amd']} intel={found['intel']}",
         )
     except Exception:
         pass
@@ -356,16 +370,10 @@ def format_pytorch_ready_line() -> tuple[str, str]:
             name = torch.cuda.get_device_name(0)
             suf = name[:28] + "…" if len(name) > 28 else name
             return (f"READY · CUDA · {suf}" if suf else "READY · CUDA"), ""
-        tip = (
-            "PyTorch on CPU (typical for AMD/Intel, macOS, or no NVIDIA CUDA). "
-            "Runs are slower than on NVIDIA CUDA."
-        )
+        tip = "PyTorch on CPU (typical for AMD/Intel, macOS, or no NVIDIA CUDA). Runs are slower than on NVIDIA CUDA."
         return "READY · CPU", tip
     except Exception:
-        tip = (
-            "PyTorch on CPU (typical for AMD/Intel, macOS, or no NVIDIA CUDA). "
-            "Runs are slower than on NVIDIA CUDA."
-        )
+        tip = "PyTorch on CPU (typical for AMD/Intel, macOS, or no NVIDIA CUDA). Runs are slower than on NVIDIA CUDA."
         return "READY · CPU", tip
 
 
@@ -496,8 +504,7 @@ def get_venv_python_creator_cmd() -> list[str] | None:
     hi = _venv_python_ceiling()
     debug(
         UTILITY_OPENCV_INSTALL,
-        "venv: no Python in %s.%s–%s.%s range found on PATH"
-        % (VENV_PYTHON_MIN[0], VENV_PYTHON_MIN[1], hi[0], hi[1]),
+        "venv: no Python in %s.%s–%s.%s range found on PATH" % (VENV_PYTHON_MIN[0], VENV_PYTHON_MIN[1], hi[0], hi[1]),
     )
     return None
 
@@ -528,6 +535,7 @@ def check_opencv_in_venv() -> bool:
     if _is_frozen():
         try:
             import cv2  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -539,7 +547,10 @@ def check_opencv_in_venv() -> bool:
     env = os.environ.copy()
     try:
         r = subprocess.run(
-            [str(py), "-c", "import cv2"], capture_output=True, timeout=5, env=env,
+            [str(py), "-c", "import cv2"],
+            capture_output=True,
+            timeout=5,
+            env=env,
             **win_hide_kw(),
         )
         ok = r.returncode == 0
@@ -556,6 +567,7 @@ def check_ffmpeg_in_venv() -> bool:
         try:
             import os as _os
             from static_ffmpeg.run import get_platform_dir
+
             crumb = _os.path.join(get_platform_dir(), "installed.crumb")
             return _os.path.isfile(crumb)
         except Exception:
@@ -565,13 +577,18 @@ def check_ffmpeg_in_venv() -> bool:
         return False
     try:
         r = subprocess.run(
-            [str(py), "-c", (
-                "import os; "
-                "from static_ffmpeg.run import get_platform_dir; "
-                "crumb = os.path.join(get_platform_dir(), 'installed.crumb'); "
-                "exit(0 if os.path.isfile(crumb) else 1)"
-            )],
-            capture_output=True, timeout=10,
+            [
+                str(py),
+                "-c",
+                (
+                    "import os; "
+                    "from static_ffmpeg.run import get_platform_dir; "
+                    "crumb = os.path.join(get_platform_dir(), 'installed.crumb'); "
+                    "exit(0 if os.path.isfile(crumb) else 1)"
+                ),
+            ],
+            capture_output=True,
+            timeout=10,
             **win_hide_kw(),
         )
         return r.returncode == 0
@@ -593,6 +610,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
     progress_callback(phase: str, pct: int, detail: str) where phase in ('downloading','extracting','done'),
     pct 0-100, detail e.g. "2.3 MB/s" or "Extracting...". Call add_ffmpeg_to_path() after True.
     """
+
     def prog(phase: str, pct: int, detail: str):
         if progress_callback:
             progress_callback(phase, pct, detail)
@@ -614,11 +632,16 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
             return False
         try:
             subprocess.run(
-                [str(py), "-c", (
-                    "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; "
-                    "get_or_fetch_platform_executables_else_raise()"
-                )],
-                capture_output=True, timeout=600,
+                [
+                    str(py),
+                    "-c",
+                    (
+                        "from static_ffmpeg.run import get_or_fetch_platform_executables_else_raise; "
+                        "get_or_fetch_platform_executables_else_raise()"
+                    ),
+                ],
+                capture_output=True,
+                timeout=600,
                 **win_hide_kw(),
             )
             return True
@@ -658,8 +681,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
         chunk_size = 256 * 1024
         total = -1
 
-        with requests.get(url, stream=True, timeout=TIMEOUT) as req:
-            req.raise_for_status()
+        with requests_get_stream_with_retries(url, stream=True, timeout=TIMEOUT, attempts=3) as req:
             try:
                 total = int(req.headers.get("content-length", 0))
             except (ValueError, TypeError):
@@ -678,6 +700,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
 
         prog("extracting", 92, "Extracting...")
         import zipfile
+
         with zipfile.ZipFile(local_zip, mode="r") as zipf:
             zipf.extractall(install_dir)
         try:
@@ -685,12 +708,14 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
         except OSError:
             pass
         from datetime import datetime
+
         with open(installed_crumb, "wt") as fd:
             fd.write(f"installed from {url} on {str(datetime.now())}")
 
         # Fix permissions on Unix
         if platform.system() != "Windows":
             import stat
+
             for name in ("ffmpeg", "ffprobe"):
                 exe = os.path.join(exe_dir, name)
                 if os.path.exists(exe):
@@ -755,6 +780,7 @@ def set_local_ffmpeg_revision(rev: int) -> None:
 def _remove_ffmpeg_installed_crumb() -> None:
     try:
         from static_ffmpeg.run import get_platform_dir
+
         exe_dir = get_platform_dir()
         crumb = os.path.join(exe_dir, "installed.crumb")
         if os.path.isfile(crumb):
@@ -831,6 +857,7 @@ def add_ffmpeg_to_path() -> bool:
     """Add static-ffmpeg ffmpeg/ffprobe to PATH. Call after ensure_ffmpeg_in_venv or when check_ffmpeg_in_venv."""
     try:
         from static_ffmpeg import add_paths
+
         add_paths()
         return True
     except Exception:
@@ -872,7 +899,8 @@ def is_venv_runnable() -> bool:
     try:
         r = subprocess.run(
             [str(py), "-c", "import PySide6; import PIL; import requests"],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
             **win_hide_kw(),
         )
         return r.returncode == 0
@@ -937,15 +965,16 @@ def ensure_venv(progress_callback=None) -> bool:
         if not ok_pre:
             prog(
                 "Python venv prerequisites missing",
-                (err_pre or "Install python-venv / ensurepip on your system.")
-                + f"  Interpreter: {py_create}",
+                (err_pre or "Install python-venv / ensurepip on your system.") + f"  Interpreter: {py_create}",
                 0,
             )
             debug(UTILITY_OPENCV_INSTALL, f"ensure_venv: bootstrap prereq failed: {err_pre}")
             return False
         r = subprocess.run(
             creator + ["-m", "venv", str(venv)],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True,
+            text=True,
+            timeout=180,
             **win_hide_kw(),
         )
         if r.returncode != 0:
@@ -965,7 +994,10 @@ def ensure_venv(progress_callback=None) -> bool:
         prog(f"Installing {pkg} ({i + 1}/{n})...", "", 100.0 * i / n)
         proc = subprocess.Popen(
             [str(pip), "install", pkg],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
             **win_hide_kw(),
         )
         for line in iter(proc.stdout.readline, "") if proc.stdout else []:
@@ -990,10 +1022,10 @@ def ensure_venv(progress_callback=None) -> bool:
 
 
 # Approximate sizes for NVIDIA pip packages (venv install, no sudo)
-NVIDIA_CUDA_RUNTIME_APPROX_BYTES = int(2.2 * 1024 * 1024)   # ~2.2 MB
-NVIDIA_CUBLAS_APPROX_BYTES = int(384 * 1024 * 1024)        # ~384 MB (manylinux x86_64 wheel)
-NVIDIA_CUDNN_APPROX_BYTES = int(366 * 1024 * 1024)          # ~366 MB
-NVIDIA_CUFFT_APPROX_BYTES = int(25 * 1024 * 1024)          # ~25 MB (libcufft.so.12 for OpenCV CUDA wheel)
+NVIDIA_CUDA_RUNTIME_APPROX_BYTES = int(2.2 * 1024 * 1024)  # ~2.2 MB
+NVIDIA_CUBLAS_APPROX_BYTES = int(384 * 1024 * 1024)  # ~384 MB (manylinux x86_64 wheel)
+NVIDIA_CUDNN_APPROX_BYTES = int(366 * 1024 * 1024)  # ~366 MB
+NVIDIA_CUFFT_APPROX_BYTES = int(25 * 1024 * 1024)  # ~25 MB (libcufft.so.12 for OpenCV CUDA wheel)
 
 # PyPI packages for CUDA/cuDNN/cuFFT in venv (compatible with cudawarped OpenCV CUDA wheel)
 NVIDIA_CUDA_CUDNN_PIP_PACKAGES = [
@@ -1012,7 +1044,9 @@ def _is_cuda_cudnn_installed() -> bool:
     try:
         r = subprocess.run(
             [str(pip), "show", "nvidia-cudnn-cu13"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             **win_hide_kw(),
         )
         return r.returncode == 0
@@ -1022,6 +1056,7 @@ def _is_cuda_cudnn_installed() -> bool:
 
 def _install_cuda_cudnn_venv(progress_callback=None) -> tuple[bool, str | None]:
     """Install CUDA and cuDNN via pip into app venv (no sudo). Returns (success, error)."""
+
     def prog(msg, detail="", downloaded=0, total=0):
         """
         progress_callback(phase, detail, downloaded_bytes, total_bytes)
@@ -1060,7 +1095,10 @@ def _install_cuda_cudnn_venv(progress_callback=None) -> tuple[bool, str | None]:
             elapsed_s = time.monotonic() - t0
             tail = out_lines[-5:] if out_lines else []
             tail_str = (" | ".join(tail))[:800] if tail else ""
-            debug(UTILITY_OPENCV_INSTALL, f"CUDA/cuDNN install: success elapsed={elapsed_s:.1f}s lines={len(out_lines)} tail={tail_str}")
+            debug(
+                UTILITY_OPENCV_INSTALL,
+                f"CUDA/cuDNN install: success elapsed={elapsed_s:.1f}s lines={len(out_lines)} tail={tail_str}",
+            )
             return True, None
         err = "\n".join(out_lines[-40:]) or "Unknown error"
         debug(UTILITY_OPENCV_INSTALL, f"CUDA/cuDNN install FAILED: {err[:500]}")
@@ -1237,11 +1275,18 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
     debug(UTILITY_OPENCV_INSTALL, "install_opencv: removing previous OpenCV")
     prog("Removing...", "Uninstalling previous OpenCV", 0, 0)
     subprocess.run(
-        [str(pip), "uninstall", "-y",
-         "opencv-python", "opencv-python-headless",
-         "opencv-contrib-python", "opencv-contrib-python-headless",
-         "opencv-openvino-contrib-python"],
-        capture_output=True, timeout=60,
+        [
+            str(pip),
+            "uninstall",
+            "-y",
+            "opencv-python",
+            "opencv-python-headless",
+            "opencv-contrib-python",
+            "opencv-contrib-python-headless",
+            "opencv-openvino-contrib-python",
+        ],
+        capture_output=True,
+        timeout=60,
         **win_hide_kw(),
     )
 
@@ -1252,9 +1297,7 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
         if v == "cuda":
             if not _is_cuda_cudnn_installed():
                 prog("Installing CUDA runtime and cuDNN...", "pip install into venv...", 0, 0)
-                ok_venv, err_venv = _install_cuda_cudnn_venv(
-                    lambda msg, det, d, t: prog(msg, det, d, t)
-                )
+                ok_venv, err_venv = _install_cuda_cudnn_venv(lambda msg, det, d, t: prog(msg, det, d, t))
                 if not ok_venv:
                     debug(UTILITY_OPENCV_INSTALL, f"install_opencv FAIL at CUDA/cuDNN: {err_venv}")
                     prog("Failed", err_venv[:80] if err_venv else "Could not install CUDA/cuDNN", 0, 0)
@@ -1341,7 +1384,10 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
         pip_t0 = time.monotonic()
         proc_w = subprocess.Popen(
             [str(pip), "install", str(wheel_path)],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
             **win_hide_kw(),
         )
         acc_lines: list[str] = []
@@ -1362,7 +1408,10 @@ def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[
             pass
         if proc_w.returncode != 0:
             err = "\n".join(acc_lines[-40:]) or "Unknown error"
-            debug(UTILITY_OPENCV_INSTALL, f"install_opencv FAIL pip install wheel rc={proc_w.returncode} elapsed={pip_elapsed_s:.1f}s tail={err[:800]}")
+            debug(
+                UTILITY_OPENCV_INSTALL,
+                f"install_opencv FAIL pip install wheel rc={proc_w.returncode} elapsed={pip_elapsed_s:.1f}s tail={err[:800]}",
+            )
             prog("Failed", err[:80], 0, 0)
             return False, err
         debug(UTILITY_OPENCV_INSTALL, f"install_opencv SUCCESS, elapsed={pip_elapsed_s:.1f}s lines={len(acc_lines)}")
@@ -1386,15 +1435,22 @@ def uninstall_opencv(progress_callback=None) -> bool:
     if not pip.exists():
         return False
     packages = [
-        "opencv-python", "opencv-python-headless",
-        "opencv-contrib-python", "opencv-contrib-python-headless",
+        "opencv-python",
+        "opencv-python-headless",
+        "opencv-contrib-python",
+        "opencv-contrib-python-headless",
         "opencv-openvino-contrib-python",
         # CUDA stack (pip installs into venv; safe to uninstall even if not present)
-        "nvidia-cudnn-cu13", "nvidia-cuda-runtime", "nvidia-cublas", "nvidia-cufft",
+        "nvidia-cudnn-cu13",
+        "nvidia-cuda-runtime",
+        "nvidia-cublas",
+        "nvidia-cufft",
     ]
     r = subprocess.run(
         [str(pip), "uninstall", "-y", *packages],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
         **win_hide_kw(),
     )
     ok = r.returncode == 0
@@ -1418,7 +1474,10 @@ def install_package(pkg: str, progress_callback=None) -> bool:
     prog(f"Installing {pkg}...", "")
     proc = subprocess.Popen(
         [str(pip), "install", pkg],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
         **win_hide_kw(),
     )
     for line in iter(proc.stdout.readline, "") if proc.stdout else []:

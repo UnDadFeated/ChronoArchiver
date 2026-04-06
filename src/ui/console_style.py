@@ -7,20 +7,20 @@ import html
 import re
 
 # Dracula-inspired professional palette
-FILENAME = "#f8f8f2"      # Bright white — file basename only (last path segment)
-PATH_FOLDER = "#94e2d5"   # Teal — directory components inside quoted paths
-PATH_SEP = "#ff79c6"      # Bright pink — / and \\ between segments
-QUOTE = "#6272a4"        # Muted — quote chars
-ARROW = "#8be9fd"        # Cyan — ->
-DRY_RUN = "#ffb86c"      # Amber — [DRY RUN]
-ACTION = "#50fa7b"       # Green — [MOVE], [COPY], [LINK]
-SKIP_TAG = "#bd93f9"     # Purple — [SKIP], [DUPLICATE]
-RENAME_FIX = "#ff79c6"   # Pink — [RENAME FIX]
-ERROR = "#ff5555"        # Red — ERROR
-WARNING = "#f1fa8c"      # Yellow — WARNING
-SUCCESS = "#50fa7b"      # Green — Done, complete
-INFO = "#8be9fd"         # Cyan — Scanning, starting
-BASE = "#e5e7eb"         # Default text
+FILENAME = "#f8f8f2"  # Bright white — file basename only (last path segment)
+PATH_FOLDER = "#94e2d5"  # Teal — directory components inside quoted paths
+PATH_SEP = "#ff79c6"  # Bright pink — / and \\ between segments
+QUOTE = "#6272a4"  # Muted — quote chars
+ARROW = "#8be9fd"  # Cyan — ->
+DRY_RUN = "#ffb86c"  # Amber — [DRY RUN]
+ACTION = "#50fa7b"  # Green — [MOVE], [COPY], [LINK]
+SKIP_TAG = "#bd93f9"  # Purple — [SKIP], [DUPLICATE]
+RENAME_FIX = "#ff79c6"  # Pink — [RENAME FIX]
+ERROR = "#ff5555"  # Red — ERROR
+WARNING = "#f1fa8c"  # Yellow — WARNING
+SUCCESS = "#50fa7b"  # Green — Done, complete
+INFO = "#8be9fd"  # Cyan — Scanning, starting
+BASE = "#e5e7eb"  # Default text
 
 
 def _span(txt: str, color: str) -> str:

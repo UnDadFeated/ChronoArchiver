@@ -83,7 +83,7 @@ def _migrate_legacy_av1_config(dest: Path) -> None:
 
 class AV1Settings:
     """Handles persistent settings for ChronoArchiver AV1 Encoder."""
-    
+
     def __init__(self):
         cfg_dir = _av1_config_dir()
         self.config_path = str(cfg_dir / "av1_config.json")
@@ -107,7 +107,7 @@ class AV1Settings:
             "delete_on_success_confirm": False,
             "hw_accel_decode": False,
             "shutdown_on_finish": False,
-            "existing_output": "overwrite"  # overwrite | skip | rename
+            "existing_output": "overwrite",  # overwrite | skip | rename
         }
         self.data = self.load()
 

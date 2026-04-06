@@ -2,6 +2,90 @@
 
 ## [Unreleased]
 
+## [5.4.1] - 2026-04-03
+
+### Changed
+- **`core/updater`**: import **`CHANGELOG_RAW_URL`** from **`core/changelog_notes`** (single definition).
+- **`ui/app`**: **`_last_seen_app_version_path()`** centralizes the **`last_seen_app_version.txt`** path for the what’s-new flow.
+- **`ui/whats_new_dialog`**: removed an unused instance attribute.
+
+## [5.4.0] - 2026-04-03
+
+### Added
+- **What’s new**: after upgrading to a new version, a dismissible dialog shows the **CHANGELOG** section for that version (optional **do not show** for future upgrades). **Settings** / `last_seen_app_version.txt` records the last run so the dialog appears on the first launch **after** a version bump (not on a fresh install).
+- **`core/changelog_notes`**: load `CHANGELOG.md` and extract the `## [version]` block for the release-notes UI.
+- **`.gitignore`**: allow **`CONTRIBUTING.md`** and **`SECURITY.md`** to be tracked alongside **`README.md`** / **`CHANGELOG.md`**.
+
+### Changed
+- **Tests**: main-window smoke test cycles all **navigation panels**; **`test_changelog_notes`** covers section parsing and repo **CHANGELOG** resolution.
+
+### Documentation
+- **Keyboard shortcuts** dialog: note about the post-upgrade release-notes reminder.
+
+## [5.3.0] - 2026-04-03
+
+### Added
+- **Structured events**: when **`CHRONOARCHIVER_JSON_LOG=1`**, major pipeline transitions are written to `*_structured.jsonl` via `structured_event()` (encoder batch, organization, scanner model ready, etc.), in addition to `debug()` JSON lines.
+- **Footer**: **Last error** line for recent `ERROR:` log output (non-blocking); **×** dismiss; success log lines clear the banner (encoding batch complete, organization complete, upscale/export completion, and similar).
+- **Footer**: **SHORTCUTS** and **SECURITY**; **Ctrl+/** opens a keyboard reference dialog; **SECURITY** opens the in-app health summary (which includes a **Security policy** control opening `SECURITY.md` in the browser).
+- **`core/user_error_log_handler`**: `UserErrorBannerHandler`, `install_user_error_banner_on_logger()`, and `user_error_banner_should_clear()` for tests and reuse.
+- **`.pre-commit-config.yaml`**: **Ruff** check and format hooks for `src/` and `tests/`.
+- **`pyproject.toml`**: **`[tool.mypy]`** (incremental typing toward `src/core`); optional dev deps **pre-commit** and **mypy**.
+- **Tests**: `test_structured_event`, `test_user_error_handler`.
+
+### Changed
+- **CI**: advisory **`mypy src/core`** step (does not fail the job while the core package is brought up to full type coverage).
+
+### Documentation
+- **CONTRIBUTING**: pre-commit setup, advisory mypy, keyboard shortcuts reference, release attestation note, and maintainer profiling guidance.
+
+## [5.2.0] - 2026-04-03
+
+### Added
+- **`core/http_utils`**: `requests_get_stream_with_retries` for HTTP GET streams (retries on transient errors and HTTP 5xx).
+- **Downloads**: Scanner model downloads and bundled **FFmpeg** zip use retries; **scanner models** retry once after a failed **SHA-256** verify.
+- **Structured logging**: set **`CHRONOARCHIVER_JSON_LOG=1`** to write `*_structured.jsonl` alongside the session log (JSON lines for `debug()` calls).
+- **Footer**: **FS task:** label shows which filesystem-heavy job holds the global lock (named acquire).
+- **Panels**: tooltips on primary actions (**Start** / **Upscale**) when disabled, explaining what is missing.
+- **`SECURITY.md`**: vulnerability reporting, privacy, supply-chain notes.
+- **`ui/panel_start_hint`**: shared helper for disabled-start tooltips.
+
+### Changed
+- **`fs_task_lock`**: `try_acquire_fs_heavy(name=...)` records a **holder label** for UI visibility.
+- **Dependabot**: grouped **dev** deps; **torch** stack ignored for automatic bumps.
+- **CI**: **`ruff format --check`** is required (tree formatted).
+
+### Documentation
+- **README**: **Security** section; troubleshooting row for structured logs; link to **SECURITY.md**.
+- **CONTRIBUTING**: code-signing / notarization note, Ruff format gate, Dependabot behavior, type-hint guidance.
+
+## [5.1.7] - 2026-04-03
+
+### Added
+- **Health summary**: first-run dialog (optional **do not show again**) and footer **HEALTH** — environment + disk space; **no network upload**.
+- **Export diagnostics**: footer **EXPORT DIAGNOSTICS** writes a **local ZIP** (`README.txt`, `environment.txt`, `log_tail.txt`). Data goes **only to the path you choose**; attach to GitHub manually if desired.
+- **Crash logs**: uncaught exceptions append **CRASH CONTEXT** (panel + activity) and version/Python lines to the session log.
+- **`.github/dependabot.yml`**: weekly **pip** dependency PRs.
+- **Tests**: `test_diagnostics_export`, `test_debug_logger_context`, `test_qt_main_smoke` (main window offscreen with **`CHRONOARCHIVER_CI=1`**).
+- **CI**: informational **`ruff format --check`**.
+
+### Changed
+- **AI Media Scanner** and **AI Image Upscaler**: participate in **`fs_task_lock`** with the same **Busy** pattern as other heavy panels; **Busy** messages list all participating modules.
+- **CONTRIBUTING** / **README**: release **checksum** note, **Dependabot**, troubleshooting table, diagnostics privacy wording.
+
+## [5.1.6] - 2026-04-03
+
+### Added
+- **`core/debug_info`**: **`format_debug_bundle()`** — plain-text environment summary (version, OS, Python, venv paths, FFmpeg resolution) for issue reports.
+- **Footer**: **COPY DEBUG INFO** control and **Ctrl+Shift+D** shortcut; copies the bundle to the clipboard with a short confirmation.
+- **Tests**: **`test_fs_task_lock`**, **`test_app_paths`**, **`test_debug_info`** (lightweight, no media/GPU).
+- **CI**: **`ruff check`** on `src/` and `tests/`; **`pip-audit`** on `requirements.txt` (informational, does not fail the job).
+- **`.github/workflows/version-consistency.yml`**: fails if **`src/version.py`** and **`pyproject.toml`** versions differ.
+- **`CONTRIBUTING.md`**: maintainer **release checklist** (bump → tag → push → AUR) and CI expectations.
+
+### Changed
+- **Qt**: **`HighDpiScaleFactorRoundingPolicy.PassThrough`** applied after **`QApplication`** construction when supported.
+
 ## [5.1.5] - 2026-04-04
 
 ### Added

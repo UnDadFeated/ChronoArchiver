@@ -2,6 +2,7 @@
 bootstrap.py — First-run venv setup (stdlib + optional tkinter).
 Run before main app when venv does not exist.
 """
+
 import argparse
 import os
 import platform
@@ -64,6 +65,7 @@ def _run_with_ui():
         root.after(0, root.quit)
 
     import threading
+
     t = threading.Thread(target=task, daemon=True)
     t.start()
     root.mainloop()
@@ -73,6 +75,7 @@ def _run_with_ui():
 
 def _run_headless():
     """No UI — print to stdout."""
+
     def progress(phase, detail="", pct=None):
         print(f"  {phase}  {detail}")
 
@@ -85,6 +88,7 @@ def _show_setup_error(msg: str) -> None:
     try:
         import tkinter as tk
         from tkinter import messagebox
+
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror("ChronoArchiver — Setup Failed", msg)
@@ -93,6 +97,7 @@ def _show_setup_error(msg: str) -> None:
         if platform.system() == "Windows":
             try:
                 import ctypes
+
                 ctypes.windll.user32.MessageBoxW(0, msg, "ChronoArchiver — Setup Failed", 0x10)
             except Exception:
                 pass

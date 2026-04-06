@@ -1,8 +1,10 @@
 import os
 import sys
 import numpy as np
+
 try:
     import cv2
+
     OPENCV_AVAILABLE = True
 except ImportError:
     OPENCV_AVAILABLE = False
@@ -17,6 +19,7 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_AI_MEDIA_SCANNER
 
+
 class ScannerEngine:
     """
     AI Media Scanner using OpenCV YuNet (Face) and YOLOv8 (Persons & Animals).
@@ -24,29 +27,33 @@ class ScannerEngine:
     - Subject (Person/Animal) Detected -> 'Keep'
     - Not Detected -> 'Others'
     """
-    
+
     DEFAULT_LIST_CAP = 100_000  # Fail-safe: prevent unbounded memory; can be raised via callback
 
-    def __init__(self, logger_callback: Optional[Callable[[str], None]] = None,
-                 model_dir: Optional[str] = None,
-                 on_list_cap_reached: Optional[Callable[[str, int], Optional[int]]] = None):
+    def __init__(
+        self,
+        logger_callback: Optional[Callable[[str], None]] = None,
+        model_dir: Optional[str] = None,
+        on_list_cap_reached: Optional[Callable[[str, int], Optional[int]]] = None,
+    ):
         self.logger = logger_callback or (lambda x: print(x))
         self.stop_event = threading.Event()
         self._model_dir = model_dir
         self.on_list_cap_reached = on_list_cap_reached  # (list_name, current_cap) -> new_cap or None
-        
+
         # Results
         self.others_list: List[str] = []  # Files to be moved/archived
-        self.keep_list: List[str] = []    # Files containing subjects (people/animals)
-        
+        self.keep_list: List[str] = []  # Files containing subjects (people/animals)
+
         # Progress Callbacks (current, total, eta_seconds)
         self.progress_callback: Optional[Callable[[int, int, float], None]] = None
 
     def cancel(self):
         self.stop_event.set()
 
-    def run_scan(self, directory: str, include_subfolders: bool = True, keep_animals: bool = False,
-                 animal_threshold: float = 0.4):
+    def run_scan(
+        self, directory: str, include_subfolders: bool = True, keep_animals: bool = False, animal_threshold: float = 0.4
+    ):
         if not OPENCV_AVAILABLE:
             self.logger("Error: OpenCV (python-opencv) is not installed. AI features are disabled.")
             debug(UTILITY_AI_MEDIA_SCANNER, "ERROR: OpenCV not installed")
@@ -62,14 +69,17 @@ class ScannerEngine:
             debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Directory not found: {directory}")
             return
 
-        debug(UTILITY_AI_MEDIA_SCANNER, f"Scan start: dir={directory}, recursive={include_subfolders}, keep_animals={keep_animals}, threshold={animal_threshold}")
+        debug(
+            UTILITY_AI_MEDIA_SCANNER,
+            f"Scan start: dir={directory}, recursive={include_subfolders}, keep_animals={keep_animals}, threshold={animal_threshold}",
+        )
         self.others_list.clear()
         self.keep_list.clear()
         self.stop_event.clear()
 
         # Gather files with sizes (queue: path, size for byte-weighted progress)
         self.logger("Scanning directory structure...")
-        image_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff'}
+        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
         all_files = []
 
         for root, dirs, files in os.walk(directory):
@@ -87,12 +97,12 @@ class ScannerEngine:
         total = len(all_files)
         total_bytes = sum(s for _, s in all_files)
         debug(UTILITY_AI_MEDIA_SCANNER, f"Found {total} images ({total_bytes} bytes), initializing models")
-        self.logger(f"Found {total} images ({total_bytes / (1024*1024):.1f} MB). Starting Pipeline (GPU/OpenCV)...")
-        
+        self.logger(f"Found {total} images ({total_bytes / (1024 * 1024):.1f} MB). Starting Pipeline (GPU/OpenCV)...")
+
         # Models
         face_engine = None
         subject_engine = None
-        
+
         try:
             face_engine = self._init_opencv_face()
             if keep_animals:
@@ -101,7 +111,7 @@ class ScannerEngine:
             else:
                 subject_engine = None
                 self.logger("Keep Animals Filter Unchecked.")
-                
+
         except Exception as e:
             self.logger(f"Model Init Failed: {e}")
             debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Model init failed — {e}")
@@ -111,12 +121,13 @@ class ScannerEngine:
         img_queue = queue.Queue(maxsize=20)
 
         MAX_IMAGE_BYTES = 100 * 1024 * 1024  # Skip very large images to avoid OOM
+
         def producer():
             for f_path, size in all_files:
                 if self.stop_event.is_set():
                     break
                 if size > MAX_IMAGE_BYTES:
-                    self.logger(f"[SKIP] Too large ({size / (1024*1024):.0f} MB): {os.path.basename(f_path)}")
+                    self.logger(f"[SKIP] Too large ({size / (1024 * 1024):.0f} MB): {os.path.basename(f_path)}")
                     debug(UTILITY_AI_MEDIA_SCANNER, f"Skipped large image: {f_path}")
                     continue
                 try:
@@ -173,7 +184,7 @@ class ScannerEngine:
 
             # 2. Logic
             is_excluded = False
-            
+
             if has_face:
                 is_excluded = True
             else:
@@ -182,7 +193,7 @@ class ScannerEngine:
                         is_excluded = True
 
             fname_base = os.path.basename(f_path)
-            
+
             if is_excluded:
                 if len(self.keep_list) < max_keep:
                     self.keep_list.append(f_path)
@@ -230,7 +241,7 @@ class ScannerEngine:
                         others_cap_warned = True
                         self.logger(f"Others list capped at {max_others:,} entries.")
                         debug(UTILITY_AI_MEDIA_SCANNER, "others_list capped")
-                
+
             bytes_done += size
             self._report_progress(bytes_done, total_bytes, start_time, fname_base)
 
@@ -279,23 +290,36 @@ class ScannerEngine:
         return cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU
 
     def _init_opencv_face(self):
-        model = self._get_model_path('face_detection_yunet_2023mar.onnx')
+        model = self._get_model_path("face_detection_yunet_2023mar.onnx")
         backend, target = self._get_dnn_backend_target()
         try:
             return cv2.FaceDetectorYN.create(
-                model=model, config="", input_size=(320, 320),
-                score_threshold=0.5, nms_threshold=0.3, top_k=5000,
-                backend_id=backend, target_id=target
+                model=model,
+                config="",
+                input_size=(320, 320),
+                score_threshold=0.5,
+                nms_threshold=0.3,
+                top_k=5000,
+                backend_id=backend,
+                target_id=target,
             )
         except Exception as e:
             # Backend selection may be "available" but still fail at runtime on some OpenCV builds/devices.
-            debug(UTILITY_AI_MEDIA_SCANNER, f"FaceDetector init failed backend={backend} target={target}: {e}. Falling back to CPU.")
+            debug(
+                UTILITY_AI_MEDIA_SCANNER,
+                f"FaceDetector init failed backend={backend} target={target}: {e}. Falling back to CPU.",
+            )
             cpu_backend = cv2.dnn.DNN_BACKEND_OPENCV
             cpu_target = cv2.dnn.DNN_TARGET_CPU
             return cv2.FaceDetectorYN.create(
-                model=model, config="", input_size=(320, 320),
-                score_threshold=0.5, nms_threshold=0.3, top_k=5000,
-                backend_id=cpu_backend, target_id=cpu_target
+                model=model,
+                config="",
+                input_size=(320, 320),
+                score_threshold=0.5,
+                nms_threshold=0.3,
+                top_k=5000,
+                backend_id=cpu_backend,
+                target_id=cpu_target,
             )
 
     def _detect_face_opencv(self, detector, image):
@@ -308,13 +332,12 @@ class ScannerEngine:
 
     def _init_subject_detector(self):
         """Initialize subject detector using YOLOv8-nano ONNX (person + animals)."""
-        model_path = self._get_model_path('yolov8n.onnx')
+        model_path = self._get_model_path("yolov8n.onnx")
         try:
             net = cv2.dnn.readNetFromONNX(model_path)
         except Exception as e:
             raise RuntimeError(
-                f"Failed to load YOLO ONNX (file may be corrupt): {model_path}. "
-                f"Use Setup Models to re-download. ({e})"
+                f"Failed to load YOLO ONNX (file may be corrupt): {model_path}. Use Setup Models to re-download. ({e})"
             ) from e
         backend, target = self._get_dnn_backend_target()
         try:
@@ -322,7 +345,10 @@ class ScannerEngine:
             net.setPreferableTarget(target)
         except Exception:
             # If backend/target pairing fails, fall back to CPU.
-            debug(UTILITY_AI_MEDIA_SCANNER, f"YOLO detector prefers backend={backend} target={target} but failed; falling back to CPU.")
+            debug(
+                UTILITY_AI_MEDIA_SCANNER,
+                f"YOLO detector prefers backend={backend} target={target} but failed; falling back to CPU.",
+            )
             cpu_backend = cv2.dnn.DNN_BACKEND_OPENCV
             cpu_target = cv2.dnn.DNN_TARGET_CPU
             try:
@@ -351,11 +377,11 @@ class ScannerEngine:
     def _get_model_path(self, filename):
         if self._model_dir:
             return os.path.join(self._model_dir, filename)
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = sys._MEIPASS
         else:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, 'core', 'models', filename)
+        return os.path.join(base_dir, "core", "models", filename)
 
     def _report_progress(self, bytes_done, total_bytes, start_time, filename=""):
         if not self.progress_callback:
@@ -367,4 +393,3 @@ class ScannerEngine:
             self.progress_callback(bytes_done, total_bytes, remaining, filename)
         else:
             self.progress_callback(bytes_done, total_bytes, 0, filename)
-
