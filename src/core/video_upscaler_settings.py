@@ -50,9 +50,7 @@ def _sanitize(data: dict, defaults: dict, *, had_preset_key_on_disk: bool = True
     merged = {**defaults, **data}
     out = {
         "source_video": str(merged.get("source_video", "") or "").strip(),
-        "preset_key": _preset_key_from_merged(
-            merged, had_preset_key_on_disk=had_preset_key_on_disk
-        ),
+        "preset_key": _preset_key_from_merged(merged, had_preset_key_on_disk=had_preset_key_on_disk),
     }
     return out
 

@@ -15,15 +15,33 @@ import time
 
 try:
     from PIL import Image, ImageOps
+
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
 
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget, QListWidgetItem,
-    QProgressBar, QFileDialog, QSpinBox, QFrame, QDialog, QComboBox, QMessageBox,
-    QInputDialog, QTextEdit, QSizePolicy,
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QCheckBox,
+    QListWidget,
+    QListWidgetItem,
+    QProgressBar,
+    QFileDialog,
+    QSpinBox,
+    QFrame,
+    QDialog,
+    QComboBox,
+    QMessageBox,
+    QInputDialog,
+    QTextEdit,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 
@@ -35,16 +53,20 @@ from PySide6.QtGui import QCloseEvent, QPixmap, QShowEvent, QTextCursor
 
 import pathlib
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from ui.panel_widgets import eng_row_btn_qss, path_browse_btn_qss
 from core.model_manager import ModelManager
 from core.app_paths import models_dir
 from core.venv_manager import (
-    get_pip_exe, ensure_venv,
-    get_opencv_variant, get_opencv_variant_label,
-    get_opencv_install_components, install_opencv, uninstall_opencv,
+    get_pip_exe,
+    ensure_venv,
+    get_opencv_variant,
+    get_opencv_variant_label,
+    get_opencv_install_components,
+    install_opencv,
+    uninstall_opencv,
     check_opencv_in_venv,
 )
 from core.debug_logger import (
@@ -58,6 +80,8 @@ from core.debug_logger import (
 )
 from core.updater import restart_app
 from core.subprocess_tee import set_subprocess_channel
+from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from ui.panel_start_hint import apply_start_button_hint
 
 
 def _opencv_installer_vram_guidance(variant: str) -> str:
@@ -74,7 +98,7 @@ def _opencv_installer_vram_guidance(variant: str) -> str:
 
 
 class _Signals(QObject):
-    log_msg  = Signal(str)
+    log_msg = Signal(str)
     progress = Signal(float)
     finished = Signal()
     setup_complete = Signal(object)  # (ok, err) for OpenCV install, bool for uninstall/model setup
@@ -85,6 +109,7 @@ class _Signals(QObject):
 
 class OpenCVSetupDialog(QDialog):
     """Popup for OpenCV install progress."""
+
     phase_update = Signal(str, str, int, int)  # phase, detail, downloaded, total
 
     def __init__(self, parent=None, vram_guidance: str = ""):
@@ -157,6 +182,7 @@ class OpenCVSetupDialog(QDialog):
 
 class ModelSetupDialog(QDialog):
     """Popup showing model download progress: URL, model name, fixed progress bar."""
+
     progress_update = Signal(str, str, str, int, int, float)
 
     def __init__(self, model_mgr, parent=None):
@@ -253,12 +279,11 @@ class ModelSetupDialog(QDialog):
 
 
 class AIScannerPanel(QWidget):
-
     def __init__(self, log_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb = log_callback
         self._status_cb = status_callback
-        self._sig    = _Signals()
+        self._sig = _Signals()
         _q = Qt.ConnectionType.QueuedConnection
         self._sig.log_msg.connect(self._add_log, _q)
         self._sig.progress.connect(self._on_progress, _q)
@@ -269,6 +294,7 @@ class AIScannerPanel(QWidget):
 
         self._engine = None  # Initialized in _run_job
         self._is_running = False
+        self._fs_heavy_held = False
         self._cap_request_queue = queue.Queue()  # (list_name, current_cap, result_holder, done_event)
         self._cap_timer = QTimer(self)
         self._cap_timer.setInterval(80)
@@ -506,8 +532,8 @@ class AIScannerPanel(QWidget):
         self._btn_start_move.setObjectName("btnStartMove")
         self._btn_start_move.setFixedHeight(_bar_h)
         self._btn_start_move.setStyleSheet(
-            "font-size:8px; font-weight:700; "
-            "background:#1a1a1a; color:#6b7280; border:2px solid #262626;")
+            "font-size:8px; font-weight:700; background:#1a1a1a; color:#6b7280; border:2px solid #262626;"
+        )
         self._btn_start_move.clicked.connect(self._apply_move_copy)
         self._btn_start_move.setEnabled(False)
         h_btns.addWidget(self._btn_start_move)
@@ -560,9 +586,13 @@ class AIScannerPanel(QWidget):
         if self._models_check_in_progress:
             return
         self._models_check_in_progress = True
+
         def _apply(cv_ok: bool):
             self._cached_cv_ok = cv_ok
-            debug(UTILITY_AI_MEDIA_SCANNER, f"_check_models: cv_ok={cv_ok} _opencv_just_installed={self._opencv_just_installed}")
+            debug(
+                UTILITY_AI_MEDIA_SCANNER,
+                f"_check_models: cv_ok={cv_ok} _opencv_just_installed={self._opencv_just_installed}",
+            )
             self._models_check_in_progress = False
             try:
                 from core.network_status import (
@@ -689,10 +719,12 @@ class AIScannerPanel(QWidget):
                     # Pip's --outdated output varies by opencv package name.
                     r = subprocess.run(
                         [str(pip_exe), "list", "--outdated"],
-                        capture_output=True, text=True, timeout=10,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                         **_wh,
                     )
-                    hay = (r.stdout or "")
+                    hay = r.stdout or ""
                     if r.returncode == 0 and (
                         "opencv-python" in hay
                         or "opencv-python-headless" in hay
@@ -724,6 +756,19 @@ class AIScannerPanel(QWidget):
             return self._btn_start_move
         return self._btn_start
 
+    def _scanner_start_reasons(self) -> list[str]:
+        if self._is_running or self._setup_in_progress:
+            return []
+        r = []
+        if not self._cached_cv_ok:
+            r.append("install OpenCV from the Engine row")
+        if not self._model_mgr.is_up_to_date():
+            r.append("download AI models (Setup Models)")
+        path = self._edit_path.text().strip()
+        if not path or not os.path.isdir(path):
+            r.append("choose a folder of images to scan")
+        return r
+
     def _update_start_enabled(self):
         models_ready = self._model_mgr.is_up_to_date()
         path = self._edit_path.text().strip()
@@ -731,6 +776,12 @@ class AIScannerPanel(QWidget):
         cv_ok = self._cached_cv_ok
         can = cv_ok and models_ready and path_ok and not self._is_running
         self._btn_start.setEnabled(can)
+        apply_start_button_hint(
+            self._btn_start,
+            enabled=can,
+            reasons_when_disabled=self._scanner_start_reasons(),
+            enabled_tip="Start batch AI scan (YuNet / YOLO)",
+        )
         busy = self._setup_in_progress or self._is_running
         self._btn_uninstall_models.setEnabled(not busy and models_ready)
         try:
@@ -782,13 +833,9 @@ class AIScannerPanel(QWidget):
                     "background:#1a1a1a; color:#6b7280; border:2px solid #262626; padding:0px;"
                 )
         elif w == self._btn_browse:
-            w.setStyleSheet(
-                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
-            )
+            w.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa"))
         elif w == self._btn_browse_target:
-            w.setStyleSheet(
-                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
-            )
+            w.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa"))
         elif w == self._btn_setup:
             w.setStyleSheet(eng_row_btn_qss(ew, eh, "#aaa", "#262626"))
         elif w == self._btn_uninstall_models:
@@ -818,7 +865,9 @@ class AIScannerPanel(QWidget):
         ew, eh = self._eng_btn_w, self._eng_btn_h
         if self._guide_glow_phase:
             if target == self._btn_start:
-                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
+                target.setStyleSheet(
+                    "background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;"
+                )
             elif target == self._btn_start_move:
                 target.setStyleSheet(
                     "font-size:9px; font-weight:900; min-height:28px; max-height:28px; "
@@ -827,9 +876,7 @@ class AIScannerPanel(QWidget):
             elif target == self._btn_install_cv and self._opencv_just_installed:
                 target.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#34d399", "#10b981"))
             elif target == self._btn_browse or target == self._btn_browse_target:
-                target.setStyleSheet(
-                    path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444")
-                )
+                target.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444"))
             elif target in (self._btn_setup, self._btn_install_cv):
                 target.setStyleSheet(eng_row_btn_qss(ew, eh, "#ef4444", "#ef4444", "transparent"))
             else:
@@ -850,7 +897,7 @@ class AIScannerPanel(QWidget):
             total = sum(s for _, s in components)
             debug(
                 UTILITY_OPENCV_INSTALL,
-                f"OpenCV popup components: variant={variant!r} total={total}B components={[{'label':lbl,'sizeB':sz} for lbl,sz in components]}",
+                f"OpenCV popup components: variant={variant!r} total={total}B components={[{'label': lbl, 'sizeB': sz} for lbl, sz in components]}",
             )
         if components:
             lines.append("Components:")
@@ -906,13 +953,19 @@ class AIScannerPanel(QWidget):
                         self._sig.setup_complete.emit((False, "Could not create venv"))
                         return
                 ok, err = install_opencv(progress_callback=_prog, variant=variant)
-                debug(UTILITY_OPENCV_INSTALL, f"OpenCV install _task: install_opencv returned ok={ok} err={err[:100] if err else None}")
+                debug(
+                    UTILITY_OPENCV_INSTALL,
+                    f"OpenCV install _task: install_opencv returned ok={ok} err={err[:100] if err else None}",
+                )
                 if not ok and err and variant == "cuda":
                     debug(UTILITY_OPENCV_INSTALL, "OpenCV install: trying OpenCL fallback")
                     _prog("Trying OpenCL fallback...", "")
                     ok, err = install_opencv(progress_callback=_prog, variant="opencl")
                     debug(UTILITY_OPENCV_INSTALL, f"OpenCV install _task: fallback returned ok={ok}")
-                debug(UTILITY_OPENCV_INSTALL, f"OpenCV install _task: emitting setup_complete ({ok}, {err[:50] if err else None})")
+                debug(
+                    UTILITY_OPENCV_INSTALL,
+                    f"OpenCV install _task: emitting setup_complete ({ok}, {err[:50] if err else None})",
+                )
                 self._sig.setup_complete.emit((ok, err))
             except Exception as e:
                 debug(UTILITY_OPENCV_INSTALL, f"OpenCV install _task EXCEPTION: {e}")
@@ -921,7 +974,10 @@ class AIScannerPanel(QWidget):
                 self._sig.setup_complete.emit((False, str(e)))
 
         def _on_done(result):
-            debug(UTILITY_OPENCV_INSTALL, f"OpenCV install _on_done RECV: type={type(result).__name__} value={str(result)[:200]}")
+            debug(
+                UTILITY_OPENCV_INSTALL,
+                f"OpenCV install _on_done RECV: type={type(result).__name__} value={str(result)[:200]}",
+            )
             ok = result[0] if isinstance(result, tuple) else result
             err = result[1] if isinstance(result, tuple) and len(result) > 1 else None
             debug(UTILITY_OPENCV_INSTALL, f"OpenCV install popup DONE ok={ok} err={str(err)[:300] if err else 'None'}")
@@ -1153,7 +1209,21 @@ class AIScannerPanel(QWidget):
             debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Invalid directory: {path or '(empty)'}")
             return
 
-        debug(UTILITY_AI_MEDIA_SCANNER, f"Scan start: path={path}, recursive={self._chk_recursive.isChecked()}, keep_animals={self._chk_animals.isChecked()}")
+        if not try_acquire_fs_heavy("AI Media Scanner"):
+            _busy = (
+                "Another file-heavy task is running (Organizer, Encoder, Scanner, or Image/Video Upscaler). "
+                "Wait for it to finish."
+            )
+            QMessageBox.warning(self, "Busy", _busy)
+            self._add_log(f"ERROR: {_busy}")
+            debug(UTILITY_AI_MEDIA_SCANNER, "Start blocked: fs_task_lock busy")
+            return
+        self._fs_heavy_held = True
+
+        debug(
+            UTILITY_AI_MEDIA_SCANNER,
+            f"Scan start: path={path}, recursive={self._chk_recursive.isChecked()}, keep_animals={self._chk_animals.isChecked()}",
+        )
         self._is_running = True
         self._bar.setFormat("%p%")
         self._bar.setRange(0, 100)
@@ -1165,7 +1235,9 @@ class AIScannerPanel(QWidget):
         self._btn_stop.setEnabled(True)
         self._cap_timer.start()
 
-        def _log(msg): self._sig.log_msg.emit(msg)
+        def _log(msg):
+            self._sig.log_msg.emit(msg)
+
         def _cap_callback(list_name: str, current_cap: int):
             """Request main-thread dialog; blocks until user responds."""
             result_holder = []
@@ -1173,20 +1245,36 @@ class AIScannerPanel(QWidget):
             self._cap_request_queue.put((list_name, current_cap, result_holder, done_event))
             done_event.wait()
             return result_holder[0] if result_holder else None
-        self._engine = ScannerEngine(
-            logger_callback=_log,
-            model_dir=str(self._model_mgr.model_dir),
-            on_list_cap_reached=_cap_callback,
-        )
-        self._engine.progress_callback = lambda c, t, *_: self._sig.progress.emit(
-            min(1.0, c / max(t, 1)))
+
+        try:
+            self._engine = ScannerEngine(
+                logger_callback=_log,
+                model_dir=str(self._model_mgr.model_dir),
+                on_list_cap_reached=_cap_callback,
+            )
+        except Exception as e:
+            self._add_log(f"ERROR: {e}")
+            debug(UTILITY_AI_MEDIA_SCANNER, f"ScannerEngine init failed: {e}")
+            if self._fs_heavy_held:
+                release_fs_heavy()
+                self._fs_heavy_held = False
+            self._is_running = False
+            if self._status_cb:
+                self._status_cb("idle")
+            self._update_start_enabled()
+            self._btn_stop.setEnabled(False)
+            self._cap_timer.stop()
+            return
+        self._engine.progress_callback = lambda c, t, *_: self._sig.progress.emit(min(1.0, c / max(t, 1)))
 
         def _run():
             try:
-                self._engine.run_scan(path,
+                self._engine.run_scan(
+                    path,
                     include_subfolders=self._chk_recursive.isChecked(),
                     keep_animals=self._chk_animals.isChecked(),
-                    animal_threshold=self._spin_thresh.value() / 100.0)
+                    animal_threshold=self._spin_thresh.value() / 100.0,
+                )
             except Exception as e:
                 self._sig.log_msg.emit(f"ERROR: {e}")
                 debug(UTILITY_AI_MEDIA_SCANNER, f"Scanner thread exception: {e}")
@@ -1212,6 +1300,9 @@ class AIScannerPanel(QWidget):
         self._bar.setValue(int(val * 100))
 
     def _on_finished(self):
+        if self._fs_heavy_held:
+            release_fs_heavy()
+            self._fs_heavy_held = False
         self._cap_timer.stop()
         self._is_running = False
         if self._status_cb:
@@ -1223,7 +1314,10 @@ class AIScannerPanel(QWidget):
         self._lbl_status.setText("Scan Complete")
         self._add_log("Batch scan complete.")
         if self._engine:
-            debug(UTILITY_AI_MEDIA_SCANNER, f"Scan finished: keep={len(self._engine.keep_list)}, move={len(self._engine.others_list)}")
+            debug(
+                UTILITY_AI_MEDIA_SCANNER,
+                f"Scan finished: keep={len(self._engine.keep_list)}, move={len(self._engine.others_list)}",
+            )
         self._populate_results()
         self._update_move_start()
         QTimer.singleShot(2000, self._reset_bar_to_ready)
@@ -1317,11 +1411,13 @@ class AIScannerPanel(QWidget):
         if can:
             self._btn_start_move.setStyleSheet(
                 "background-color:#10b981; color:#064e3b; border:2px solid #064e3b; "
-                "font-size:9px; font-weight:900; min-height:24px;")
+                "font-size:9px; font-weight:900; min-height:24px;"
+            )
         else:
             self._btn_start_move.setStyleSheet(
                 "font-size:8px; font-weight:700; min-height:24px; "
-                "background:#1a1a1a; color:#6b7280; border:2px solid #262626;")
+                "background:#1a1a1a; color:#6b7280; border:2px solid #262626;"
+            )
         self._guide_glow_phase = 0
         self._guide_pulse_timer.start()
 
@@ -1383,7 +1479,10 @@ class AIScannerPanel(QWidget):
                 for p in self._engine.others_list:
                     w.writerow(["Move", p])
             self._add_log(f"Exported to {path}.")
-            debug(UTILITY_AI_MEDIA_SCANNER, f"Export CSV: {path} (keep={len(self._engine.keep_list)}, move={len(self._engine.others_list)})")
+            debug(
+                UTILITY_AI_MEDIA_SCANNER,
+                f"Export CSV: {path} (keep={len(self._engine.keep_list)}, move={len(self._engine.others_list)})",
+            )
         except Exception as e:
             self._add_log(f"Export failed: {e}")
             debug(UTILITY_AI_MEDIA_SCANNER, f"Export CSV failed: {e}")

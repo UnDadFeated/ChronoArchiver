@@ -162,10 +162,12 @@ cython_debug/
 # VS Code
 .vscode/
 
-# Documentation — only root CHANGELOG.md and README.md are tracked in git
+# Documentation — root markdown used by the repo; other *.md stay local by default
 *.md
 !/CHANGELOG.md
 !/README.md
+!/CONTRIBUTING.md
+!/SECURITY.md
 
 # Cursor/IDE (local only)
 .cursor/

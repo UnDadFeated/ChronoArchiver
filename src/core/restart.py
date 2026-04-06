@@ -72,4 +72,3 @@ cd "{src_dir}" && exec {cmd_str}
         start_new_session=True,
     )
     return True
-

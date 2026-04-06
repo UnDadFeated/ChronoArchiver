@@ -120,9 +120,7 @@ def _conditional_caption(
 
 # Full-face prefixes (wide crop).
 _SKIN_PREFIX = "This portrait shows skin and complexion issues such as"
-_MAKEUP_PREFIX = (
-    "For red-carpet and magazine-cover grooming while keeping the same person unchanged, appropriate polish could include"
-)
+_MAKEUP_PREFIX = "For red-carpet and magazine-cover grooming while keeping the same person unchanged, appropriate polish could include"
 
 
 def _region_analysis_prefix(human_label: str) -> str:

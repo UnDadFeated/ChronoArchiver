@@ -20,9 +20,7 @@ NO_NETWORK_LABEL_STYLE = "font-size:8px; font-weight:700; color:#ff0000;"
 NO_NETWORK_LABEL_STYLE_9 = "font-size:9px; font-weight:700; color:#ff0000;"
 
 # Same host as ApplicationUpdater (GitHub API).
-_CONNECTIVITY_CHECK_URL = (
-    "https://api.github.com/repos/UnDadFeated/ChronoArchiver/tags?per_page=1"
-)
+_CONNECTIVITY_CHECK_URL = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/tags?per_page=1"
 
 _cache_ok: bool | None = None
 _cache_ts: float = 0.0
@@ -33,11 +31,7 @@ def is_network_reachable(*, timeout: float = 3.0, force_refresh: bool = False) -
     """Return True if HTTPS to GitHub API succeeds (short probe). Cached ~45s."""
     global _cache_ok, _cache_ts
     now = time.monotonic()
-    if (
-        not force_refresh
-        and _cache_ok is not None
-        and (now - _cache_ts) < _CACHE_TTL_SEC
-    ):
+    if not force_refresh and _cache_ok is not None and (now - _cache_ts) < _CACHE_TTL_SEC:
         return _cache_ok
     ok = _probe_network(timeout=timeout)
     _cache_ok = ok

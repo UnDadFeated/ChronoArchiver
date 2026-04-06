@@ -129,10 +129,7 @@ class ZImageUpscaleEngine:
         tw, th = compute_output_size(ow, oh, scale, max_side)
         want_w, want_h = ow * scale, oh * scale
         if tw != (max(8, (want_w // 8) * 8)) or th != (max(8, (want_h // 8) * 8)):
-            log(
-                f"Note: requested {want_w}×{want_h}px; using {tw}×{th}px "
-                f"(max edge {max_side}px) to reduce VRAM use."
-            )
+            log(f"Note: requested {want_w}×{want_h}px; using {tw}×{th}px (max edge {max_side}px) to reduce VRAM use.")
 
         init = img.resize((tw, th), Image.Resampling.LANCZOS)
         effective_strength = float(strength)
@@ -194,4 +191,3 @@ class ZImageUpscaleEngine:
                 raise RuntimeError(f"{USER_MSG_CUDA_OOM} ({ZIMAGE_VRAM_BASELINE_LOG})") from e
             raise
         return result
-

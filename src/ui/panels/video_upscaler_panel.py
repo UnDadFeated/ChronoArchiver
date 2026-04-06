@@ -67,6 +67,7 @@ from core.ml_runtime import (
 from core.lama_inpaint_models import APPROX_LAMA_BYTES, LAMA_FILENAME, LamaInpaintModelManager
 from core.lama_inpaint_runner import LamaInpaintRunner
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from ui.panel_start_hint import apply_start_button_hint
 from core.realesrgan_models import (
     RealESRGANModelManager,
     expected_bytes,
@@ -771,9 +772,7 @@ class VideoUpscalerPanel(QWidget):
         self._combo_scale = QComboBox()
         self._combo_scale.setStyleSheet(_combo_style)
         self._combo_scale.setFixedHeight(_run_h)
-        self._combo_scale.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToContents
-        )
+        self._combo_scale.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._combo_scale.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self._combo_scale.setToolTip(
             "Target output (common name, pixel size, aspect). "
@@ -807,9 +806,7 @@ class VideoUpscalerPanel(QWidget):
         self._btn_browse.setObjectName("browseBtn")
         self._btn_browse.setFixedSize(_browse_w, _browse_h)
         self._btn_browse.setStyleSheet(
-            path_browse_btn_qss(
-                self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
-            )
+            path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1)
         )
         self._btn_browse.clicked.connect(self._browse_video)
         h_src.addWidget(self._btn_browse, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -940,9 +937,7 @@ class VideoUpscalerPanel(QWidget):
         h_ctrl.addWidget(self._lbl_time_total, 0, Qt.AlignmentFlag.AlignVCenter)
         vo.addLayout(h_ctrl)
         self._lbl_orig_info = QLabel("")
-        self._lbl_orig_info.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
+        self._lbl_orig_info.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._lbl_orig_info.setWordWrap(True)
         self._lbl_orig_info.setStyleSheet("color:#737373; font-size:9px; margin-top: 2px;")
         vo.addWidget(self._lbl_orig_info, 0)
@@ -970,8 +965,7 @@ class VideoUpscalerPanel(QWidget):
         eta_row.addStretch(1)
         self._lbl_eta_prefix = QLabel("ESTIMATED TIME REMAINING:")
         self._lbl_eta_prefix.setStyleSheet(
-            "color: #22c55e; font-size: 8px; font-weight: 600; letter-spacing: 0.02em; "
-            "padding: 0px; margin: 0px;"
+            "color: #22c55e; font-size: 8px; font-weight: 600; letter-spacing: 0.02em; padding: 0px; margin: 0px;"
         )
         self._lbl_eta_time = QLabel("--:--:--")
         self._lbl_eta_time.setStyleSheet("color: #fafafa; font-size: 8px; padding: 0px; margin: 0px;")
@@ -1152,9 +1146,7 @@ class VideoUpscalerPanel(QWidget):
             if not net_ok:
                 self._lbl_weights.setText(NO_NETWORK_MESSAGE)
                 self._lbl_weights.setStyleSheet(NO_NETWORK_LABEL_STYLE_9)
-                self._btn_dl_weights.setToolTip(
-                    "Internet required to download Real-ESRGAN / LaMa weights."
-                )
+                self._btn_dl_weights.setToolTip("Internet required to download Real-ESRGAN / LaMa weights.")
             else:
                 self._lbl_weights.setText("MISSING")
                 self._lbl_weights.setStyleSheet("font-size:9px;font-weight:700;color:#ef4444;")
@@ -1221,11 +1213,7 @@ class VideoUpscalerPanel(QWidget):
             chroma_nr_strength = 1.0 if _auto_chroma_nr_wanted_from_source(bgr) else 0.0
         chroma_nr_strength = _chroma_nr_strength_after_edge_gate(bgr, float(chroma_nr_strength))
         lama = self._get_lama_runner() if artifact_mask is not None else None
-        bgr_for_sr = (
-            prepare_source_for_realesrgan(bgr, artifact_mask, lama=lama)
-            if artifact_mask is not None
-            else bgr
-        )
+        bgr_for_sr = prepare_source_for_realesrgan(bgr, artifact_mask, lama=lama) if artifact_mask is not None else bgr
         up = runner.enhance(bgr_for_sr, user_scale=float(user_scale))
         up = _cap_long_edge_bgr(up, VUP_MAX_EDGE)
         up = _blend_nr_strength(up, chroma_nr_strength, _chroma_noise_reduce_bgr)
@@ -1244,6 +1232,27 @@ class VideoUpscalerPanel(QWidget):
             up = apply_skin_tone_warmth_bgr(up, skin_tone_strength)
         return up
 
+    def _video_upscale_start_reasons(self) -> list[str]:
+        if self._setup_in_progress or self._job_in_progress:
+            return []
+        r = []
+        path = self._edit_video.text().strip()
+        if not path or not os.path.isfile(path):
+            r.append("select a source video")
+        if self._active_preset() is None or self._combo_scale.count() <= 0:
+            r.append("choose output scale / preset")
+        if self._source_dims is None:
+            r.append("wait for source video metadata")
+        ns = net_scale_for_user_scale(self._ui_user_scale())
+        if not self._model_mgr.is_ready(ns):
+            r.append("download Real-ESRGAN weights for this scale")
+        t_ok, _ = check_ml_runtime()
+        if not t_ok:
+            r.append("install PyTorch (engine row)")
+        if not _ffmpeg_exe():
+            r.append("FFmpeg not available (see footer)")
+        return r
+
     def _update_buttons(self):
         path = self._edit_video.text().strip()
         path_ok = bool(path and os.path.isfile(path))
@@ -1259,18 +1268,19 @@ class VideoUpscalerPanel(QWidget):
             net_ok = True
         need_torch_net = not t_ok and not self._engine_just_installed
         need_weights_net = (not w_ok) or (not self._lama_mgr.is_ready())
-        self._btn_run.setEnabled(
-            path_ok and preset_ok and dims_ok and w_ok and t_ok and not busy and bool(_ffmpeg_exe())
+        can_run = path_ok and preset_ok and dims_ok and w_ok and t_ok and not busy and bool(_ffmpeg_exe())
+        self._btn_run.setEnabled(can_run)
+        apply_start_button_hint(
+            self._btn_run,
+            enabled=can_run,
+            reasons_when_disabled=self._video_upscale_start_reasons(),
+            enabled_tip="Export upscaled video (AV1) at the same frame rate as the source",
         )
         self._btn_browse.setEnabled(not busy)
         self._btn_dl_weights.setEnabled(not busy and (not need_weights_net or net_ok))
-        has_any_weights = (
-            self._model_mgr.is_ready(2) or self._model_mgr.is_ready(4) or self._lama_mgr.is_ready()
-        )
+        has_any_weights = self._model_mgr.is_ready(2) or self._model_mgr.is_ready(4) or self._lama_mgr.is_ready()
         self._btn_rm_weights.setEnabled(not busy and has_any_weights)
-        self._btn_inst_torch.setEnabled(
-            (not busy or self._engine_just_installed) and (not need_torch_net or net_ok)
-        )
+        self._btn_inst_torch.setEnabled((not busy or self._engine_just_installed) and (not need_torch_net or net_ok))
         self._btn_rm_torch.setEnabled(not busy and t_ok and not self._engine_just_installed)
         self._btn_stop.setEnabled(self._job_in_progress)
         self._btn_stop.setStyleSheet(
@@ -1282,21 +1292,14 @@ class VideoUpscalerPanel(QWidget):
         )
         # Lock preview play/seek during engine setup or while encoding (defense: also guard in handlers).
         preview_locked = self._setup_in_progress or self._job_in_progress
-        can_play = (
-            path_ok
-            and dims_ok
-            and self._cap_preview is not None
-            and not preview_locked
-        )
+        can_play = path_ok and dims_ok and self._cap_preview is not None and not preview_locked
         self._btn_play.setEnabled(can_play)
         self._time_slider.setEnabled(can_play and self._video_frame_total > 0)
         if self._job_in_progress:
             self._btn_play.setToolTip(
                 "Manual playback is disabled while encoding; the preview follows encode progress."
             )
-            self._time_slider.setToolTip(
-                "Seek is disabled while encoding; the playhead moves with encode progress."
-            )
+            self._time_slider.setToolTip("Seek is disabled while encoding; the playhead moves with encode progress.")
         elif self._setup_in_progress:
             self._btn_play.setToolTip("Playback is disabled while the engine is being set up.")
             self._time_slider.setToolTip("Seek is disabled while the engine is being set up.")
@@ -1474,16 +1477,10 @@ class VideoUpscalerPanel(QWidget):
         ew, eh = self._eng_btn_w, self._eng_btn_h
         if w == self._btn_run:
             w.setStyleSheet(
-                _run_video_btn_stylesheet(
-                    pulse=False, w=self._vup_upscale_btn_w, h=self._vup_upscale_btn_h
-                )
+                _run_video_btn_stylesheet(pulse=False, w=self._vup_upscale_btn_w, h=self._vup_upscale_btn_h)
             )
         elif w == self._btn_browse:
-            w.setStyleSheet(
-                path_browse_btn_qss(
-                    self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1
-                )
-            )
+            w.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa", border_px=1))
         elif w == self._btn_inst_torch:
             if self._engine_just_installed:
                 w.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#064e3b", "#10b981"))
@@ -1513,15 +1510,11 @@ class VideoUpscalerPanel(QWidget):
         if self._guide_glow_phase:
             if target == self._btn_run and target.isEnabled():
                 target.setStyleSheet(
-                    _run_video_btn_stylesheet(
-                        pulse=True, w=self._vup_upscale_btn_w, h=self._vup_upscale_btn_h
-                    )
+                    _run_video_btn_stylesheet(pulse=True, w=self._vup_upscale_btn_w, h=self._vup_upscale_btn_h)
                 )
             elif target == self._btn_browse:
                 target.setStyleSheet(
-                    path_browse_btn_qss(
-                        self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444", border_px=1
-                    )
+                    path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444", border_px=1)
                 )
             elif target == self._btn_inst_torch and self._engine_just_installed:
                 target.setStyleSheet(eng_row_btn_qss(ew, eh, "#064e3b", "#34d399", "#10b981"))
@@ -1627,9 +1620,7 @@ class VideoUpscalerPanel(QWidget):
         idx = max(0, idx)
 
         now = time.monotonic()
-        at_end = (total > 0 and cur >= total) or (
-            self._video_frame_total > 0 and idx >= self._video_frame_total - 1
-        )
+        at_end = (total > 0 and cur >= total) or (self._video_frame_total > 0 and idx >= self._video_frame_total - 1)
         if not at_end and (now - self._preview_seek_last_mono) < (1.0 / 12.0):
             return
         self._preview_seek_last_mono = now
@@ -1647,9 +1638,7 @@ class VideoUpscalerPanel(QWidget):
     def _set_eta_idle(self) -> None:
         self._lbl_eta_time.setText("--:--:--")
 
-    def _update_eta_remaining(
-        self, cur: int, total: int, *, start_mono: float | None = None
-    ) -> None:
+    def _update_eta_remaining(self, cur: int, total: int, *, start_mono: float | None = None) -> None:
         if total <= 0 or cur <= 0:
             self._set_eta_idle()
             return
@@ -1793,11 +1782,12 @@ class VideoUpscalerPanel(QWidget):
         except OSError:
             pass
 
-        if not try_acquire_fs_heavy():
+        if not try_acquire_fs_heavy("AI Video Upscaler"):
             QMessageBox.warning(
                 self,
                 "Busy",
-                "Another file-heavy operation is in progress (Mass AV1 Encoder or Media Organizer).",
+                "Another file-heavy task is running (Mass AV1 Encoder, Media Organizer, AI Media Scanner, "
+                "or AI Image Upscaler). Wait for it to finish.",
             )
             return
         self._fs_holding_vup = True
@@ -1869,7 +1859,7 @@ class VideoUpscalerPanel(QWidget):
                     if artifact_dir:
                         self._sig.log_msg.emit(
                             "Artifact maps (macroblock, combing, banding, chroma, dropout) saved for "
-                            f"inpaint+AI pass; temp dir removed after encode."
+                            "inpaint+AI pass; temp dir removed after encode."
                         )
 
                 cap = cv2.VideoCapture(path)
@@ -2161,9 +2151,7 @@ class VideoUpscalerPanel(QWidget):
                     if rv.returncode != 0:
                         self._sig.log_msg.emit(f"ERROR: could not write output: {mux_e}")
                         return
-                    self._sig.log_msg.emit(
-                        f"Saved video-only (audio mux skipped or unavailable): {mux_e}"
-                    )
+                    self._sig.log_msg.emit(f"Saved video-only (audio mux skipped or unavailable): {mux_e}")
                 self._last_output_path = dest
                 self._sig.log_msg.emit(f"Done: {dest}")
             except Exception as e:
@@ -2182,9 +2170,7 @@ class VideoUpscalerPanel(QWidget):
                     )
                     _vup_log.error("Real-ESRGAN OOM: %s | %s", e, REALESRGAN_VRAM_BASELINE_LOG)
                     self._sig.resource_warning.emit(USER_MSG_CUDA_OOM)
-                    self._sig.log_msg.emit(
-                        f"ERROR: {USER_MSG_CUDA_OOM} ({REALESRGAN_VRAM_BASELINE_LOG})"
-                    )
+                    self._sig.log_msg.emit(f"ERROR: {USER_MSG_CUDA_OOM} ({REALESRGAN_VRAM_BASELINE_LOG})")
                 else:
                     self._sig.log_msg.emit(f"ERROR: {e}")
             finally:
@@ -2200,6 +2186,8 @@ class VideoUpscalerPanel(QWidget):
         threading.Thread(target=work, daemon=True).start()
 
     def _finish_job_ui(self):
+        self._add_log("Video encode job complete.")
+        logging.getLogger("ChronoArchiver").info("Video encode job complete.")
         self._job_in_progress = False
         if self._fs_holding_vup:
             release_fs_heavy()
@@ -2229,10 +2217,17 @@ class VideoUpscalerPanel(QWidget):
             "Components:",
         ]
         for label, sz in components:
-            lines.append(
-                f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}"
-            )
-        lines.extend(["", f"Estimated total: {fmt_bytes(total_bytes)}", "", pytorch_installer_vram_guidance(), "", "Restart may be required."])
+            lines.append(f"  • {label}: {fmt_bytes(sz)}" if sz > 0 else f"  • {label}")
+        lines.extend(
+            [
+                "",
+                f"Estimated total: {fmt_bytes(total_bytes)}",
+                "",
+                pytorch_installer_vram_guidance(),
+                "",
+                "Restart may be required.",
+            ]
+        )
         if (
             QMessageBox.question(
                 self,
@@ -2251,12 +2246,7 @@ class VideoUpscalerPanel(QWidget):
         self._engine_setup_dialog = dlg
         dlg._lbl_components.setText(
             f"{get_ml_torch_install_label()}\n\n{pytorch_installer_vram_guidance()}\n\n"
-            + "\n".join(
-                [
-                    f"  • {lbl}: {fmt_bytes(sz)}" if sz > 0 else f"  • {lbl}"
-                    for lbl, sz in components
-                ]
-            )
+            + "\n".join([f"  • {lbl}: {fmt_bytes(sz)}" if sz > 0 else f"  • {lbl}" for lbl, sz in components])
             + f"\n\nEstimated total: {fmt_bytes(total_bytes)}"
         )
 

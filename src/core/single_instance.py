@@ -2,6 +2,7 @@
 single_instance.py — Ensure only one ChronoArchiver instance runs.
 Uses filelock; second launch exits with message.
 """
+
 from pathlib import Path
 
 try:
@@ -24,6 +25,7 @@ def ensure_single_instance() -> bool:
     global _lock
     try:
         from filelock import FileLock
+
         _lock = FileLock(str(_lock_file_path()))
         _lock.acquire(timeout=0)
         return True

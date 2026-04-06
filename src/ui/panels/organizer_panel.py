@@ -8,36 +8,48 @@ import os
 import threading
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox,
-    QProgressBar, QFileDialog, QTextEdit, QSizePolicy, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QCheckBox,
+    QComboBox,
+    QProgressBar,
+    QFileDialog,
+    QTextEdit,
+    QSizePolicy,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QTextCursor
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
-from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
+from core.debug_logger import debug, structured_event, UTILITY_MEDIA_ORGANIZER
+from ui.panel_start_hint import apply_start_button_hint
 
 
 class _Signals(QObject):
-    log_msg  = Signal(str)
+    log_msg = Signal(str)
     progress = Signal(float)
-    status   = Signal(str)
+    status = Signal(str)
     finished = Signal()
-    stats    = Signal(int, int, int)  # moved, skipped, duplicates
+    stats = Signal(int, int, int)  # moved, skipped, duplicates
 
 
 class MediaOrganizerPanel(QWidget):
-
     def __init__(self, log_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb = log_callback
         self._status_cb = status_callback
-        self._sig    = _Signals()
+        self._sig = _Signals()
         self._sig.log_msg.connect(self._add_log)
         self._sig.progress.connect(self._on_progress)
         self._sig.status.connect(self._on_status)
@@ -57,6 +69,7 @@ class MediaOrganizerPanel(QWidget):
             f"padding:2px 6px; min-height:{_bar_h}px; max-height:{_bar_h}px;"
         )
         _btn_ss = "font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;"
+
         # Inherit combo colors from the theme. No max-height on QComboBox (can clip). Popup view: no
         # min-height (avoids empty space below short lists); max-height caps long lists.
         def _combo_qss(fs: int, min_h: int) -> str:
@@ -151,17 +164,17 @@ class MediaOrganizerPanel(QWidget):
         self._chk_dry.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         v_mode.addWidget(self._chk_dry)
         lbl_struct = QLabel("Folder structure:")
-        lbl_struct.setStyleSheet(
-            "font-size:9px; color:#888; margin-top:10px; margin-bottom:-2px;"
-        )
+        lbl_struct.setStyleSheet("font-size:9px; color:#888; margin-top:10px; margin-bottom:-2px;")
         v_mode.addWidget(lbl_struct)
         self._combo_structure = QComboBox()
-        self._combo_structure.addItems([
-            "YYYY/YYYY-MM (nested)",
-            "YYYY-MM (flat month)",
-            "YYYY-MM-DD (flat day)",
-            "YYYY/YYYY-MM/YYYY-MM-DD (nested day)",
-        ])
+        self._combo_structure.addItems(
+            [
+                "YYYY/YYYY-MM (nested)",
+                "YYYY-MM (flat month)",
+                "YYYY-MM-DD (flat day)",
+                "YYYY/YYYY-MM/YYYY-MM-DD (nested day)",
+            ]
+        )
         self._combo_structure.setStyleSheet(_combo_qss(9, 18))
         v_mode.addWidget(self._combo_structure)
         h_mode = QHBoxLayout()
@@ -170,11 +183,18 @@ class MediaOrganizerPanel(QWidget):
         self._combo_action.setToolTip("Move=relocate; Copy=duplicate; Symlink=create links")
         self._combo_action.setStyleSheet(_combo_qss(8, 17))
         self._combo_dup = QComboBox()
-        self._combo_dup.addItems([
-            "Rename", "Skip", "Keep newer",
-            "Overwrite if same name", "Overwrite if same name+size",
-        ])
-        self._combo_dup.setToolTip("Rename=add _1, _2… on collision; Skip=skip if exists; Keep newer=skip if target newer; Overwrite name=replace any; Overwrite name+size=replace only when size matches, else rename")
+        self._combo_dup.addItems(
+            [
+                "Rename",
+                "Skip",
+                "Keep newer",
+                "Overwrite if same name",
+                "Overwrite if same name+size",
+            ]
+        )
+        self._combo_dup.setToolTip(
+            "Rename=add _1, _2… on collision; Skip=skip if exists; Keep newer=skip if target newer; Overwrite name=replace any; Overwrite name+size=replace only when size matches, else rename"
+        )
         self._combo_dup.setStyleSheet(_combo_qss(8, 17))
         h_mode.addWidget(QLabel("Action:", styleSheet="font-size:8px; color:#888;"))
         h_mode.addWidget(self._combo_action, 1)
@@ -187,8 +207,9 @@ class MediaOrganizerPanel(QWidget):
 
         # ── EXECUTION ─────────────────────────────────────────────────────────
         grp_exec = QGroupBox("Organization Progress")
-        v_exec   = QVBoxLayout(grp_exec)
-        v_exec.setContentsMargins(8, 4, 8, 8); v_exec.setSpacing(1)
+        v_exec = QVBoxLayout(grp_exec)
+        v_exec.setContentsMargins(8, 4, 8, 8)
+        v_exec.setSpacing(1)
 
         self._bar = QProgressBar()
         self._bar.setObjectName("masterBar")
@@ -205,7 +226,8 @@ class MediaOrganizerPanel(QWidget):
         )
         v_exec.addWidget(self._lbl_status)
 
-        h_ctrl = QHBoxLayout(); h_ctrl.setSpacing(8)
+        h_ctrl = QHBoxLayout()
+        h_ctrl.setSpacing(8)
         self._btn_start = QPushButton("START ORGANIZATION")
         self._btn_start.setObjectName("btnStart")
         self._btn_start.setMinimumHeight(40)
@@ -237,7 +259,8 @@ class MediaOrganizerPanel(QWidget):
         # ── CONSOLE ───────────────────────────────────────────────────────────
         grp_log = QGroupBox("Console")
         v_log = QVBoxLayout(grp_log)
-        v_log.setContentsMargins(6, 2, 6, 4); v_log.setSpacing(0)
+        v_log.setContentsMargins(6, 2, 6, 4)
+        v_log.setSpacing(0)
         self._log_edit = QTextEdit()
         self._log_edit.setObjectName("panelConsole")
         self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
@@ -281,9 +304,29 @@ class MediaOrganizerPanel(QWidget):
             return self._btn_browse_target
         return self._btn_start
 
+    def _organizer_start_reasons(self) -> list[str]:
+        if self._is_running:
+            return []
+        r = []
+        path = self._edit_path.text().strip()
+        if not path or not os.path.isdir(path):
+            r.append("choose a valid source folder")
+        if not self._get_valid_exts():
+            r.append("enable Photos and/or Videos")
+        target = self._edit_target.text().strip()
+        if target and not os.path.isdir(target):
+            r.append("fix or clear the target folder")
+        return r
+
     def _update_start_enabled(self):
         can = not self._is_running and self._can_start()
         self._btn_start.setEnabled(can)
+        apply_start_button_hint(
+            self._btn_start,
+            enabled=can,
+            reasons_when_disabled=self._organizer_start_reasons(),
+            enabled_tip="Start organizing files into date-based folders",
+        )
         self._guide_glow_phase = 0
         self._guide_pulse_timer.start()
 
@@ -291,7 +334,9 @@ class MediaOrganizerPanel(QWidget):
         if not w:
             return
         if w == self._btn_start:
-            w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
+            w.setStyleSheet(
+                "background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;"
+            )
         elif w in (self._btn_browse_src, self._btn_browse_target):
             w.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; border:2px solid #262626;")
         elif w in (self._chk_photos, self._chk_videos):
@@ -310,7 +355,9 @@ class MediaOrganizerPanel(QWidget):
         self._guide_glow_phase = 1 - self._guide_glow_phase
         if self._guide_glow_phase:
             if target == self._btn_start:
-                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
+                target.setStyleSheet(
+                    "background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;"
+                )
             elif target in (self._btn_browse_src, self._btn_browse_target):
                 target.setStyleSheet("font-size:9px; font-weight:700; color:#ef4444; border:2px solid #ef4444;")
             else:
@@ -353,17 +400,26 @@ class MediaOrganizerPanel(QWidget):
         action = action_keys[self._combo_action.currentIndex()]
         dup_keys = ("rename", "skip", "keep_newer", "overwrite", "overwrite_same")
         duplicate_policy = dup_keys[self._combo_dup.currentIndex()]
-        debug(UTILITY_MEDIA_ORGANIZER, f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}")
-        if not try_acquire_fs_heavy():
+        debug(
+            UTILITY_MEDIA_ORGANIZER,
+            f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}",
+        )
+        if not try_acquire_fs_heavy("Media Organizer"):
             QMessageBox.warning(
                 self,
                 "Busy",
-                "Another file-heavy operation is in progress (Mass AV1 Encoder or AI Video Upscaler). "
-                "Wait for it to finish.",
+                "Another file-heavy task is running (Mass AV1 Encoder, AI Media Scanner, AI Image Upscaler, "
+                "or AI Video Upscaler). Wait for it to finish.",
             )
             return
         self._fs_holding_org = True
         self._is_running = True
+        structured_event(
+            "organization_start",
+            source=path[:300],
+            action=action,
+            structure=folder_structure,
+        )
         if self._status_cb:
             self._status_cb("organizing")
         self._btn_start.setEnabled(False)
@@ -384,7 +440,8 @@ class MediaOrganizerPanel(QWidget):
 
         def _run():
             try:
-                self._engine.organize(path,
+                self._engine.organize(
+                    path,
                     dry_run=self._chk_dry.isChecked(),
                     folder_structure=folder_structure,
                     valid_exts=exts,
@@ -393,7 +450,8 @@ class MediaOrganizerPanel(QWidget):
                     exclude_dirs=None,
                     duplicate_policy=duplicate_policy,
                     progress_callback=_prog,
-                    stats_callback=_stats)
+                    stats_callback=_stats,
+                )
             except Exception as e:
                 self._sig.log_msg.emit(f"ERROR: {e}")
                 debug(UTILITY_MEDIA_ORGANIZER, f"Organizer thread exception: {e}")
@@ -435,7 +493,15 @@ class MediaOrganizerPanel(QWidget):
         moved, skipped, duplicates = stats
         self._lbl_status.setText(f"Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}")
         self._add_log("Batch organization complete.")
-        debug(UTILITY_MEDIA_ORGANIZER, f"Organization complete: moved={moved}, skipped={skipped}, duplicates={duplicates}")
+        debug(
+            UTILITY_MEDIA_ORGANIZER, f"Organization complete: moved={moved}, skipped={skipped}, duplicates={duplicates}"
+        )
+        structured_event(
+            "organization_complete",
+            moved=moved,
+            skipped=skipped,
+            duplicates=duplicates,
+        )
 
     def append_external_line(self, msg: str):
         """Subprocess / bootstrap output (thread-safe when called from main thread)."""

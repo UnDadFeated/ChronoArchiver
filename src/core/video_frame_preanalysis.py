@@ -378,9 +378,7 @@ def pre_scan_video_upscale(
     cast_ar = temporal_smooth_1d(np.array(cst, dtype=np.float64), radius=r)
     skin_ar = temporal_smooth_1d(np.array(sk, dtype=np.float64), radius=r)
 
-    b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar = _clip_grade_arrays(
-        b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar
-    )
+    b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar = _clip_grade_arrays(b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar)
     luma = np.clip(luma, 0.0, 1.0)
     chroma = np.clip(chroma, 0.0, 1.0)
 
@@ -396,9 +394,7 @@ def pre_scan_video_upscale(
     cast_ar = _limit_step_1d(cast_ar, _MAX_STEP_CAST)
     skin_ar = _limit_step_1d(skin_ar, _MAX_STEP_SKIN)
 
-    b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar = _clip_grade_arrays(
-        b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar
-    )
+    b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar = _clip_grade_arrays(b_ar, c_ar, s_ar, sh_ar, cast_ar, skin_ar)
     luma = np.clip(luma, 0.0, 1.0)
     chroma = np.clip(chroma, 0.0, 1.0)
 

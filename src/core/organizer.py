@@ -13,10 +13,29 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 
-PHOTO_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.dng', '.arw', '.cr2', '.nef', '.orf', '.rw2'}
-VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.wmv', '.mpg', '.mpeg', '.ts'}
+PHOTO_EXTS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    ".webp",
+    ".heic",
+    ".heif",
+    ".raw",
+    ".dng",
+    ".arw",
+    ".cr2",
+    ".nef",
+    ".orf",
+    ".rw2",
+}
+VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v", ".wmv", ".mpg", ".mpeg", ".ts"}
 MIN_YEAR = 1957  # First digital photo (Russell Kirsch 1957)
-DEFAULT_EXCLUDE_DIRS = {'.thumbnails', '@recently deleted', '$recycle.bin', '.trash', 'thumbnails'}
+DEFAULT_EXCLUDE_DIRS = {".thumbnails", "@recently deleted", "$recycle.bin", ".trash", "thumbnails"}
+
 
 class OrganizerEngine:
     def __init__(self, logger_callback: Optional[Callable[[str], None]] = None):
@@ -65,11 +84,28 @@ class OrganizerEngine:
         # 2. Videos: FFprobe creation_time (format, then stream tags as fallback)
         if is_video:
             probes = [
-                ["ffprobe", "-v", "error", "-show_entries", "format_tags=creation_time",
-                 "-of", "default=noprint_wrappers=1:nokey=1", file_path],
-                ["ffprobe", "-v", "error", "-select_streams", "v:0",
-                 "-show_entries", "stream_tags=creation_time",
-                 "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format_tags=creation_time",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    file_path,
+                ],
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream_tags=creation_time",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    file_path,
+                ],
             ]
             for cmd in probes:
                 try:
@@ -129,7 +165,7 @@ class OrganizerEngine:
         """Read the first 1MB of a file and return its MD5 hash."""
         hasher = hashlib.md5(usedforsecurity=False)
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 chunk = f.read(chunk_size)
                 if chunk:
                     hasher.update(chunk)
@@ -144,13 +180,24 @@ class OrganizerEngine:
         "nested_day": "YYYY/YYYY-MM/YYYY-MM-DD",
     }
 
-    def organize(self, source_dir: str, dry_run: bool = True, folder_structure: str = "nested",
-                 valid_exts: Optional[set] = None, target_dir: Optional[str] = None,
-                 action: str = "move",
-                 exclude_dirs: Optional[set] = None, duplicate_policy: str = "rename",
-                 progress_callback=None, stats_callback=None):
+    def organize(
+        self,
+        source_dir: str,
+        dry_run: bool = True,
+        folder_structure: str = "nested",
+        valid_exts: Optional[set] = None,
+        target_dir: Optional[str] = None,
+        action: str = "move",
+        exclude_dirs: Optional[set] = None,
+        duplicate_policy: str = "rename",
+        progress_callback=None,
+        stats_callback=None,
+    ):
         """action: move|copy|symlink. duplicate_policy: skip|keep_newer|overwrite|overwrite_same|rename"""
-        debug(UTILITY_MEDIA_ORGANIZER, f"organize start: source={source_dir}, dry_run={dry_run}, structure={folder_structure}, action={action}, target={target_dir or 'in-place'}")
+        debug(
+            UTILITY_MEDIA_ORGANIZER,
+            f"organize start: source={source_dir}, dry_run={dry_run}, structure={folder_structure}, action={action}, target={target_dir or 'in-place'}",
+        )
         source_dir = (source_dir or "").strip()
         if not source_dir:
             self.logger("Source directory is empty.")
@@ -213,7 +260,7 @@ class OrganizerEngine:
 
         total_files = len(queue_list)
         total_bytes = sum(s for _, s, _ in queue_list)
-        self.logger(f"Found {total_files} media files ({total_bytes / (1024*1024):.1f} MB).")
+        self.logger(f"Found {total_files} media files ({total_bytes / (1024 * 1024):.1f} MB).")
         debug(UTILITY_MEDIA_ORGANIZER, f"Found {total_files} files, {total_bytes} bytes")
 
         # Disk space check (when moving to different target)
@@ -278,14 +325,14 @@ class OrganizerEngine:
                 rel_base = os.path.join(year, month_name)
 
             # Logic: Check if file already has a YYYY-MM-DD prefix
-            match = re.match(r'^(\d{4}-\d{2}-\d{2})_', file)
+            match = re.match(r"^(\d{4}-\d{2}-\d{2})_", file)
 
             if match:
                 existing_date = match.group(1)
                 if existing_date == date_prefix:
                     new_filename = file
                 else:
-                    original_name = file[len(match.group(0)):]
+                    original_name = file[len(match.group(0)) :]
                     new_filename = f"{date_prefix}_{original_name}"
                     if not dry_run:
                         self.logger(f"[RENAME FIX] Found incorrect date {existing_date}, fixing to {date_prefix}")
@@ -385,13 +432,12 @@ class OrganizerEngine:
             if not dry_run:
                 if _do_file(full_path, target_path, file):
                     files_moved += 1
-                    self.logger(f"[{action_verb}] \"{file}\" -> \"{rel_target_path}\"")
+                    self.logger(f'[{action_verb}] "{file}" -> "{rel_target_path}"')
             else:
                 files_moved += 1
-                self.logger(f"[DRY RUN] [{action_verb}] \"{file}\" -> \"{rel_target_path}\"")
+                self.logger(f'[DRY RUN] [{action_verb}] "{file}" -> "{rel_target_path}"')
 
         self.logger(f"Done. Moved: {files_moved}, Skipped: {skipped}, Duplicates: {duplicates_found}.")
         debug(UTILITY_MEDIA_ORGANIZER, f"Done: moved={files_moved}, skipped={skipped}, duplicates={duplicates_found}")
         if stats_callback:
             stats_callback(files_moved, skipped, duplicates_found)
-

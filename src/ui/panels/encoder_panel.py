@@ -14,18 +14,33 @@ import subprocess
 import psutil
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QPushButton, QLabel, QLineEdit, QCheckBox,
-    QProgressBar, QFileDialog, QComboBox, QSlider,
-    QSizePolicy, QDialog, QTextEdit, QMessageBox,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QGroupBox,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QCheckBox,
+    QProgressBar,
+    QFileDialog,
+    QComboBox,
+    QSlider,
+    QSizePolicy,
+    QDialog,
+    QTextEdit,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent, QTextCursor
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from ui.panel_start_hint import apply_start_button_hint
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
 from ui.panel_widgets import COMBO_BOX_PANEL_QSS, path_browse_btn_qss
 from core.av1_settings import AV1Settings
@@ -33,18 +48,19 @@ from core.debug_logger import (
     INSTALLER_APP_MASS_AV1_ENCODER,
     debug,
     log_installer_popup,
+    structured_event,
     UTILITY_MASS_AV1_ENCODER,
 )
 
 
 class _Signals(QObject):
-    progress  = Signal(int, object)   # job_id, EncodingProgress
-    details   = Signal(int, str, str) # job_id, vid, aud
-    finished  = Signal(int, bool, str, str)
-    log_msg   = Signal(str)
-    batch_complete = Signal()         # emitted when all workers finish, queue empty — auto-stop UI
+    progress = Signal(int, object)  # job_id, EncodingProgress
+    details = Signal(int, str, str)  # job_id, vid, aud
+    finished = Signal(int, bool, str, str)
+    log_msg = Signal(str)
+    batch_complete = Signal()  # emitted when all workers finish, queue empty — auto-stop UI
     scan_progress = Signal(int, int)  # count, total_bytes (thread-safe for scan updates)
-    scan_done = Signal(list, str)     # items, src — emitted from worker, handled in main thread
+    scan_done = Signal(list, str)  # items, src — emitted from worker, handled in main thread
     scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
 
 
@@ -84,9 +100,9 @@ class ScanProgressDialog(QDialog):
     def update_progress(self, count: int, total_bytes: int):
         self._lbl_files.setText(f"Files: {count}")
         total_bytes = max(0, total_bytes)
-        if total_bytes >= 1024 ** 3:
+        if total_bytes >= 1024**3:
             sz = f"{total_bytes / (1024**3):.2f} GB"
-        elif total_bytes >= 1024 ** 2:
+        elif total_bytes >= 1024**2:
             sz = f"{total_bytes / (1024**2):.1f} MB"
         elif total_bytes >= 1024:
             sz = f"{total_bytes / 1024:.1f} KB"
@@ -106,13 +122,12 @@ class ScanProgressDialog(QDialog):
 
 
 class AV1EncoderPanel(QWidget):
-
     def __init__(self, log_callback=None, metrics_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
-        self._log_cb  = log_callback
+        self._log_cb = log_callback
         self._metrics_cb = metrics_callback
         self._status_cb = status_callback
-        self._sig     = _Signals()
+        self._sig = _Signals()
         self._sig.progress.connect(self._on_progress)
         self._sig.details.connect(self._on_details)
         self._sig.finished.connect(self._on_encode_finished)
@@ -123,30 +138,30 @@ class AV1EncoderPanel(QWidget):
 
         self._settings = AV1Settings()
 
-        self._is_encoding    = False
-        self._is_paused      = False
-        self._engine_pool    = []
-        self._queue          = []
-        self._queue_lock     = threading.Lock()
-        self._queue_sizes    = {}
-        self._total_q_bytes  = 0.0
-        self._done_bytes     = 0.0
-        self._total_count    = 0
-        self._done_count     = 0
-        self._active_jobs    = 0
-        self._active_lock    = threading.Lock()
-        self._job_progress   = {}
-        self._job_speeds     = {}
-        self._current_files  = {}
-        self._total_saved    = 0
-        self._batch_start    = 0.0
-        self._gpu_cache      = "N/A"
-        self._gpu_counter    = 0
+        self._is_encoding = False
+        self._is_paused = False
+        self._engine_pool = []
+        self._queue = []
+        self._queue_lock = threading.Lock()
+        self._queue_sizes = {}
+        self._total_q_bytes = 0.0
+        self._done_bytes = 0.0
+        self._total_count = 0
+        self._done_count = 0
+        self._active_jobs = 0
+        self._active_lock = threading.Lock()
+        self._job_progress = {}
+        self._job_speeds = {}
+        self._current_files = {}
+        self._total_saved = 0
+        self._batch_start = 0.0
+        self._gpu_cache = "N/A"
+        self._gpu_counter = 0
         self._source_scanned = False
         self._fs_heavy_held = False
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
-        _slbl  = "font-size: 9px; font-weight: 700; color: #aaa;"
+        _slbl = "font-size: 9px; font-weight: 700; color: #aaa;"
         _combo_style = COMBO_BOX_PANEL_QSS
 
         root = QVBoxLayout(self)
@@ -212,13 +227,19 @@ class AV1EncoderPanel(QWidget):
         grid_paths.addWidget(self._btn_browse_src, 0, 1, alignment=_browse_align)
         grid_paths.addWidget(
             QLabel("Source — local path or smb:// network share", styleSheet=_shint),
-            1, 0, 1, 2,
+            1,
+            0,
+            1,
+            2,
         )
         grid_paths.addWidget(self._edit_dst, 2, 0)
         grid_paths.addWidget(self._btn_browse_dst, 2, 1, alignment=_browse_align)
         grid_paths.addWidget(
             QLabel("Target — AV1 encoded output destination", styleSheet=_shint),
-            3, 0, 1, 2,
+            3,
+            0,
+            1,
+            2,
         )
         v_dir.addLayout(grid_paths)
 
@@ -239,8 +260,11 @@ class AV1EncoderPanel(QWidget):
         v_cfg.setSpacing(0)
 
         # Quality
-        h_q = QHBoxLayout(); h_q.setSpacing(4)
-        lbl_q = QLabel("Quality"); lbl_q.setStyleSheet(_slbl); lbl_q.setFixedWidth(42)
+        h_q = QHBoxLayout()
+        h_q.setSpacing(4)
+        lbl_q = QLabel("Quality")
+        lbl_q.setStyleSheet(_slbl)
+        lbl_q.setFixedWidth(42)
         self._lbl_qval = QLabel(str(self._settings.get("quality")))
         self._lbl_qval.setFixedWidth(20)
         self._lbl_qval.setStyleSheet("font-size:10px; color:#10b981; font-weight:bold;")
@@ -248,35 +272,51 @@ class AV1EncoderPanel(QWidget):
         self._slider_q.setRange(0, 63)
         self._slider_q.setValue(self._settings.get("quality"))
         self._slider_q.valueChanged.connect(self._on_quality_changed)
-        h_q.addWidget(lbl_q); h_q.addWidget(self._lbl_qval)
+        h_q.addWidget(lbl_q)
+        h_q.addWidget(self._lbl_qval)
         h_q.addWidget(self._slider_q, 1)
         self._lbl_cq_hint = QLabel("CQ — lower = better quality", styleSheet="font-size:7px; color:#444;")
         h_q.addWidget(self._lbl_cq_hint)
         v_cfg.addLayout(h_q)
 
         # Preset
-        h_p = QHBoxLayout(); h_p.setSpacing(4)
-        lbl_p = QLabel("Preset"); lbl_p.setStyleSheet(_slbl); lbl_p.setFixedWidth(42)
+        h_p = QHBoxLayout()
+        h_p.setSpacing(4)
+        lbl_p = QLabel("Preset")
+        lbl_p.setStyleSheet(_slbl)
+        lbl_p.setFixedWidth(42)
         self._combo_preset = QComboBox()
         self._combo_preset.setStyleSheet(_combo_style)
         self._combo_preset.setFixedHeight(16)
-        self._combo_preset.addItems([
-            "P7: Deep Archival", "P6: High Quality", "P5: Balanced",
-            "P4: Standard", "P3: Fast", "P2: Draft", "P1: Preview"
-        ])
+        self._combo_preset.addItems(
+            [
+                "P7: Deep Archival",
+                "P6: High Quality",
+                "P5: Balanced",
+                "P4: Standard",
+                "P3: Fast",
+                "P2: Draft",
+                "P1: Preview",
+            ]
+        )
         curr_p = self._settings.get("preset").upper()
         for i in range(self._combo_preset.count()):
             if self._combo_preset.itemText(i).startswith(curr_p):
-                self._combo_preset.setCurrentIndex(i); break
+                self._combo_preset.setCurrentIndex(i)
+                break
         self._combo_preset.currentIndexChanged.connect(self._on_preset_changed)
         self._combo_preset.currentIndexChanged.connect(self._update_cq_hint)
-        h_p.addWidget(lbl_p); h_p.addWidget(self._combo_preset, 1)
+        h_p.addWidget(lbl_p)
+        h_p.addWidget(self._combo_preset, 1)
         h_p.addWidget(QLabel("Encode speed vs. efficiency tradeoff", styleSheet="font-size:7px; color:#444;"))
         v_cfg.addLayout(h_p)
 
         # Threads
-        h_t = QHBoxLayout(); h_t.setSpacing(4)
-        lbl_t = QLabel("Threads"); lbl_t.setStyleSheet(_slbl); lbl_t.setFixedWidth(42)
+        h_t = QHBoxLayout()
+        h_t.setSpacing(4)
+        lbl_t = QLabel("Threads")
+        lbl_t.setStyleSheet(_slbl)
+        lbl_t.setFixedWidth(42)
         self._combo_jobs = QComboBox()
         self._combo_jobs.setStyleSheet(_combo_style)
         self._combo_jobs.setFixedHeight(16)
@@ -284,12 +324,14 @@ class AV1EncoderPanel(QWidget):
         j = self._settings.get("concurrent_jobs")
         self._combo_jobs.setCurrentIndex(0 if j == 1 else (1 if j == 2 else 2))
         self._combo_jobs.currentIndexChanged.connect(self._on_jobs_changed)
-        h_t.addWidget(lbl_t); h_t.addWidget(self._combo_jobs, 1)
+        h_t.addWidget(lbl_t)
+        h_t.addWidget(self._combo_jobs, 1)
         h_t.addWidget(QLabel("Parallel encoding slots (1 / 2 / 4)", styleSheet="font-size:7px; color:#444;"))
         v_cfg.addLayout(h_t)
 
         # Audio
-        h_a = QHBoxLayout(); h_a.setSpacing(4)
+        h_a = QHBoxLayout()
+        h_a.setSpacing(4)
         self._chk_audio = QCheckBox("Optimize Audio")
         self._chk_audio.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
         self._chk_audio.setChecked(self._settings.get("reencode_audio"))
@@ -308,13 +350,16 @@ class AV1EncoderPanel(QWidget):
         v_opts.setContentsMargins(6, 1, 6, 1)
         v_opts.setSpacing(0)
 
-        _hint_s  = "font-size:8px; color:#444; margin-left:14px; margin-top:-2px;"
+        _hint_s = "font-size:8px; color:#444; margin-left:14px; margin-top:-2px;"
         _check_s = "font-size:9px; font-weight:700; color:#aaa; spacing:2px;"
 
         def _mk_opt(cb, hint):
-            w = QWidget(); vl = QVBoxLayout(w)
-            vl.setContentsMargins(0, 0, 0, 0); vl.setSpacing(0)
-            cb.setStyleSheet(_check_s); vl.addWidget(cb)
+            w = QWidget()
+            vl = QVBoxLayout(w)
+            vl.setContentsMargins(0, 0, 0, 0)
+            vl.setSpacing(0)
+            cb.setStyleSheet(_check_s)
+            vl.addWidget(cb)
             vl.addWidget(QLabel(hint, styleSheet=_hint_s))
             return w
 
@@ -324,21 +369,24 @@ class AV1EncoderPanel(QWidget):
         v_opts.addWidget(_mk_opt(self._chk_struct, "Mirror source folder tree in target"))
 
         # Existing output policy
-        w_exist = QWidget(); v_exist = QVBoxLayout(w_exist)
-        v_exist.setContentsMargins(0, 0, 0, 0); v_exist.setSpacing(0)
+        w_exist = QWidget()
+        v_exist = QVBoxLayout(w_exist)
+        v_exist.setContentsMargins(0, 0, 0, 0)
+        v_exist.setSpacing(0)
         lbl_exist = QLabel("If output exists:", styleSheet=_check_s)
         v_exist.addWidget(lbl_exist)
         self._combo_exist = QComboBox()
         self._combo_exist.addItems(["Overwrite", "Skip", "Rename"])
         self._combo_exist.setCurrentText(
             {"overwrite": "Overwrite", "skip": "Skip", "rename": "Rename"}.get(
-                self._settings.get("existing_output"), "Overwrite"))
+                self._settings.get("existing_output"), "Overwrite"
+            )
+        )
         self._combo_exist.setStyleSheet(
             "font-size:9px; color:#aaa; min-height:20px;"
             "QComboBox QAbstractItemView { max-height: 120px; outline: none; padding: 0px; }"
         )
-        self._combo_exist.currentTextChanged.connect(
-            lambda t: self._settings.set("existing_output", t.lower()))
+        self._combo_exist.currentTextChanged.connect(lambda t: self._settings.set("existing_output", t.lower()))
         v_exist.addWidget(self._combo_exist)
         v_opts.addWidget(w_exist)
 
@@ -362,8 +410,10 @@ class AV1EncoderPanel(QWidget):
             )
 
         # Rejects
-        w_rej = QWidget(); h_rej = QHBoxLayout(w_rej)
-        h_rej.setContentsMargins(0, 0, 0, 0); h_rej.setSpacing(2)
+        w_rej = QWidget()
+        h_rej = QHBoxLayout(w_rej)
+        h_rej.setContentsMargins(0, 0, 0, 0)
+        h_rej.setSpacing(2)
         self._chk_rej = QCheckBox("Skip Short Clips")
         self._chk_rej.setStyleSheet(_check_s)
         self._chk_rej.setChecked(self._settings.get("rejects_enabled"))
@@ -373,8 +423,12 @@ class AV1EncoderPanel(QWidget):
         self._edit_rej = QLineEdit()
         self._edit_rej.setInputMask("99:99:99")
         self._edit_rej.setFixedWidth(50)
-        self._edit_rej.setStyleSheet("font-size:9px; color:#aaa; background:#121212; border:1px solid #1a1a1a; padding:1px;")
-        h = self._settings.get("rejects_h"); m = self._settings.get("rejects_m"); s = self._settings.get("rejects_s")
+        self._edit_rej.setStyleSheet(
+            "font-size:9px; color:#aaa; background:#121212; border:1px solid #1a1a1a; padding:1px;"
+        )
+        h = self._settings.get("rejects_h")
+        m = self._settings.get("rejects_m")
+        s = self._settings.get("rejects_s")
         self._edit_rej.setText(f"{str(h).zfill(2)}:{str(m).zfill(2)}:{str(s).zfill(2)}")
         self._edit_rej.textChanged.connect(self._save_rej_time)
         h_rej.addWidget(self._edit_rej)
@@ -418,10 +472,11 @@ class AV1EncoderPanel(QWidget):
         v_work.setContentsMargins(6, 2, 6, 4)
 
         # Telemetry strip
-        h_tel = QHBoxLayout(); h_tel.setSpacing(20)
-        self._lbl_io    = QLabel("I/O: 0.0 MB/s")
+        h_tel = QHBoxLayout()
+        h_tel.setSpacing(20)
+        self._lbl_io = QLabel("I/O: 0.0 MB/s")
         self._lbl_saved = QLabel("Space Saved: 0 MB")
-        self._lbl_time  = QLabel("Time: --:--:--")
+        self._lbl_time = QLabel("Time: --:--:--")
         for lbl in [self._lbl_io, self._lbl_saved, self._lbl_time]:
             lbl.setObjectName("labelValue")
             lbl.setStyleSheet("color:#10b981; font-weight:bold; font-size:10px;")
@@ -436,30 +491,42 @@ class AV1EncoderPanel(QWidget):
         v_work.addLayout(h_tel)
 
         # Per-job slots (4 max)
-        self._h_jobs = QHBoxLayout(); self._h_jobs.setSpacing(6)
-        self._job_bars   = []
+        self._h_jobs = QHBoxLayout()
+        self._h_jobs.setSpacing(6)
+        self._job_bars = []
         self._job_labels = []
         self._job_speeds = []
-        self._job_vid    = []
-        self._job_aud    = []
+        self._job_vid = []
+        self._job_aud = []
         self._job_widgets = []
 
         for i in range(4):
-            w = QWidget(); v = QVBoxLayout(w)
-            v.setContentsMargins(0,0,0,0); v.setSpacing(0)
+            w = QWidget()
+            v = QVBoxLayout(w)
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(0)
 
-            lbl_name = QLabel(f"Thread {i+1}")
+            lbl_name = QLabel(f"Thread {i + 1}")
             lbl_name.setStyleSheet("font-size:9px; font-weight:600; color:#777;")
             lbl_name.setFixedWidth(220)
             v.addWidget(lbl_name)
 
-            bar = QProgressBar(); bar.setFixedHeight(18); bar.setTextVisible(True)
+            bar = QProgressBar()
+            bar.setFixedHeight(18)
+            bar.setTextVisible(True)
             v.addWidget(bar)
 
-            lbl_vid = QLabel("-"); lbl_vid.setStyleSheet("font-size:8px; color:#666;"); lbl_vid.setFixedWidth(220)
-            lbl_aud = QLabel("-"); lbl_aud.setStyleSheet("font-size:8px; color:#666;"); lbl_aud.setFixedWidth(220)
-            lbl_spd = QLabel("-"); lbl_spd.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
-            v.addWidget(lbl_vid); v.addWidget(lbl_aud); v.addWidget(lbl_spd)
+            lbl_vid = QLabel("-")
+            lbl_vid.setStyleSheet("font-size:8px; color:#666;")
+            lbl_vid.setFixedWidth(220)
+            lbl_aud = QLabel("-")
+            lbl_aud.setStyleSheet("font-size:8px; color:#666;")
+            lbl_aud.setFixedWidth(220)
+            lbl_spd = QLabel("-")
+            lbl_spd.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
+            v.addWidget(lbl_vid)
+            v.addWidget(lbl_aud)
+            v.addWidget(lbl_spd)
 
             self._job_labels.append(lbl_name)
             self._job_bars.append(bar)
@@ -486,7 +553,8 @@ class AV1EncoderPanel(QWidget):
         v_work.addWidget(self._lbl_eta)
 
         # Buttons
-        h_ctrl = QHBoxLayout(); h_ctrl.setSpacing(8)
+        h_ctrl = QHBoxLayout()
+        h_ctrl.setSpacing(8)
         self._btn_start = QPushButton("START ENCODING")
         self._btn_start.setObjectName("btnStart")
         self._btn_start.setMinimumHeight(35)
@@ -506,7 +574,8 @@ class AV1EncoderPanel(QWidget):
         # ── CONSOLE ───────────────────────────────────────────────────────────
         grp_log = QGroupBox("Console")
         v_log = QVBoxLayout(grp_log)
-        v_log.setContentsMargins(6, 2, 6, 4); v_log.setSpacing(0)
+        v_log.setContentsMargins(6, 2, 6, 4)
+        v_log.setSpacing(0)
         self._log_edit = QTextEdit()
         self._log_edit.setObjectName("panelConsole")
         self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
@@ -603,17 +672,37 @@ class AV1EncoderPanel(QWidget):
         if not w:
             return
         if w == self._btn_start:
-            w.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;")
-        else:
             w.setStyleSheet(
-                path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa")
+                "background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;"
             )
+        else:
+            w.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#262626", "#aaa"))
+
+    def _encoder_start_reasons(self) -> list[str]:
+        if self._is_encoding:
+            return []
+        src = self._edit_src.text().strip()
+        dst = self._edit_dst.text().strip()
+        r = []
+        if not src or not os.path.isdir(src):
+            r.append("choose a valid source folder")
+        elif not self._source_scanned:
+            r.append("wait for the source folder scan to finish")
+        if not dst or not os.path.isdir(dst):
+            r.append("choose a valid output folder")
+        return r
 
     def _update_start_enabled(self):
         if self._btn_start.text() == "ENCODING COMPLETE":
             return
         can = self._can_start()
         self._btn_start.setEnabled(can)
+        apply_start_button_hint(
+            self._btn_start,
+            enabled=can,
+            reasons_when_disabled=self._encoder_start_reasons(),
+            enabled_tip="Start AV1 encoding for the queued files",
+        )
         self._guide_glow_phase = 0
         self._guide_pulse_timer.start()
 
@@ -630,11 +719,11 @@ class AV1EncoderPanel(QWidget):
         self._guide_glow_phase = 1 - self._guide_glow_phase
         if self._guide_glow_phase:
             if target == self._btn_start:
-                target.setStyleSheet("background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;")
-            else:
                 target.setStyleSheet(
-                    path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444")
+                    "background-color:#10b981; color:#064e3b; border:2px solid #ef4444; font-size:10px; font-weight:900;"
                 )
+            else:
+                target.setStyleSheet(path_browse_btn_qss(self._path_bar_h, self._browse_btn_w, "#ef4444", "#ef4444"))
         else:
             self._clear_guide_glow(target)
 
@@ -804,16 +893,17 @@ class AV1EncoderPanel(QWidget):
             required = total_bytes * 1.1  # 10% buffer
             if usage.free < required:
                 self._add_log(
-                    f"WARNING: Low disk space on target. Free: {usage.free/(1024**3):.1f} GB, "
-                    f"need ~{required/(1024**3):.1f} GB. Proceeding anyway.")
+                    f"WARNING: Low disk space on target. Free: {usage.free / (1024**3):.1f} GB, "
+                    f"need ~{required / (1024**3):.1f} GB. Proceeding anyway."
+                )
                 debug(UTILITY_MASS_AV1_ENCODER, f"Low disk: free={usage.free}, need~{required}")
         except OSError as e:
             self._add_log(f"WARNING: Could not check disk space: {e}. Proceeding anyway.")
 
-        if not try_acquire_fs_heavy():
+        if not try_acquire_fs_heavy("Mass AV1 Encoder"):
             _busy = (
-                "Another file-heavy operation is in progress (Media Organizer or AI Video Upscaler). "
-                "Wait for it to finish."
+                "Another file-heavy task is running (Media Organizer, AI Media Scanner, AI Image Upscaler, "
+                "or AI Video Upscaler). Wait for it to finish."
             )
             QMessageBox.warning(self, "Busy", _busy)
             self._add_log(f"ERROR: {_busy}")
@@ -822,19 +912,19 @@ class AV1EncoderPanel(QWidget):
         self._fs_heavy_held = True
 
         self._queue_sizes = {p: s for p, s in self._queue}
-        self._total_q_bytes   = sum(s for _, s in self._queue)
-        self._done_bytes      = 0.0
-        self._total_count     = len(self._queue)
-        self._done_count     = 0
-        self._active_jobs    = 0
-        self._active_lock    = threading.Lock()
-        self._job_progress   = {}
-        self._job_speeds     = {}
-        self._current_files  = {}
-        self._total_saved    = 0
-        self._is_encoding    = True
-        self._is_paused       = False
-        self._batch_start     = time.time()
+        self._total_q_bytes = sum(s for _, s in self._queue)
+        self._done_bytes = 0.0
+        self._total_count = len(self._queue)
+        self._done_count = 0
+        self._active_jobs = 0
+        self._active_lock = threading.Lock()
+        self._job_progress = {}
+        self._job_speeds = {}
+        self._current_files = {}
+        self._total_saved = 0
+        self._is_encoding = True
+        self._is_paused = False
+        self._batch_start = time.time()
         if self._status_cb:
             self._status_cb("encoding")
 
@@ -851,9 +941,19 @@ class AV1EncoderPanel(QWidget):
 
         self._add_log(f"Starting encode — {self._total_count} files.")
         # Hint when both paths appear to be on network (NAS) — can cause failures; retry with software decode helps
-        if any(x in src.lower() for x in ("/mnt/", "smb://", "//", "\\\\")) and any(x in dst.lower() for x in ("/mnt/", "smb://", "//", "\\\\")):
-            self._add_log("TIP: Source and target on network — if some files fail, try fewer concurrent jobs or use local copy.")
+        if any(x in src.lower() for x in ("/mnt/", "smb://", "//", "\\\\")) and any(
+            x in dst.lower() for x in ("/mnt/", "smb://", "//", "\\\\")
+        ):
+            self._add_log(
+                "TIP: Source and target on network — if some files fail, try fewer concurrent jobs or use local copy."
+            )
         debug(UTILITY_MASS_AV1_ENCODER, f"Encode start: {self._total_count} files, src={src}, dst={dst}")
+        structured_event(
+            "encode_batch_start",
+            file_count=self._total_count,
+            src=src[:300],
+            dst=dst[:300],
+        )
         if self._log_cb:
             self._log_cb(f"AV1 Encoder: {self._total_count} files queued.")
 
@@ -880,7 +980,7 @@ class AV1EncoderPanel(QWidget):
         self._engine_pool = [AV1EncoderEngine(job_id=i) for i in range(num_workers)]
         for eng in self._engine_pool:
             eng.on_progress = lambda j, p: self._sig.progress.emit(j, p)
-            eng.on_details  = lambda j, v, a: self._sig.details.emit(j, v, a)
+            eng.on_details = lambda j, v, a: self._sig.details.emit(j, v, a)
             threading.Thread(target=self._job_worker, args=(eng, src, dst, structure_root), daemon=True).start()
 
     def get_activity(self):
@@ -931,9 +1031,11 @@ class AV1EncoderPanel(QWidget):
                 # Skip threshold
                 if self._settings.get("rejects_enabled"):
                     dur = engine._get_video_duration(input_path)
-                    thr = (self._settings.get("rejects_h") * 3600 +
-                           self._settings.get("rejects_m") * 60 +
-                           self._settings.get("rejects_s"))
+                    thr = (
+                        self._settings.get("rejects_h") * 3600
+                        + self._settings.get("rejects_m") * 60
+                        + self._settings.get("rejects_s")
+                    )
                     if dur <= thr:
                         self._add_log(f"REJECTED: {os.path.basename(input_path)} ({dur:.1f}s)")
                         debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {input_path} ({dur:.1f}s)")
@@ -989,7 +1091,8 @@ class AV1EncoderPanel(QWidget):
                         tpath = base + f"_{n}" + ext
 
                 ok, in_p, out_p = engine.encode_file(
-                    input_path, tpath,
+                    input_path,
+                    tpath,
                     self._settings.get("quality"),
                     self._settings.get("preset"),
                     self._settings.get("reencode_audio"),
@@ -1024,7 +1127,7 @@ class AV1EncoderPanel(QWidget):
         fname = p.file_name
         if len(fname) > 28:
             fname = fname[:12] + "..." + fname[-13:]
-        self._job_labels[job_id].setText(f"{job_id+1}: {fname}")
+        self._job_labels[job_id].setText(f"{job_id + 1}: {fname}")
         self._job_bars[job_id].setValue(int(p.percent))
         self._job_speeds[job_id].setText(f"{p.fps:.1f} fps / {p.speed:.2f}x")
         self._job_progress[job_id] = p.percent
@@ -1046,8 +1149,7 @@ class AV1EncoderPanel(QWidget):
             done = self._done_bytes + active_bytes
             pct_total = min(100.0, done / self._total_q_bytes * 100)
             self._bar_master.setValue(int(pct_total))
-            self._bar_master.setFormat(
-                f"{self._done_count}/{self._total_count} Files — {pct_total:.1f}%")
+            self._bar_master.setFormat(f"{self._done_count}/{self._total_count} Files — {pct_total:.1f}%")
             remaining_bytes = self._total_q_bytes - done
             if remaining_bytes > 0 and elapsed > 2 and total_written > 0:
                 rate = total_written / elapsed
@@ -1075,9 +1177,13 @@ class AV1EncoderPanel(QWidget):
                     self._total_saved += saved
                 mb = self._total_saved / (1024 * 1024)
                 self._lbl_saved.setText(
-                    f"Space Saved: {mb/1024:.2f} GB" if mb > 1024 else f"Space Saved: {mb:.1f} MB")
-                self._add_log(f"DONE: {os.path.basename(in_p)} | Saved {saved//(1024*1024)} MB")
-                debug(UTILITY_MASS_AV1_ENCODER, f"Done: {os.path.basename(in_p)} -> {os.path.basename(out_p)}, saved {saved//(1024*1024)} MB")
+                    f"Space Saved: {mb / 1024:.2f} GB" if mb > 1024 else f"Space Saved: {mb:.1f} MB"
+                )
+                self._add_log(f"DONE: {os.path.basename(in_p)} | Saved {saved // (1024 * 1024)} MB")
+                debug(
+                    UTILITY_MASS_AV1_ENCODER,
+                    f"Done: {os.path.basename(in_p)} -> {os.path.basename(out_p)}, saved {saved // (1024 * 1024)} MB",
+                )
                 if self._chk_del1.isChecked() and self._chk_del2.isChecked():
                     try:
                         os.remove(in_p)
@@ -1101,8 +1207,7 @@ class AV1EncoderPanel(QWidget):
         if self._total_q_bytes > 0 and self._is_encoding:
             pct_total = min(100.0, self._done_bytes / self._total_q_bytes * 100)
             self._bar_master.setValue(int(pct_total))
-            self._bar_master.setFormat(
-                f"{self._done_count}/{self._total_count} Files — {pct_total:.1f}%")
+            self._bar_master.setFormat(f"{self._done_count}/{self._total_count} Files — {pct_total:.1f}%")
             elapsed = time.time() - self._batch_start
             remaining_bytes = self._total_q_bytes - self._done_bytes
             if remaining_bytes > 0 and elapsed > 0.5 and self._done_bytes > 0:
@@ -1118,7 +1223,7 @@ class AV1EncoderPanel(QWidget):
         if job_id < len(self._job_bars):
             self._job_bars[job_id].setValue(0)
             self._job_speeds[job_id].setText("-")
-            self._job_labels[job_id].setText(f"Thread {job_id+1}")
+            self._job_labels[job_id].setText(f"Thread {job_id + 1}")
             self._job_vid[job_id].setText("-")
             self._job_aud[job_id].setText("-")
 
@@ -1149,6 +1254,11 @@ class AV1EncoderPanel(QWidget):
         self._btn_start.setEnabled(False)
         self._btn_pause.setEnabled(False)
         debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
+        structured_event(
+            "encode_batch_complete",
+            done=self._done_count,
+            total=self._total_count,
+        )
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 
@@ -1169,7 +1279,7 @@ class AV1EncoderPanel(QWidget):
             ram = psutil.virtual_memory().percent
             self._gpu_counter += 1
             if self._gpu_counter >= 3:
-                self._gpu_cache   = self._get_gpu()
+                self._gpu_cache = self._get_gpu()
                 self._gpu_counter = 0
             if self._metrics_cb:
                 cpu_s = f"{min(999, int(round(cpu))):3d}%"
@@ -1178,7 +1288,9 @@ class AV1EncoderPanel(QWidget):
 
             if self._is_encoding and self._batch_start > 0:
                 dt = time.time() - self._batch_start
-                h = int(dt // 3600); m = int((dt % 3600) // 60); s = int(dt % 60)
+                h = int(dt // 3600)
+                m = int((dt % 3600) // 60)
+                s = int(dt % 60)
                 self._lbl_time.setText(f"Time: {h:02}:{m:02}:{s:02}")
                 # Keep I/O throughput updated (progress callbacks may be sparse)
                 active_bytes = sum(
@@ -1195,9 +1307,10 @@ class AV1EncoderPanel(QWidget):
     def _get_gpu(self) -> str:
         try:
             out = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=utilization.gpu",
-                 "--format=csv,noheader,nounits"],
-                text=True, stderr=subprocess.DEVNULL).strip()
+                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
             line = out.strip().split("\n")[0].strip() if out else ""
             g = int(line) if line.isdigit() else 0
             return f"{min(999, g):3d}%"
