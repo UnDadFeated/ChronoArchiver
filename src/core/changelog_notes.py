@@ -24,7 +24,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
 - **CI**: **`libegl1`** and related libs for **PySide6** offscreen; **What’s new** resolves notes from disk, GitHub raw, or bundled text.
 
 ### Changed
-- **CI**: pinned **Ruff**, Node 24 opt-in for Actions, **`bump_version`** reminder for embedded notes.
+- **CI**: pinned **Ruff**, Node 24 opt-in for Actions, **`bump_version`** reminder for embedded notes; **Ruff** includes **`tools/`**; **`updater.py`** formatting aligned with **Ruff 0.8.4**.
 """,
     "5.4.2": """## [5.4.2] - 2026-04-06
 

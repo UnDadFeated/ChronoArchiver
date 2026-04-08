@@ -8,6 +8,7 @@ Usage:
 Updates: src/version.py, pyproject.toml, README.md (badge + release table + AUR line),
          PKGBUILD, tools/setup_launcher.py, tools/chronoarchiver_setup.spec
 """
+
 from __future__ import annotations
 
 import re
