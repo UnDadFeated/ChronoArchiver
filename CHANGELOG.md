@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **CI**: install **`libegl1`** on Ubuntu runners so **PySide6** offscreen smoke tests can load **`libEGL.so.1`**.
+
 ## [5.4.2] - 2026-04-06
 
 ### Added
