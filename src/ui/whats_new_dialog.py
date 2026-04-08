@@ -15,11 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from core.changelog_notes import (
-    CHANGELOG_BLOB_URL,
-    changelog_section_for_version,
-    read_changelog_markdown,
-)
+from core.changelog_notes import CHANGELOG_BLOB_URL, release_notes_for_version
 
 
 class WhatsNewDialog(QDialog):
@@ -30,21 +26,21 @@ class WhatsNewDialog(QDialog):
         self.setMinimumSize(520, 380)
 
         v = QVBoxLayout(self)
+        section, path, source = release_notes_for_version(version)
+        source_hint = {
+            "local": "",
+            "embedded": " (bundled highlights)",
+            "network": " (loaded from GitHub)",
+            "fallback": "",
+        }.get(source, "")
         intro = QLabel(
             f"You are now running ChronoArchiver {version}. "
-            "Highlights for this version are below; the full history is in CHANGELOG.md."
+            f"Highlights for this version are below{source_hint}. "
+            "The full history is in CHANGELOG.md or on GitHub."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet("font-size: 11px; color: #e5e7eb;")
         v.addWidget(intro)
-
-        body, path = read_changelog_markdown()
-        section = changelog_section_for_version(body or "", version) if body else None
-        if not section:
-            section = (
-                f"No local CHANGELOG section was found for {version}.\n\n"
-                "Use “View changelog” to open the project changelog in your browser."
-            )
 
         te = QTextEdit()
         te.setReadOnly(True)
@@ -75,7 +71,7 @@ class WhatsNewDialog(QDialog):
         bb.accepted.connect(self.accept)
         v.addWidget(bb)
 
-        self._changelog_path = path
+        self._changelog_path = path  # may be None; View changelog uses browser fallback
         self.setStyleSheet("QDialog { background: #0c0c0c; }")
 
     def suppress_future(self) -> bool:

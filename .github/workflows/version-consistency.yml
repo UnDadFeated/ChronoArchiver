@@ -1,10 +1,13 @@
-# Fail fast when src/version.py and pyproject.toml drift.
+# Fail fast when release metadata drifts (see tools/verify_release_versions.py).
 name: Version consistency
 
 on:
   push:
     branches: [main]
   pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   sync:
@@ -16,19 +19,5 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify version strings match
-        run: |
-          python - <<'PY'
-          import re
-          from pathlib import Path
-
-          root = Path(".")
-          v_py = (root / "src" / "version.py").read_text(encoding="utf-8")
-          m1 = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', v_py, re.M)
-          pj = (root / "pyproject.toml").read_text(encoding="utf-8")
-          m2 = re.search(r'^version\s*=\s*"([^"]+)"', pj, re.M)
-          assert m1 and m2, (m1, m2)
-          a, b = m1.group(1), m2.group(1)
-          assert a == b, f"src/version.py __version__={a!r} != pyproject.toml version={b!r}"
-          print("OK", a)
-          PY
+      - name: Verify release version alignment
+        run: python tools/verify_release_versions.py

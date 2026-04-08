@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.changelog_notes import changelog_section_for_version, read_changelog_markdown
+from version import __version__
+
+from core.changelog_notes import (
+    changelog_section_for_version,
+    read_changelog_markdown,
+    release_notes_for_version,
+)
 
 
 def test_changelog_section_for_version_extracts_block():
@@ -34,3 +40,18 @@ def test_read_changelog_matches_repo_file():
     assert "## [" in text
     root = Path(__file__).resolve().parents[1]
     assert path.resolve() == (root / "CHANGELOG.md").resolve()
+
+
+def test_release_notes_prefers_local_changelog():
+    text, path, src = release_notes_for_version(__version__)
+    assert src == "local"
+    assert len(text) > 20
+
+
+def test_release_notes_embedded_when_offline(monkeypatch):
+    monkeypatch.setattr("core.changelog_notes.read_changelog_markdown", lambda: (None, None))
+    monkeypatch.setattr("core.changelog_notes.fetch_changelog_raw_from_github", lambda timeout_s=12.0: None)
+    text, path, src = release_notes_for_version("5.4.2")
+    assert src == "embedded"
+    assert path is None
+    assert "EXIF" in text
