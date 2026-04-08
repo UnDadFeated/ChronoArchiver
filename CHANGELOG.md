@@ -2,8 +2,21 @@
 
 ## [Unreleased]
 
+## [5.4.3] - 2026-04-08
+
+### Added
+- **`tools/verify_release_versions.py`**: CI (**Version consistency**) checks **`pyproject.toml`**, **README** badge, **PKGBUILD** `pkgver`, **`setup_launcher`** / **`chronoarchiver_setup.spec`** defaults, and an **`EMBEDDED_RELEASE_NOTES[`**`version`**`]`** entry in **`changelog_notes.py`**.
+- **`tests/test_verify_release_versions`**: subprocess smoke test for the verifier.
+
 ### Fixed
 - **CI**: install **`libegl1`** on Ubuntu runners so **PySide6** offscreen smoke tests can load **`libEGL.so.1`**.
+- **What’s new** dialog: release notes load from **local CHANGELOG.md**, then **GitHub raw** `CHANGELOG.md`, then **bundled** `EMBEDDED_RELEASE_NOTES` in **`core/changelog_notes`**, so users rarely see “no section found” after an update (offline still gets bundled text when present).
+
+### Changed
+- **`tools/bump_version.py`**: prints a reminder to update **`EMBEDDED_RELEASE_NOTES`** when bumping the version.
+- **CI**: pin **`ruff==0.8.4`** (matches **`.pre-commit-config.yaml`**); add **`libgl1`**, **`libdbus-1-3`**, **`libxcb-cursor0`** for more stable **PySide6** offscreen runs; set **`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`** for GitHub Actions.
+- **`.github/workflows/version-consistency.yml`**: runs **`verify_release_versions.py`** instead of an inline snippet.
+- **`.github/workflows/release-installers.yml`**: **`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`** to reduce Actions Node deprecation noise.
 
 ## [5.4.2] - 2026-04-06
 

@@ -102,6 +102,10 @@ def main() -> int:
     )
 
     print(f"Bumped {prev} -> {new_v}")
+    print(
+        f"Reminder: add ## [{new_v}] to CHANGELOG.md and copy its block into "
+        f"EMBEDDED_RELEASE_NOTES in src/core/changelog_notes.py (offline what’s-new)."
+    )
     return 0
 
 
