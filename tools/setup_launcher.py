@@ -8,6 +8,7 @@ venvs so new requirements are applied without wiping site-packages. Merge skips 
 files (MD5), not same-size-only — avoids stale src/version.py when patch digits change without size change.
 Welcome screen with logo; optional ChronoArchiver_installer.log beside the setup exe (appends sessions).
 """
+
 import hashlib
 import json
 import os
@@ -28,6 +29,7 @@ from pathlib import Path
 
 # Must match src/core/app_paths.ENV_INSTALL_ROOT (setup bundle does not import app).
 ENV_INSTALL_ROOT = "CHRONOARCHIVER_INSTALL_ROOT"
+
 
 # Version embedded at build time via version.txt in bundle
 def _read_version() -> str:
@@ -291,9 +293,7 @@ def _download_url() -> str:
     return ""
 
 
-def _download_with_progress(
-    url: str, dest_path: str, progress_cb, cancel_event: threading.Event | None = None
-) -> bool:
+def _download_with_progress(url: str, dest_path: str, progress_cb, cancel_event: threading.Event | None = None) -> bool:
     """Stream download with progress. progress_cb(component, pct, speed_mbps, size_mb)."""
     _install_log(f"download: GET {url}")
     _install_log(f"download: dest_path={dest_path!r}")
@@ -513,7 +513,9 @@ def _find_system_python() -> list[str] | None:
         try:
             r = subprocess.run(
                 cmd + ["-c", "import sys; print(sys.version_info[:2])"],
-                capture_output=True, timeout=8, **_win_sp_kw(),
+                capture_output=True,
+                timeout=8,
+                **_win_sp_kw(),
             )
             if r.returncode == 0:
                 return cmd
@@ -543,9 +545,7 @@ def _run_setup_bootstrap(
         progress_cb("Syncing dependencies…", 0, 0, 0, "pip install -r requirements.txt")
         ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb, console_q, cancel_event)
         if ok and _venv_import_ok(py_exe):
-            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(
-                app_root, py_exe, progress_cb, console_q, cancel_event
-            )
+            fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q, cancel_event)
             if not fin_ok:
                 return False, fin_err
             progress_cb("Done", 100, 0, 0)
@@ -577,7 +577,11 @@ def _run_setup_bootstrap(
     try:
         subprocess.run(py_cmd + ["-m", "venv", str(venv)], capture_output=True, timeout=120, check=True, **_win_sp_kw())
     except subprocess.CalledProcessError as e:
-        msg = (e.stderr or e.stdout or "venv failed").decode("utf-8", errors="ignore") if isinstance((e.stderr or e.stdout), bytes) else (e.stderr or e.stdout or "venv failed")
+        msg = (
+            (e.stderr or e.stdout or "venv failed").decode("utf-8", errors="ignore")
+            if isinstance((e.stderr or e.stdout), bytes)
+            else (e.stderr or e.stdout or "venv failed")
+        )
         progress_cb("venv creation failed", 0, 0, 0, str(msg)[:120])
         _install_log(f"venv creation: exit {e.returncode} cmd={py_cmd + ['-m', 'venv', str(venv)]!r}")
         _install_log_chunk("venv creation stderr/stdout", str(msg), 8000)
@@ -611,7 +615,10 @@ def _run_setup_bootstrap(
         _update("Installing…", 0)
         proc = subprocess.Popen(
             [str(pip_exe), "install", pkg, "--disable-pip-version-check"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
             cwd=str(app_root),
             **_win_sp_kw(),
         )
@@ -832,7 +839,7 @@ def _windows_uninstall_registry_command(uninstall_bat: Path) -> str:
     system_root = os.environ.get("SystemRoot", r"C:\Windows")
     cmd_exe = os.path.join(system_root, "System32", "cmd.exe")
     bat = str(uninstall_bat.resolve())
-    return f'{_reg_sz_quoted_path(cmd_exe)} /c {_reg_sz_quoted_path(bat)}'
+    return f"{_reg_sz_quoted_path(cmd_exe)} /c {_reg_sz_quoted_path(bat)}"
 
 
 def _windows_delete_uninstall_registry() -> None:
@@ -904,16 +911,23 @@ def _create_windows_shortcuts(app_root: Path):
 
     def create_shortcut(target_path: Path, name: str):
         target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
-        ps = f'''
+        ps = (
+            f"""
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{target_path}\\{name}.lnk")
 $Shortcut.TargetPath = "{target_exe}"
 $Shortcut.Arguments = '"{launcher_pyw}"'
 $Shortcut.WorkingDirectory = "{app_root}"
 $Shortcut.Description = "ChronoArchiver"
-''' + (f'$Shortcut.IconLocation = "{icon_str.replace(chr(92), chr(92)*2)}"\n' if icon_str else "") + '''
+"""
+            + (f'$Shortcut.IconLocation = "{icon_str.replace(chr(92), chr(92)*2)}"\n' if icon_str else "")
+            + """
 $Shortcut.Save()
-'''.replace("{target_path}", str(target_path)).replace("{name}", name).replace("{launcher_pyw}", str(launcher_pyw)).replace("{app_root}", str(app_root))
+""".replace("{target_path}", str(target_path))
+            .replace("{name}", name)
+            .replace("{launcher_pyw}", str(launcher_pyw))
+            .replace("{app_root}", str(app_root))
+        )
         try:
             subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=10)
         except Exception:
@@ -1300,7 +1314,7 @@ def _create_macos_app_and_uninstaller(app_root: Path):
     macos.mkdir(parents=True, exist_ok=True)
 
     launcher_script = macos / "ChronoArchiver"
-    launcher_script.write_text(f'''#!/bin/bash
+    launcher_script.write_text(f"""#!/bin/bash
 cd "{app_root}"
 export {ENV_INSTALL_ROOT}="{app_root}"
 if [ -x "venv/bin/python" ]; then
@@ -1310,10 +1324,10 @@ elif command -v python3 >/dev/null 2>&1; then
 else
     exec python chronoarchiver.pyw "$@"
 fi
-''')
+""")
     launcher_script.chmod(0o755)
 
-    (contents / "Info.plist").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+    (contents / "Info.plist").write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>ChronoArchiver</string>
@@ -1321,16 +1335,16 @@ fi
 <key>CFBundleName</key><string>ChronoArchiver</string>
 <key>CFBundleVersion</key><string>{VERSION}</string>
 </dict></plist>
-''')
+""")
 
     # Uninstall script (remove whole ChronoArchiver install)
     install_dir = str(_app_dir())
     uninstall = app_root / "Uninstall ChronoArchiver.command"
-    uninstall.write_text(f'''#!/bin/bash
+    uninstall.write_text(f"""#!/bin/bash
 echo "Uninstalling ChronoArchiver..."
 rm -rf "{install_dir}"
 echo "Done."
-''')
+""")
     uninstall.chmod(0o755)
 
     # Also create an app-style uninstaller entry
@@ -1339,16 +1353,16 @@ echo "Done."
     u_macos = u_contents / "MacOS"
     u_macos.mkdir(parents=True, exist_ok=True)
     u_exec = u_macos / "Uninstall ChronoArchiver"
-    u_exec.write_text(f'''#!/bin/bash
+    u_exec.write_text(f"""#!/bin/bash
 osascript -e 'display dialog "Remove ChronoArchiver and all data?" buttons {{"Cancel","Remove"}} default button "Remove"'
 if [ $? -ne 0 ]; then
   exit 0
 fi
 rm -rf "{install_dir}"
 osascript -e 'display dialog "ChronoArchiver has been uninstalled." buttons {{"OK"}} default button "OK"'
-''')
+""")
     u_exec.chmod(0o755)
-    (u_contents / "Info.plist").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+    (u_contents / "Info.plist").write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>Uninstall ChronoArchiver</string>
@@ -1356,7 +1370,7 @@ osascript -e 'display dialog "ChronoArchiver has been uninstalled." buttons {{"O
 <key>CFBundleName</key><string>Uninstall ChronoArchiver</string>
 <key>CFBundleVersion</key><string>{VERSION}</string>
 </dict></plist>
-''')
+""")
 
 
 def _run_app(app_root: Path):
@@ -1367,7 +1381,14 @@ def _run_app(app_root: Path):
         cmd = [str(pyw), str(launcher)] if pyw.exists() else ["pythonw", str(launcher)]
         _install_log(f"launch: cmd={cmd!r} cwd={app_root}")
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-        subprocess.Popen(cmd, cwd=str(app_root), creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            cmd,
+            cwd=str(app_root),
+            creationflags=flags,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     else:
         app_bundle = app_root / "ChronoArchiver.app"
         if app_bundle.exists():
@@ -1717,10 +1738,10 @@ def _do_setup_gui(download_url: str) -> bool:
 
     stage = {"index": 0, "base": 0.0, "span": 100.0}
     stage_plan = [
-        (0, 35.0),    # Download
+        (0, 35.0),  # Download
         (35.0, 5.0),  # Extract
-        (40.0, 10.0), # Create environment
-        (50.0, 40.0), # Install dependencies (includes FFmpeg inside bootstrap)
+        (40.0, 10.0),  # Create environment
+        (50.0, 40.0),  # Install dependencies (includes FFmpeg inside bootstrap)
         (90.0, 5.0),  # Verify
         (95.0, 5.0),  # Shortcuts/finalize
     ]
@@ -1783,6 +1804,7 @@ def _do_setup_gui(download_url: str) -> bool:
             else:
                 lbl_speed.config(text="")
             root.update_idletasks()
+
         root.after(0, update)
 
     def task():
@@ -1810,7 +1832,9 @@ def _do_setup_gui(download_url: str) -> bool:
                         _install_log("task: ERROR download failed or cancelled")
                         _install_log_footer(False, "cancelled" if canc else "download")
                         result[0] = False
-                        result_error[0] = "Installation cancelled." if canc else "Failed while downloading source package."
+                        result_error[0] = (
+                            "Installation cancelled." if canc else "Failed while downloading source package."
+                        )
                         if canc:
                             _remove_cancelled_install_tree(app_dir)
                             root.after(0, reset_progress_ui)
@@ -1942,7 +1966,11 @@ def main():
                 _create_windows_shortcuts(app_dir)
             except Exception:
                 pass
-        _pyq = app_dir / "venv" / "Scripts" / "python.exe" if platform.system() == "Windows" else app_dir / "venv" / "bin" / "python"
+        _pyq = (
+            app_dir / "venv" / "Scripts" / "python.exe"
+            if platform.system() == "Windows"
+            else app_dir / "venv" / "bin" / "python"
+        )
         if _pyq.is_file():
             _ok_ff, _err_ff = _bootstrap_ffmpeg(app_dir, _pyq, lambda *a, **k: None)
             _install_log(f"main: quick-launch ffmpeg ok={_ok_ff} err={_err_ff!r}")

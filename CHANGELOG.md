@@ -17,6 +17,7 @@
 - **CI**: pin **`ruff==0.8.4`** (matches **`.pre-commit-config.yaml`**); add **`libgl1`**, **`libdbus-1-3`**, **`libxcb-cursor0`** for more stable **PySide6** offscreen runs; set **`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`** for GitHub Actions.
 - **`.github/workflows/version-consistency.yml`**: runs **`verify_release_versions.py`** instead of an inline snippet.
 - **`.github/workflows/release-installers.yml`**: **`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`** to reduce Actions Node deprecation noise.
+- **CI / Ruff**: **`core/updater.py`** formatted with **Ruff 0.8.4**; **Ruff** runs on **`tools/`** as well as **`src/`** and **`tests/`** (matches **pre-commit**).
 
 ## [5.4.2] - 2026-04-06
 

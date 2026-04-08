@@ -144,11 +144,11 @@ def restart_app() -> bool:
         src_dir = os.getcwd()
 
     if platform.system() == "Windows":
-        script = f'''@echo off
+        script = f"""@echo off
 ping -n 3 127.0.0.1 > nul
 cd /d "{src_dir}"
 start "" {" ".join('"%s"' % c for c in launch_cmd)}
-'''
+"""
         fd, path = tempfile.mkstemp(suffix=".bat")
         try:
             try:
@@ -171,10 +171,10 @@ start "" {" ".join('"%s"' % c for c in launch_cmd)}
             return False
     else:
         cmd_str = " ".join(repr(c) for c in launch_cmd)
-        script = f'''#!/bin/sh
+        script = f"""#!/bin/sh
 sleep 2
 cd "{src_dir}" && exec {cmd_str}
-'''
+"""
         fd, path = tempfile.mkstemp(suffix=".sh")
         try:
             try:
@@ -412,15 +412,15 @@ class ApplicationUpdater:
         if platform.system() == "Windows":
             # Setup exe downloads full app on first run, then launches it; we just run setup
             inst_esc = str(installer_path).replace("\\", "\\\\").replace('"', '\\"')
-            script = f'''@echo off
+            script = f"""@echo off
 ping -n 3 127.0.0.1 > nul
 start /wait "" "{inst_esc}"
-'''
+"""
             ext = ".bat"
         else:
             # macOS: extract setup zip, run ChronoArchiver-Setup.app (it downloads full app)
             inst_esc = str(installer_path).replace("\\", "\\\\").replace('"', '\\"')
-            script = f'''#!/bin/sh
+            script = f"""#!/bin/sh
 sleep 2
 ZIP="{inst_esc}"
 TMP=$(mktemp -d)
@@ -429,7 +429,7 @@ SETUP_APP=$(echo "$TMP"/*.app)
 if [ -d "$SETUP_APP" ]; then
   open "$SETUP_APP"
 fi
-'''
+"""
             ext = ".sh"
         fd, path = tempfile.mkstemp(suffix=ext)
         try:
