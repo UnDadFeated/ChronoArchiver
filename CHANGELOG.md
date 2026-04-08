@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [5.4.2] - 2026-04-06
+
+### Added
+- **Media Organizer**: **EXIF auto-rotate photos** checkbox in **Execution Mode** — for JPEG/PNG/WebP/TIFF/BMP/GIF with a non-default **Orientation** tag, decodes with Pillow, applies **`ImageOps.exif_transpose`**, and saves upright (re-encodes). Skipped when **Action** is **Symlink**; unsupported formats fall back to plain move/copy. **`tests/test_organizer_exif`**.
+
+### Documentation
+- **README**: Media Organizer row mentions optional EXIF auto-rotate.
+
 ## [5.4.1] - 2026-04-03
 
 ### Changed

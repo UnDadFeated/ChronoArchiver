@@ -7,7 +7,7 @@
 ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
 </div>
 
-[![Version](https://img.shields.io/badge/version-5.4.1-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-5.4.2-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
 
@@ -31,16 +31,16 @@ Configuration is stored in the platform user-data directory. Each panel validate
 
 ## Installation
 
-Release **5.4.1** — installers and AUR `pkgver` are aligned on this version.
+Release **5.4.2** — installers and AUR `pkgver` are aligned on this version.
 
 ### GitHub (Windows / macOS installers)
 
-Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v5.4.1`**):
+Download from [**Releases**](https://github.com/UnDadFeated/ChronoArchiver/releases) (**tag `v5.4.2`**):
 
 | Platform | Asset |
 |----------|--------|
-| Windows x64 | `ChronoArchiver-Setup-5.4.1-win64.exe` |
-| macOS | `ChronoArchiver-Setup-5.4.1-mac64.zip` |
+| Windows x64 | `ChronoArchiver-Setup-5.4.2-win64.exe` |
+| macOS | `ChronoArchiver-Setup-5.4.2-mac64.zip` |
 
 The installer is lightweight; the first launch may download Python-related components. **Python 3.11+** must be installed for this install path. Data: `%LOCALAPPDATA%\ChronoArchiver` (Windows) or `~/Library/Application Support/ChronoArchiver` (macOS).
 
@@ -62,7 +62,7 @@ Maintainers: sync semver across `src/version.py`, `pyproject.toml`, `README.md`,
 
 ### Arch Linux (AUR)
 
-Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **5.4.1**:
+Package **[chronoarchiver](https://aur.archlinux.org/packages/chronoarchiver)** at **5.4.2**:
 
 ```bash
 paru -S chronoarchiver
@@ -83,7 +83,7 @@ Run [from git](#git-clone-linux-windows-macos) in toolbox/distrobox, or use an A
 | | |
 |--|--|
 | **UI / runtime** | PySide6 (Qt), Python **3.10+**, bundled **FFmpeg** |
-| **Media Organizer** | Date-based folders (nested or flat); EXIF, video metadata, filename, mtime; move / copy / symlink; duplicates and dry-run |
+| **Media Organizer** | Date-based folders (nested or flat); EXIF, video metadata, filename, mtime; move / copy / symlink; optional **EXIF auto-rotate** for common raster photos (JPEG/PNG/WebP/TIFF/BMP/GIF); duplicates and dry-run |
 | **AI Media Scanner** | OpenCV YuNet + optional YOLO ONNX; keep/move lists; models under user data (`Setup Models` / `Install OpenCV` in-app) |
 | **Mass AV1 Encoder** | Queue with folder structure preserved; **SVT-AV1**, **NVENC** (e.g. RTX 40+), **VAAPI** / **AMF** where available; pause/resume |
 | **AI Image Upscaler** | LANCZOS + Z-Image-Turbo img2img; real-time source edits; prompt-aware mode (**blank = cleanup/upscale only**); optional Beautify mode (local face analysis + optional BLIP captioning); optional LaMa inpainting for cleanup; in-app PyTorch/model setup with progress/speed telemetry |

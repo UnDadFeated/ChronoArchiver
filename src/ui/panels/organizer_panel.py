@@ -87,7 +87,7 @@ class MediaOrganizerPanel(QWidget):
         # ── COMMAND STRIP ─────────────────────────────────────────────────────
         h_strip = QHBoxLayout()
         h_strip.setSpacing(6)
-        _box_height = 118
+        _box_height = 132
 
         # 1. Paths (Source, Target, Photos/Videos — merged)
         grp_paths = QGroupBox("Paths")
@@ -163,6 +163,14 @@ class MediaOrganizerPanel(QWidget):
         self._chk_dry.setChecked(True)
         self._chk_dry.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         v_mode.addWidget(self._chk_dry)
+        self._chk_exif_rotate = QCheckBox("EXIF auto-rotate photos")
+        self._chk_exif_rotate.setChecked(False)
+        self._chk_exif_rotate.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
+        self._chk_exif_rotate.setToolTip(
+            "For JPEG/PNG/WebP/TIFF/BMP/GIF with a non-default Orientation tag, decode and save "
+            "pixels upright (re-encodes; not used with Symlink). Other formats copy/move unchanged."
+        )
+        v_mode.addWidget(self._chk_exif_rotate)
         lbl_struct = QLabel("Folder structure:")
         lbl_struct.setStyleSheet("font-size:9px; color:#888; margin-top:10px; margin-bottom:-2px;")
         v_mode.addWidget(lbl_struct)
@@ -402,7 +410,7 @@ class MediaOrganizerPanel(QWidget):
         duplicate_policy = dup_keys[self._combo_dup.currentIndex()]
         debug(
             UTILITY_MEDIA_ORGANIZER,
-            f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}",
+            f"Organization start: path={path}, action={action}, structure={folder_structure}, target={target or 'in-place'}, exif_auto_rotate={self._chk_exif_rotate.isChecked()}",
         )
         if not try_acquire_fs_heavy("Media Organizer"):
             QMessageBox.warning(
@@ -419,6 +427,7 @@ class MediaOrganizerPanel(QWidget):
             source=path[:300],
             action=action,
             structure=folder_structure,
+            exif_auto_rotate=self._chk_exif_rotate.isChecked(),
         )
         if self._status_cb:
             self._status_cb("organizing")
@@ -451,6 +460,7 @@ class MediaOrganizerPanel(QWidget):
                     duplicate_policy=duplicate_policy,
                     progress_callback=_prog,
                     stats_callback=_stats,
+                    exif_auto_rotate=self._chk_exif_rotate.isChecked(),
                 )
             except Exception as e:
                 self._sig.log_msg.emit(f"ERROR: {e}")
