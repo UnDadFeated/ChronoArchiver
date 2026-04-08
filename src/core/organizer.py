@@ -9,6 +9,12 @@ from typing import Callable, Optional
 import piexif
 
 try:
+    from PIL import Image, ImageOps
+except ImportError:
+    Image = None  # type: ignore[misc, assignment]
+    ImageOps = None  # type: ignore[misc, assignment]
+
+try:
     from .debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 except ImportError:
     from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
@@ -33,8 +39,30 @@ PHOTO_EXTS = {
     ".rw2",
 }
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v", ".wmv", ".mpg", ".mpeg", ".ts"}
+# Raster types we attempt to rewrite with Pillow for EXIF Orientation (raw/HEIC may fall back to copy/move).
+ROTATABLE_PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp", ".gif"}
 MIN_YEAR = 1957  # First digital photo (Russell Kirsch 1957)
 DEFAULT_EXCLUDE_DIRS = {".thumbnails", "@recently deleted", "$recycle.bin", ".trash", "thumbnails"}
+
+
+def _exif_orientation_value(file_path: str) -> int | None:
+    """EXIF Orientation tag (1–8), or None if missing/unreadable. 1 = no rotation."""
+    try:
+        exif_dict = piexif.load(file_path)
+        z = exif_dict.get("0th") or {}
+        raw = z.get(piexif.ImageIFD.Orientation)
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            return int.from_bytes(raw, "big") if raw else None
+        return int(raw)
+    except Exception:
+        return None
+
+
+def _needs_exif_rotation(file_path: str) -> bool:
+    o = _exif_orientation_value(file_path)
+    return o is not None and o != 1
 
 
 class OrganizerEngine:
@@ -173,6 +201,45 @@ class OrganizerEngine:
         except Exception:
             return ""
 
+    def _write_exif_transposed_photo(self, src: str, dst: str, delete_src_after: bool) -> bool:
+        """Decode with Pillow, apply EXIF orientation, save to dst. Optionally remove src (move)."""
+        if Image is None or ImageOps is None:
+            return False
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+        except OSError as e:
+            self.logger(f"Error creating directory for EXIF rotate: {e}")
+            return False
+        try:
+            with Image.open(src) as im:
+                im = ImageOps.exif_transpose(im)
+                fmt = (im.format or "").upper()
+                suf = pathlib.Path(dst).suffix.lower()
+                if fmt == "JPEG" or suf in (".jpg", ".jpeg"):
+                    im.save(dst, format="JPEG", quality=95, optimize=True)
+                elif fmt == "PNG":
+                    im.save(dst, format="PNG", optimize=True)
+                elif fmt == "WEBP":
+                    im.save(dst, format="WEBP", quality=90, method=6)
+                elif fmt in ("TIFF", "TIF") or suf in (".tif", ".tiff"):
+                    im.save(dst, format="TIFF")
+                elif fmt == "BMP":
+                    im.save(dst, format="BMP")
+                elif fmt == "GIF":
+                    im.save(dst, format="GIF")
+                else:
+                    im.save(dst)
+            if delete_src_after:
+                try:
+                    os.remove(src)
+                except OSError:
+                    self.logger(f"Error removing source after EXIF rotate: {src}")
+                    return False
+            return True
+        except Exception as e:
+            self.logger(f"EXIF transpose failed for {os.path.basename(src)}: {e}")
+            return False
+
     FOLDER_STRUCTURES = {
         "nested": "YYYY/YYYY-MM",
         "flat_month": "YYYY-MM",
@@ -192,11 +259,12 @@ class OrganizerEngine:
         duplicate_policy: str = "rename",
         progress_callback=None,
         stats_callback=None,
+        exif_auto_rotate: bool = False,
     ):
         """action: move|copy|symlink. duplicate_policy: skip|keep_newer|overwrite|overwrite_same|rename"""
         debug(
             UTILITY_MEDIA_ORGANIZER,
-            f"organize start: source={source_dir}, dry_run={dry_run}, structure={folder_structure}, action={action}, target={target_dir or 'in-place'}",
+            f"organize start: source={source_dir}, dry_run={dry_run}, structure={folder_structure}, action={action}, target={target_dir or 'in-place'}, exif_auto_rotate={exif_auto_rotate}",
         )
         source_dir = (source_dir or "").strip()
         if not source_dir:
@@ -235,6 +303,9 @@ class OrganizerEngine:
                     self.logger("ERROR: Target directory is not writable.")
                     debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
                     return
+
+        if exif_auto_rotate and action == "symlink":
+            self.logger("Note: EXIF auto-rotate is skipped when Action is Symlink (files are linked, not re-encoded).")
 
         self.logger("Building file queue...")
         if progress_callback:
@@ -429,13 +500,35 @@ class OrganizerEngine:
                     self.logger(f"Error {action} {label}: {e}")
                     return False
 
+            ext_l = pathlib.Path(full_path).suffix.lower()
+            want_rotate = (
+                exif_auto_rotate
+                and action != "symlink"
+                and ext_l in ROTATABLE_PHOTO_EXTS
+                and ext_l in (valid_exts or PHOTO_EXTS | VIDEO_EXTS)
+                and _needs_exif_rotation(full_path)
+            )
+
             if not dry_run:
-                if _do_file(full_path, target_path, file):
+                ok = False
+                rotated_ok = False
+                if want_rotate:
+                    ok = self._write_exif_transposed_photo(
+                        full_path, target_path, delete_src_after=(action == "move")
+                    )
+                    rotated_ok = ok
+                if want_rotate and not ok:
+                    self.logger(f"[EXIF] Falling back to plain {action} for {file}")
+                if not want_rotate or not ok:
+                    ok = _do_file(full_path, target_path, file)
+                if ok:
                     files_moved += 1
-                    self.logger(f'[{action_verb}] "{file}" -> "{rel_target_path}"')
+                    tag = action_verb + (" + EXIF ROTATE" if rotated_ok else "")
+                    self.logger(f'[{tag}] "{file}" -> "{rel_target_path}"')
             else:
                 files_moved += 1
-                self.logger(f'[DRY RUN] [{action_verb}] "{file}" -> "{rel_target_path}"')
+                dry_tag = action_verb + (" + EXIF ROTATE" if want_rotate else "")
+                self.logger(f'[DRY RUN] [{dry_tag}] "{file}" -> "{rel_target_path}"')
 
         self.logger(f"Done. Moved: {files_moved}, Skipped: {skipped}, Duplicates: {duplicates_found}.")
         debug(UTILITY_MEDIA_ORGANIZER, f"Done: moved={files_moved}, skipped={skipped}, duplicates={duplicates_found}")
