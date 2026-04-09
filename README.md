@@ -26,6 +26,8 @@ ChronoArchiver helps you clean up and process large photo/video collections in o
 
 ## Quick Start
 
+Release **5.4.4**.
+
 ### Option 1: Download installer (Windows/macOS)
 
 Get the latest release from [Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
