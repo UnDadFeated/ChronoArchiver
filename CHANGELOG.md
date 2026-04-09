@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [5.4.4] - 2026-04-09
+
+### Changed
+- **README**: Rewritten for first-time users with a streamlined structure focused on quick install, first-run steps, core features, and essential troubleshooting guidance while preserving existing branding and links.
+
 ## [5.4.3] - 2026-04-08
 
 ### Added
