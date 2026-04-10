@@ -290,12 +290,12 @@ class MediaOrganizerPanel(QWidget):
 
     def _can_start(self):
         path = self._edit_path.text().strip()
-        if not path or not os.path.isdir(path):
+        if not path or is_remote_path(path) or not os.path.isdir(path):
             return False
         if not self._get_valid_exts():
             return False
         target = self._edit_target.text().strip()
-        if target and not os.path.isdir(target):
+        if target and (is_remote_path(target) or not os.path.isdir(target)):
             return False
         return True
 
@@ -304,12 +304,21 @@ class MediaOrganizerPanel(QWidget):
         if self._is_running:
             return None
         path = self._edit_path.text().strip()
-        if not path or not os.path.isdir(path):
+        if not path:
+            return self._btn_browse_src
+        if is_remote_path(path):
+            if not self._get_valid_exts():
+                return self._chk_photos
+            target = self._edit_target.text().strip()
+            if target and (is_remote_path(target) or not os.path.isdir(target)):
+                return self._btn_browse_target
+            return self._btn_start
+        if not os.path.isdir(path):
             return self._btn_browse_src
         if not self._get_valid_exts():
             return self._chk_photos
         target = self._edit_target.text().strip()
-        if target and not os.path.isdir(target):
+        if target and (is_remote_path(target) or not os.path.isdir(target)):
             return self._btn_browse_target
         return self._btn_start
 
@@ -318,13 +327,20 @@ class MediaOrganizerPanel(QWidget):
             return []
         r = []
         path = self._edit_path.text().strip()
-        if not path or not os.path.isdir(path):
+        if not path:
+            r.append("choose a valid source folder")
+        elif is_remote_path(path):
+            r.append(REMOTE_FS_UNSUPPORTED_HINT)
+        elif not os.path.isdir(path):
             r.append("choose a valid source folder")
         if not self._get_valid_exts():
             r.append("enable Photos and/or Videos")
         target = self._edit_target.text().strip()
-        if target and not os.path.isdir(target):
-            r.append("fix or clear the target folder")
+        if target:
+            if is_remote_path(target):
+                r.append(REMOTE_FS_UNSUPPORTED_HINT)
+            elif not os.path.isdir(target):
+                r.append("fix or clear the target folder")
         return r
 
     def _update_start_enabled(self):

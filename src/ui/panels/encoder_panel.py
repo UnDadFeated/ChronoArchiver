@@ -669,7 +669,14 @@ class AV1EncoderPanel(QWidget):
         if self._is_encoding or self._btn_start.text() == "ENCODING COMPLETE":
             return None
         src = self._edit_src.text().strip()
-        if not src or is_remote_path(src) or not os.path.isdir(src):
+        if not src:
+            return self._btn_browse_src
+        if is_remote_path(src):
+            dst = self._edit_dst.text().strip()
+            if not dst or is_remote_path(dst) or not os.path.isdir(dst):
+                return self._btn_browse_dst
+            return self._btn_start
+        if not os.path.isdir(src):
             return self._btn_browse_src
         if not self._source_scanned:
             return self._btn_browse_src
@@ -750,8 +757,18 @@ class AV1EncoderPanel(QWidget):
             return
         src = self._edit_src.text().strip()
         self._queue.clear()
-        if not src or not os.path.isdir(src):
+        if not src:
             self._source_scanned = False
+            self._update_start_enabled()
+            return
+        if is_remote_path(src):
+            self._source_scanned = True
+            debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan skipped (remote URI): {src[:200]}")
+            self._update_start_enabled()
+            return
+        if not os.path.isdir(src):
+            self._source_scanned = False
+            self._update_start_enabled()
             return
         self._source_scanned = False
         self._add_log("Scanning source folder...")
