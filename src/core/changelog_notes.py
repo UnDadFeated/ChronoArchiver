@@ -15,6 +15,30 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "5.6.3": """## [5.6.3] - 2026-04-10
+
+### Fixed
+- **Remote scan / sshpass**: Clears ``SSH_ASKPASS`` / ``GIT_ASKPASS`` when using password mode so captured SSH output is reliable.
+- **Encoder**: Remote scan failures log at WARNING; temp encode files use prefix ``chronoarchiver_av1_`` and are cleaned per job and on stop/quit; large scan totals no longer overflow Qt signals; **KeyError** in progress UI fixed (do not replace speed label list with a dict).
+""",
+    "5.6.2": """## [5.6.2] - 2026-04-10
+
+### Fixed
+- **Remote AV1 encoding**: SSH remote steps use ``sh -c`` so **fish** login shells do not break ``python3`` scan/verify.
+""",
+    "5.6.1": """## [5.6.1] - 2026-04-10
+
+### Fixed
+- **AV1 Encoder / Browse**: SSH password from the remote picker is copied to the panel field on OK; remote scan/encode match **Test SSH**. Clearer errors when SSH auth fails (not mislabeled as missing ``python3``).
+""",
+    "5.6.0": """## [5.6.0] - 2026-04-10
+
+### Added
+- **Mass AV1 Encoder — remote source and/or destination**: **scp** pull, local **FFmpeg**, **scp** push; remote scan via **SSH** + **python3** on the host; optional **sshpass** for password auth.
+
+### Fixed
+- **Encoder guide**: Local source + remote destination no longer traps the highlight on **Browse**.
+""",
     "5.5.1": """## [5.5.1] - 2026-04-10
 
 ### Fixed

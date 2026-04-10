@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Semver without v — must match an existing release tag (e.g. 5.1.1)'
+        description: 'Semver without v — must match an existing release tag (e.g. 5.6.3)'
         required: true
-        default: '5.1.1'
+        default: '5.6.3'
         type: string
 
 jobs:

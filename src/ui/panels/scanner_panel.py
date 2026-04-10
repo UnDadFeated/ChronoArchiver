@@ -1165,14 +1165,14 @@ class AIScannerPanel(QWidget):
         threading.Thread(target=_task, daemon=True).start()
 
     def _browse(self):
-        picked = run_local_remote_path_dialog(
+        picked, _pw = run_local_remote_path_dialog(
             self, "Select Library to Scan", self._edit_path.text().strip()
         )
         if picked:
             self._edit_path.setText(picked)
 
     def _browse_target(self):
-        picked = run_local_remote_path_dialog(
+        picked, _pw = run_local_remote_path_dialog(
             self, "Select Target Folder", self._edit_target.text().strip()
         )
         if picked:

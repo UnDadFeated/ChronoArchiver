@@ -165,9 +165,24 @@ def ssh_command_environment(
     env = os.environ.copy()
     if password_for_sshpass:
         env["SSHPASS"] = password_for_sshpass
+        # Subprocess SSH has no controlling TTY. If the desktop session set SSH_ASKPASS /
+        # GIT_ASKPASS, OpenSSH may prefer them over the password path sshpass provides,
+        # which breaks or empties captured remote stdout/stderr.
+        for k in (
+            "SSH_ASKPASS",
+            "SSH_ASKPASS_REQUIRE",
+            "SSH_ASKPASS_PROMPT_TIMEOUT",
+            "GIT_ASKPASS",
+        ):
+            env.pop(k, None)
         if extra_env:
             for k, v in extra_env.items():
-                if k not in ("SSH_ASKPASS", "SSH_ASKPASS_REQUIRE"):
+                if k not in (
+                    "SSH_ASKPASS",
+                    "SSH_ASKPASS_REQUIRE",
+                    "SSH_ASKPASS_PROMPT_TIMEOUT",
+                    "GIT_ASKPASS",
+                ):
                     env[k] = v
     elif extra_env:
         env.update(extra_env)
@@ -220,6 +235,12 @@ def run_ssh_echo_ok_test(
     rmt, _ = parse_remote_destination(raw)
     if rmt is None:
         return False, "That path is not remote. Use user@host:/path or sftp://user@host/path."
+    if not (rmt.user and str(rmt.user).strip()):
+        return (
+            False,
+            "The remote address has no SSH username. Use user@host:/path or "
+            "sftp://user@host/path (SSH does not guess your local login name here).",
+        )
     pw_plain = password_plain.strip()
     pw_ssh = pw_plain if pw_plain and shutil.which("sshpass") else None
     extra_env: Optional[dict] = None
