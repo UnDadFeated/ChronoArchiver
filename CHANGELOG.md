@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [5.5.1] - 2026-04-10
+
+### Fixed
+- **Guide pulse (Organizer, AV1 Encoder, AI Scanner)**: After choosing a remote `sftp://` path, the onboarding highlight no longer stays stuck on **Browse**; it advances through output/target checks where applicable and highlights **Start** (Scanner: highlight disabled **Start** when the library path is remote so the tooltip explains the limitation). Encoder skips the blocking “wait for scan” state for remote sources.
+
 ## [5.5.0] - 2026-04-10
 
 ### Added

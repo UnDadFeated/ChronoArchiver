@@ -748,7 +748,11 @@ class AIScannerPanel(QWidget):
         if not self._model_mgr.is_up_to_date():
             return self._btn_setup
         path = self._edit_path.text().strip()
-        if not path or is_remote_path(path) or not os.path.isdir(path):
+        if not path:
+            return self._btn_browse
+        if is_remote_path(path):
+            return self._btn_start
+        if not os.path.isdir(path):
             return self._btn_browse
         has_others = self._engine and self._engine.others_list
         if has_others:
@@ -856,9 +860,12 @@ class AIScannerPanel(QWidget):
 
     def _pulse_guide(self):
         target = self._get_guide_target()
-        # Never pulse the Start button when it's disabled (keeps it grey).
+        # Never pulse the Start button when it's disabled, except when a remote URI is set
+        # (guide should move past Browse and highlight Start + tooltip).
         if target == self._btn_start and not self._btn_start.isEnabled():
-            target = None
+            path = self._edit_path.text().strip()
+            if not (path and is_remote_path(path)):
+                target = None
         if target != self._guide_target:
             self._clear_guide_glow(self._guide_target)
             self._guide_target = target
