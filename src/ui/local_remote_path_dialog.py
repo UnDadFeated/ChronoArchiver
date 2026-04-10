@@ -28,10 +28,14 @@ from core.remote_ssh import (
 )
 
 
-def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> str | None:
+def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> tuple[str | None, str]:
     """
-    Show local-folder vs remote SFTP/SSH picker. Returns a local filesystem path or
-    ``sftp://…/`` URI, or None if cancelled.
+    Show local-folder vs remote SFTP/SSH picker.
+
+    Returns ``(path, ssh_password_plain)``. ``path`` is a local directory, an ``sftp://…/``
+    URI, or ``None`` if cancelled. The password is the remote-mode field at OK time (empty
+    string for local folder or empty field); callers should copy it to any panel SSH field
+    so background jobs match what **Test SSH** used.
     """
     dlg = QDialog(parent)
     dlg.setWindowTitle(title)
@@ -67,7 +71,8 @@ def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> 
     btn_test_ssh.setMinimumHeight(28)
     btn_test_ssh.setToolTip(
         "Runs echo ok on the remote host using the path and password above "
-        "(SSH keys, sshpass, or GUI askpass)."
+        "(SSH keys, sshpass, or GUI askpass). On OK, the same password is copied to the panel "
+        "SSH field so scans and batch jobs use it."
     )
     pw_wrap = QWidget()
     pw_h = QHBoxLayout(pw_wrap)
@@ -124,12 +129,12 @@ def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> 
     sync_mode()
 
     if dlg.exec() != QDialog.DialogCode.Accepted:
-        return None
+        return None, ""
 
     raw = le_path.text().strip()
     if not raw:
         QMessageBox.warning(parent, title, "Enter a path.")
-        return None
+        return None, ""
 
     if rb_local.isChecked():
         if is_remote_path(raw):
@@ -138,8 +143,8 @@ def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> 
                 title,
                 "That looks like a remote path. Choose “Remote (SSH / SFTP)” instead.",
             )
-            return None
-        return raw
+            return None, ""
+        return raw, ""
 
     rmt, _ = parse_remote_destination(raw)
     if rmt is None:
@@ -148,5 +153,5 @@ def run_local_remote_path_dialog(parent, title: str, initial_path: str = "") -> 
             title,
             "Remote path not recognized. Use user@host:/path or sftp://user@host/path.",
         )
-        return None
-    return to_sftp_folder_uri(rmt)
+        return None, ""
+    return to_sftp_folder_uri(rmt), le_pw.text()

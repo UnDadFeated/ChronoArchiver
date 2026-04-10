@@ -6,10 +6,12 @@ Uses src/core/av1_engine.py and src/core/av1_settings.py unchanged.
 
 import os
 import platform
+import posixpath
 import shutil
+import subprocess
+import tempfile
 import threading
 import time
-import subprocess
 
 import psutil
 
@@ -35,10 +37,27 @@ from PySide6.QtCore import Qt, Signal, QObject, QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent, QTextCursor
 
 import sys
+import logging
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from core.av1_engine import AV1EncoderEngine, EncodingProgress
-from core.remote_ssh import REMOTE_FS_UNSUPPORTED_HINT, is_remote_path
+from core.remote_encode import (
+    RemoteEncodeError,
+    RemoteFileRef,
+    common_structure_root_posix,
+    join_dst_local,
+    password_for_remote_encode,
+    posix_join_under,
+    remote_file_exists,
+    remote_mkdir_p,
+    remote_scan_videos,
+    remote_target_and_root,
+    remote_unlink,
+    remote_verify_python3,
+    run_scp_from_remote,
+    run_scp_to_remote,
+)
+from core.remote_ssh import is_remote_path
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.panel_start_hint import apply_start_button_hint
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
@@ -48,19 +67,59 @@ from core.av1_settings import AV1Settings
 from core.debug_logger import (
     INSTALLER_APP_MASS_AV1_ENCODER,
     debug,
+    log_exception,
     log_installer_popup,
     structured_event,
     UTILITY_MASS_AV1_ENCODER,
 )
+from version import APP_NAME
+
+# mkstemp prefix so STOP / quit can sweep orphans; must match _sweep_chrono_encoder_tempdir.
+_ENCODER_TMP_PREFIX = "chronoarchiver_av1_"
+
+
+def _finalize_encoder_temp_files(
+    tmp_cleanup: list[str],
+    *,
+    success: bool,
+    local_in: str,
+    local_out: str,
+) -> int | None:
+    """
+    Remove local scratch files (SCP download, remote-destination encode buffer) in the worker
+    thread immediately after I/O, so temps are not left behind if the UI slot runs later or STOP
+    is pressed. Returns bytes saved (in minus out) when both files exist and success is True.
+    """
+    saved: int | None = None
+    if (
+        success
+        and local_in
+        and local_out
+        and os.path.isfile(local_in)
+        and os.path.isfile(local_out)
+    ):
+        try:
+            saved = max(0, os.path.getsize(local_in) - os.path.getsize(local_out))
+        except OSError:
+            saved = None
+    for tmp in list(tmp_cleanup):
+        try:
+            if tmp and os.path.isfile(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+    tmp_cleanup.clear()
+    return saved
 
 
 class _Signals(QObject):
     progress = Signal(int, object)  # job_id, EncodingProgress
     details = Signal(int, str, str)  # job_id, vid, aud
-    finished = Signal(int, bool, str, str)
+    finished = Signal(int, bool, str, str, object)
     log_msg = Signal(str)
     batch_complete = Signal()  # emitted when all workers finish, queue empty — auto-stop UI
-    scan_progress = Signal(int, int)  # count, total_bytes (thread-safe for scan updates)
+    # total_bytes can exceed 2^31-1 (Qt C++ int); use object so Shiboken does not overflow.
+    scan_progress = Signal(int, object)  # count, total_bytes (thread-safe for scan updates)
     scan_done = Signal(list, str)  # items, src — emitted from worker, handled in main thread
     scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
 
@@ -98,9 +157,13 @@ class ScanProgressDialog(QDialog):
         log_installer_popup(INSTALLER_APP_MASS_AV1_ENCODER, "ScanProgressDialog", "closed")
         super().closeEvent(event)
 
-    def update_progress(self, count: int, total_bytes: int):
+    def update_progress(self, count: int, total_bytes: object):
         self._lbl_files.setText(f"Files: {count}")
-        total_bytes = max(0, total_bytes)
+        try:
+            tb = int(total_bytes)
+        except (TypeError, ValueError):
+            tb = 0
+        total_bytes = max(0, tb)
         if total_bytes >= 1024**3:
             sz = f"{total_bytes / (1024**3):.2f} GB"
         elif total_bytes >= 1024**2:
@@ -152,7 +215,6 @@ class AV1EncoderPanel(QWidget):
         self._active_jobs = 0
         self._active_lock = threading.Lock()
         self._job_progress = {}
-        self._job_speeds = {}
         self._current_files = {}
         self._total_saved = 0
         self._batch_start = 0.0
@@ -160,6 +222,10 @@ class AV1EncoderPanel(QWidget):
         self._gpu_counter = 0
         self._source_scanned = False
         self._fs_heavy_held = False
+        self._encode_pw: str | None = None
+        self._remote_dst_remote = None
+        self._remote_dst_root_posix: str | None = None
+        self._remote_src_structure_root_posix: str | None = None
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
         _slbl = "font-size: 9px; font-weight: 700; color: #aaa;"
@@ -244,12 +310,32 @@ class AV1EncoderPanel(QWidget):
         )
         v_dir.addLayout(grid_paths)
 
+        self._row_ssh = QWidget()
+        h_ssh = QHBoxLayout(self._row_ssh)
+        h_ssh.setContentsMargins(0, 4, 0, 0)
+        h_ssh.setSpacing(8)
+        h_ssh.addWidget(
+            QLabel("Remote SSH password (session; empty = keys/agent):", styleSheet=_shint),
+            0,
+        )
+        self._edit_ssh_pw = QLineEdit()
+        self._edit_ssh_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self._edit_ssh_pw.setPlaceholderText("optional — sshpass for password; filled from Browse for remote paths")
+        self._edit_ssh_pw.setStyleSheet(_dir_edit_ss)
+        self._edit_ssh_pw.setFixedHeight(_bar_h)
+        h_ssh.addWidget(self._edit_ssh_pw, 1)
+        v_dir.addWidget(self._row_ssh)
+        self._row_ssh.hide()
+
         self._scan_debounce = QTimer(self)
         self._scan_debounce.setSingleShot(True)
         self._scan_debounce.timeout.connect(self._auto_scan)
         self._edit_src.textChanged.connect(self._on_src_changed)
         self._edit_src.textChanged.connect(self._update_start_enabled)
+        self._edit_src.textChanged.connect(self._update_ssh_row_visibility)
         self._edit_dst.textChanged.connect(self._update_start_enabled)
+        self._edit_dst.textChanged.connect(self._update_ssh_row_visibility)
+        self._edit_ssh_pw.textChanged.connect(self._update_start_enabled)
 
         grp_dir.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         grid_strip.addWidget(grp_dir, 0, 0)
@@ -600,9 +686,15 @@ class AV1EncoderPanel(QWidget):
         self._guide_pulse_timer.timeout.connect(self._pulse_guide)
         self._guide_glow_phase = 0
         self._guide_target = None
+        self._update_ssh_row_visibility()
         self._update_start_enabled()
 
     # ── settings helpers ──────────────────────────────────────────────────────
+
+    def _update_ssh_row_visibility(self) -> None:
+        src = self._edit_src.text().strip()
+        dst = self._edit_dst.text().strip()
+        self._row_ssh.setVisible(bool(is_remote_path(src) or is_remote_path(dst)))
 
     def _on_quality_changed(self, val):
         self._lbl_qval.setText(str(val))
@@ -637,13 +729,15 @@ class AV1EncoderPanel(QWidget):
                 pass
 
     def _browse_src(self):
-        picked = run_local_remote_path_dialog(
+        picked, dialog_pw = run_local_remote_path_dialog(
             self, "Select Source Folder", self._edit_src.text().strip()
         )
         if picked:
             self._edit_src.blockSignals(True)
             self._edit_src.setText(picked)
             self._edit_src.blockSignals(False)
+            if is_remote_path(picked):
+                self._edit_ssh_pw.setText(dialog_pw)
             self._auto_scan()
 
     def _on_src_changed(self):
@@ -656,14 +750,25 @@ class AV1EncoderPanel(QWidget):
             return False
         src = self._edit_src.text().strip()
         dst = self._edit_dst.text().strip()
-        return bool(
-            src
-            and not is_remote_path(src)
-            and os.path.isdir(src)
-            and dst
-            and not is_remote_path(dst)
-            and os.path.isdir(dst)
-        )
+        if not src or not dst:
+            return False
+        r_src = is_remote_path(src)
+        r_dst = is_remote_path(dst)
+        if r_src or r_dst:
+            if not shutil.which("ssh") or not shutil.which("scp"):
+                return False
+            try:
+                password_for_remote_encode(self._edit_ssh_pw.text())
+            except RemoteEncodeError:
+                return False
+        if r_src:
+            if not self._source_scanned or len(self._queue) == 0:
+                return False
+        elif not os.path.isdir(src):
+            return False
+        if r_dst:
+            return True
+        return bool(os.path.isdir(dst))
 
     def _get_guide_target(self):
         if self._is_encoding or self._btn_start.text() == "ENCODING COMPLETE":
@@ -673,7 +778,11 @@ class AV1EncoderPanel(QWidget):
             return self._btn_browse_src
         if is_remote_path(src):
             dst = self._edit_dst.text().strip()
-            if not dst or is_remote_path(dst) or not os.path.isdir(dst):
+            if not self._source_scanned or len(self._queue) == 0:
+                return self._btn_browse_src
+            if not dst:
+                return self._btn_browse_dst
+            if not is_remote_path(dst) and not os.path.isdir(dst):
                 return self._btn_browse_dst
             return self._btn_start
         if not os.path.isdir(src):
@@ -681,7 +790,11 @@ class AV1EncoderPanel(QWidget):
         if not self._source_scanned:
             return self._btn_browse_src
         dst = self._edit_dst.text().strip()
-        if not dst or is_remote_path(dst) or not os.path.isdir(dst):
+        if not dst:
+            return self._btn_browse_dst
+        if is_remote_path(dst):
+            return self._btn_start
+        if not os.path.isdir(dst):
             return self._btn_browse_dst
         return self._btn_start
 
@@ -701,19 +814,29 @@ class AV1EncoderPanel(QWidget):
         src = self._edit_src.text().strip()
         dst = self._edit_dst.text().strip()
         r = []
+        r_src = is_remote_path(src)
+        r_dst = is_remote_path(dst)
         if not src:
             r.append("choose a source folder")
-        elif is_remote_path(src):
-            r.append("remote SFTP/SSH is not supported for encoding — use a local or mounted path")
+        elif r_src:
+            if not shutil.which("ssh") or not shutil.which("scp"):
+                r.append("install OpenSSH client (ssh and scp) for remote encoding")
+            else:
+                try:
+                    password_for_remote_encode(self._edit_ssh_pw.text())
+                except RemoteEncodeError as e:
+                    r.append(str(e))
+                if not self._source_scanned:
+                    r.append("wait for remote source scan to finish")
+                elif len(self._queue) == 0:
+                    r.append("no video files found under the remote source path")
         elif not os.path.isdir(src):
             r.append("choose a valid source folder")
         elif not self._source_scanned:
             r.append("wait for the source folder scan to finish")
         if not dst:
             r.append("choose a valid output folder")
-        elif is_remote_path(dst):
-            r.append("remote SFTP/SSH is not supported for output — use a local or mounted path")
-        elif not os.path.isdir(dst):
+        elif not r_dst and not os.path.isdir(dst):
             r.append("choose a valid output folder")
         return r
 
@@ -752,6 +875,35 @@ class AV1EncoderPanel(QWidget):
         else:
             self._clear_guide_glow(target)
 
+    def _run_remote_scan_collect(self, src: str) -> list:
+        _lg = logging.getLogger(APP_NAME)
+        try:
+            pw = password_for_remote_encode(self._edit_ssh_pw.text())
+        except RemoteEncodeError as e:
+            self._sig.log_msg.emit(str(e))
+            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan error (credentials): {e}")
+            _lg.warning("Remote video scan (credentials): %s", e)
+            return []
+        try:
+            rt, root = remote_target_and_root(src)
+            remote_verify_python3(rt, pw)
+            exts = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm")
+            refs, scan_hint = remote_scan_videos(rt, root, exts, pw)
+            if scan_hint:
+                self._sig.log_msg.emit(scan_hint)
+            return [(r, r.size) for r in refs]
+        except RemoteEncodeError as e:
+            self._sig.log_msg.emit(f"Remote scan error: {e}")
+            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan error: {e}")
+            _lg.warning("Remote video scan: %s", e)
+            return []
+        except Exception as e:
+            self._sig.log_msg.emit(f"Remote scan error: {e}")
+            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan unexpected error: {e}")
+            _lg.warning("Remote video scan (unexpected): %s", e)
+            log_exception(e, context="remote video scan", utility=UTILITY_MASS_AV1_ENCODER)
+            return []
+
     def _auto_scan(self):
         if self._is_encoding:
             return
@@ -762,9 +914,27 @@ class AV1EncoderPanel(QWidget):
             self._update_start_enabled()
             return
         if is_remote_path(src):
-            self._source_scanned = True
-            debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan skipped (remote URI): {src[:200]}")
+            self._source_scanned = False
+            self._add_log("Scanning remote source (SSH)...")
             self._update_start_enabled()
+            debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan remote: {src[:200]}")
+
+            scan_dialog = ScanProgressDialog(self)
+            self._scan_dialog = scan_dialog
+            self._sig.scan_progress.connect(scan_dialog.update_progress)
+            scan_dialog.show()
+
+            def _scan_remote():
+                items = self._run_remote_scan_collect(src)
+                total_b = sum(s for _, s in items)
+                self._sig.scan_progress.emit(len(items), total_b)
+                debug(
+                    UTILITY_MASS_AV1_ENCODER,
+                    f"Auto-scan remote complete: count={len(items)}, total_bytes={total_b}",
+                )
+                self._sig.scan_done.emit(items, src)
+
+            threading.Thread(target=_scan_remote, daemon=True).start()
             return
         if not os.path.isdir(src):
             self._source_scanned = False
@@ -850,13 +1020,15 @@ class AV1EncoderPanel(QWidget):
         self._update_start_enabled()
 
     def _browse_dst(self):
-        picked = run_local_remote_path_dialog(
+        picked, dialog_pw = run_local_remote_path_dialog(
             self, "Select Target Folder", self._edit_dst.text().strip()
         )
         if picked:
             self._edit_dst.blockSignals(True)
             self._edit_dst.setText(picked)
             self._edit_dst.blockSignals(False)
+            if is_remote_path(picked):
+                self._edit_ssh_pw.setText(dialog_pw)
             self._update_start_enabled()
 
     # ── encoding lifecycle ────────────────────────────────────────────────────
@@ -874,9 +1046,10 @@ class AV1EncoderPanel(QWidget):
             self._add_log("ERROR: Please select source and target directories.")
             return
         if is_remote_path(src) or is_remote_path(dst):
-            self._add_log(f"ERROR: {REMOTE_FS_UNSUPPORTED_HINT}")
-            debug(UTILITY_MASS_AV1_ENCODER, "Start aborted: remote path")
-            return
+            if not shutil.which("ssh") or not shutil.which("scp"):
+                self._add_log("ERROR: Remote encoding requires ssh and scp in PATH.")
+                debug(UTILITY_MASS_AV1_ENCODER, "Start aborted: missing ssh/scp")
+                return
 
         # FFmpeg check at startup
         if not shutil.which("ffmpeg"):
@@ -893,6 +1066,12 @@ class AV1EncoderPanel(QWidget):
             scan_dialog.show()
 
             def _scan_then_start():
+                if is_remote_path(src):
+                    items = self._run_remote_scan_collect(src)
+                    total_b = sum(s for _, s in items)
+                    self._sig.scan_progress.emit(len(items), total_b)
+                    self._sig.scan_done_then_start.emit(items, src, dst)
+                    return
                 count = 0
                 total_bytes = 0
                 items = []
@@ -919,22 +1098,39 @@ class AV1EncoderPanel(QWidget):
             debug(UTILITY_MASS_AV1_ENCODER, f"No compatible files in {src}")
             return
 
+        self._encode_pw = None
+        self._remote_dst_remote = None
+        self._remote_dst_root_posix = None
+        self._remote_src_structure_root_posix = None
+        r_dst = is_remote_path(dst)
+        if r_dst:
+            self._remote_dst_remote, self._remote_dst_root_posix = remote_target_and_root(dst)
+        if is_remote_path(src) or r_dst:
+            try:
+                self._encode_pw = password_for_remote_encode(self._edit_ssh_pw.text())
+            except RemoteEncodeError as e:
+                self._add_log(f"ERROR: {e}")
+                return
+
         # Long path warning (Windows MAX_PATH ~260)
         if platform.system() == "Windows":
             for p, _ in list(self._queue)[:3]:
-                if len(os.path.abspath(p)) > 200 or len(os.path.abspath(dst)) > 200:
+                ps = p.abs_posix if isinstance(p, RemoteFileRef) else os.path.abspath(p)
+                ds = dst if r_dst else os.path.abspath(dst)
+                if len(ps) > 200 or len(ds) > 200:
                     self._add_log("WARNING: Paths exceed 200 chars; Windows may fail. Enable long paths in Registry.")
                     debug(UTILITY_MASS_AV1_ENCODER, "Long path detected")
                     break
 
-        # Disk space check before starting
+        # Disk space check before starting (local target or temp space for remote target)
         total_bytes = sum(s for _, s in self._queue)
+        disk_check_path = dst if not r_dst else tempfile.gettempdir()
         try:
-            usage = shutil.disk_usage(dst)
+            usage = shutil.disk_usage(disk_check_path)
             required = total_bytes * 1.1  # 10% buffer
             if usage.free < required:
                 self._add_log(
-                    f"WARNING: Low disk space on target. Free: {usage.free / (1024**3):.1f} GB, "
+                    f"WARNING: Low disk space ({disk_check_path}). Free: {usage.free / (1024**3):.1f} GB, "
                     f"need ~{required / (1024**3):.1f} GB. Proceeding anyway."
                 )
                 debug(UTILITY_MASS_AV1_ENCODER, f"Low disk: free={usage.free}, need~{required}")
@@ -952,7 +1148,10 @@ class AV1EncoderPanel(QWidget):
             return
         self._fs_heavy_held = True
 
-        self._queue_sizes = {p: s for p, s in self._queue}
+        self._queue_sizes = {}
+        for p, s in self._queue:
+            k = p.abs_posix if isinstance(p, RemoteFileRef) else p
+            self._queue_sizes[k] = s
         self._total_q_bytes = sum(s for _, s in self._queue)
         self._done_bytes = 0.0
         self._total_count = len(self._queue)
@@ -960,7 +1159,6 @@ class AV1EncoderPanel(QWidget):
         self._active_jobs = 0
         self._active_lock = threading.Lock()
         self._job_progress = {}
-        self._job_speeds = {}
         self._current_files = {}
         self._total_saved = 0
         self._is_encoding = True
@@ -1001,16 +1199,24 @@ class AV1EncoderPanel(QWidget):
         # Structure root: common parent of all queued files so we mirror only meaningful subdirs
         # (avoids recreating a top-level "Source" or similar wrapper folder in target)
         structure_root = None
+        refs_in_q = [x[0] for x in self._queue if isinstance(x[0], RemoteFileRef)]
         if self._settings.get("maintain_structure") and self._queue:
-            all_dirs = [os.path.dirname(p) for p, _ in self._queue]
-            if all_dirs:
-                try:
-                    structure_root = os.path.commonpath(all_dirs)
-                except ValueError:
-                    structure_root = src  # fallback if mixed drives (Windows) or inconsistent paths
+            if refs_in_q:
+                self._remote_src_structure_root_posix = common_structure_root_posix(refs_in_q)
+                debug(
+                    UTILITY_MASS_AV1_ENCODER,
+                    f"Remote structure root (mirror): {self._remote_src_structure_root_posix}",
+                )
             else:
-                structure_root = src
-            debug(UTILITY_MASS_AV1_ENCODER, f"Structure root (mirror): {structure_root}")
+                all_dirs = [os.path.dirname(p) for p, _ in self._queue]
+                if all_dirs:
+                    try:
+                        structure_root = os.path.commonpath(all_dirs)
+                    except ValueError:
+                        structure_root = src  # fallback if mixed drives (Windows) or inconsistent paths
+                else:
+                    structure_root = src
+                debug(UTILITY_MASS_AV1_ENCODER, f"Structure root (mirror): {structure_root}")
 
         num_workers = self._settings.get("concurrent_jobs")
         try:
@@ -1029,6 +1235,10 @@ class AV1EncoderPanel(QWidget):
 
     def _stop_encoding(self):
         self._is_encoding = False
+        self._encode_pw = None
+        self._remote_dst_remote = None
+        self._remote_dst_root_posix = None
+        self._remote_src_structure_root_posix = None
         if self._status_cb:
             self._status_cb("idle")
         for eng in self._engine_pool:
@@ -1043,6 +1253,7 @@ class AV1EncoderPanel(QWidget):
         self._update_start_enabled()
         self._add_log("Encoding stopped.")
         debug(UTILITY_MASS_AV1_ENCODER, "Encoding stopped by user.")
+        QTimer.singleShot(2500, self._sweep_chrono_encoder_tempdir)
 
     def _toggle_pause(self):
         paused = any(e._is_paused for e in self._engine_pool)
@@ -1054,92 +1265,271 @@ class AV1EncoderPanel(QWidget):
         self._btn_pause.setText("PAUSE" if paused else "RESUME")
 
     def _job_worker(self, engine, src, dst, structure_root=None):
+        pw = self._encode_pw
+        dst_remote = self._remote_dst_remote
+        dst_root_px = (self._remote_dst_root_posix or "").strip() or "/"
+        rem_struct = self._remote_src_structure_root_posix
+
         with self._active_lock:
             self._active_jobs += 1
         q_lock = self._queue_lock
 
+        def _fin(ok: bool, logical_key: str, local_out: str, meta: dict | None):
+            self._sig.finished.emit(engine.job_id, ok, logical_key, local_out or "", meta)
+
         try:
             while self._is_encoding:
-                input_path = None
+                item = None
+                size = 0
                 with q_lock:
                     if self._queue:
-                        input_path, size = self._queue.pop(0)
-                        self._current_files[engine.job_id] = input_path
+                        item, size = self._queue.pop(0)
+                        ref0 = item if isinstance(item, RemoteFileRef) else None
+                        self._current_files[engine.job_id] = ref0.abs_posix if ref0 else item
 
-                if not input_path:
+                if item is None:
                     break
 
-                # Skip threshold
-                if self._settings.get("rejects_enabled"):
-                    dur = engine._get_video_duration(input_path)
-                    thr = (
-                        self._settings.get("rejects_h") * 3600
-                        + self._settings.get("rejects_m") * 60
-                        + self._settings.get("rejects_s")
-                    )
-                    if dur <= thr:
-                        self._add_log(f"REJECTED: {os.path.basename(input_path)} ({dur:.1f}s)")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {input_path} ({dur:.1f}s)")
-                        self._sig.finished.emit(engine.job_id, True, input_path, "")
-                        continue
+                ref = item if isinstance(item, RemoteFileRef) else None
+                logical_key = ref.abs_posix if ref else item
+                tmp_cleanup: list[str] = []
 
-                # Build output path: stem_av1.mp4 always
-                # When mirroring, use structure_root (common parent of queued files) so we don't
-                # recreate redundant top-level folders like "Source" in the target
-                fname = os.path.basename(input_path)
-                stem = os.path.splitext(fname)[0]
-                out_name = stem + "_av1.mp4"
-                base = structure_root if structure_root else src
-                if self._settings.get("maintain_structure") and base:
-                    rel = os.path.relpath(input_path, base)
-                    rel_stem = os.path.splitext(rel)[0]
-                    if ".." in rel_stem or os.path.isabs(rel_stem):
-                        self._add_log(f"SKIP (invalid path): {os.path.basename(input_path)}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Skip path escape: {input_path}")
-                        self._sig.finished.emit(engine.job_id, False, input_path, "")
-                        continue
-                    tpath = os.path.join(dst, rel_stem + "_av1.mp4")
-                    try:
-                        real_tpath = os.path.realpath(tpath)
-                        real_dst = os.path.realpath(dst)
-                        if not (real_tpath == real_dst or real_tpath.startswith(real_dst + os.sep)):
-                            self._add_log(f"SKIP (path outside target): {os.path.basename(input_path)}")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"Skip path escape: {tpath}")
-                            self._sig.finished.emit(engine.job_id, False, input_path, "")
+                try:
+                    remote_out_posix: str | None = None
+                    tpath_local: str | None = None
+
+                    if self._settings.get("maintain_structure"):
+                        if ref and rem_struct:
+                            try:
+                                rel_stem = posixpath.splitext(
+                                    posixpath.relpath(ref.abs_posix, rem_struct)
+                                )[0].replace("\\", "/")
+                            except ValueError:
+                                self._add_log(f"SKIP (invalid path): {posixpath.basename(ref.rel_posix)}")
+                                _fin(False, logical_key, "", None)
+                                continue
+                        elif ref:
+                            rel_stem = posixpath.splitext(ref.rel_posix.replace("\\", "/"))[0]
+                        else:
+                            base = structure_root if structure_root else src
+                            rel = os.path.relpath(item, base)
+                            rel_stem = os.path.splitext(rel)[0].replace(os.sep, "/")
+                        if ".." in rel_stem.split("/"):
+                            self._add_log(
+                                f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
+                            )
+                            _fin(False, logical_key, "", None)
                             continue
-                    except OSError:
-                        self._sig.finished.emit(engine.job_id, False, input_path, "")
-                        continue
-                    out_dir = os.path.dirname(tpath)
-                    if out_dir:
-                        os.makedirs(out_dir, exist_ok=True)
-                else:
-                    tpath = os.path.join(dst, out_name)
+                        if dst_remote:
+                            remote_out_posix = posix_join_under(dst_root_px, rel_stem)
+                        else:
+                            try:
+                                tpath_local = join_dst_local(dst, rel_stem)
+                            except ValueError:
+                                self._add_log(
+                                    f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
+                                )
+                                _fin(False, logical_key, "", None)
+                                continue
+                            try:
+                                real_tpath = os.path.realpath(tpath_local)
+                                real_dst = os.path.realpath(dst)
+                                if not (real_tpath == real_dst or real_tpath.startswith(real_dst + os.sep)):
+                                    self._add_log(
+                                        f"SKIP (path outside target): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
+                                    )
+                                    _fin(False, logical_key, "", None)
+                                    continue
+                            except OSError:
+                                _fin(False, logical_key, "", None)
+                                continue
+                            out_dir = os.path.dirname(tpath_local)
+                            if out_dir:
+                                os.makedirs(out_dir, exist_ok=True)
+                    else:
+                        if ref:
+                            flat_stem = posixpath.splitext(posixpath.basename(ref.rel_posix))[0]
+                        else:
+                            flat_stem = os.path.splitext(os.path.basename(item))[0]
+                        if dst_remote:
+                            remote_out_posix = posix_join_under(dst_root_px, flat_stem)
+                        else:
+                            tpath_local = os.path.join(dst, flat_stem + "_av1.mp4")
 
-                # Existing output policy
-                policy = self._settings.get("existing_output")
-                if os.path.exists(tpath):
-                    if policy == "skip":
-                        self._add_log(f"SKIP (exists): {os.path.basename(tpath)}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing: {tpath}")
-                        self._sig.finished.emit(engine.job_id, True, input_path, tpath)
-                        continue
-                    if policy == "rename":
-                        base, ext = os.path.splitext(tpath)
-                        n = 1
-                        while os.path.exists(base + f"_{n}" + ext):
-                            n += 1
-                        tpath = base + f"_{n}" + ext
+                    policy = self._settings.get("existing_output")
+                    if dst_remote and remote_out_posix:
+                        exists = remote_file_exists(dst_remote, remote_out_posix, pw)
+                    else:
+                        exists = bool(tpath_local and os.path.exists(tpath_local))
 
-                ok, in_p, out_p = engine.encode_file(
-                    input_path,
-                    tpath,
-                    self._settings.get("quality"),
-                    self._settings.get("preset"),
-                    self._settings.get("reencode_audio"),
-                    hw_accel=self._settings.get("hw_accel_decode"),
-                )
-                self._sig.finished.emit(engine.job_id, ok, in_p, out_p)
+                    if exists:
+                        if policy == "skip":
+                            disp = posixpath.basename(remote_out_posix) if remote_out_posix else os.path.basename(tpath_local or "")
+                            self._add_log(f"SKIP (exists): {disp}")
+                            debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
+                            _fin(True, logical_key, "", None)
+                            continue
+                        if policy == "rename":
+                            if dst_remote and remote_out_posix:
+                                rb, rx = posixpath.splitext(remote_out_posix)
+                                n = 1
+                                cand = f"{rb}_{n}{rx}"
+                                while remote_file_exists(dst_remote, cand, pw):
+                                    n += 1
+                                    cand = f"{rb}_{n}{rx}"
+                                remote_out_posix = cand
+                            elif tpath_local:
+                                b, ext = os.path.splitext(tpath_local)
+                                n = 1
+                                cand = f"{b}_{n}{ext}"
+                                while os.path.exists(cand):
+                                    n += 1
+                                    cand = f"{b}_{n}{ext}"
+                                tpath_local = cand
+
+                    if dst_remote:
+                        tfd, tpath_local = tempfile.mkstemp(suffix=".mp4", prefix=_ENCODER_TMP_PREFIX)
+                        os.close(tfd)
+                        tmp_cleanup.append(tpath_local)
+
+                    assert tpath_local is not None
+
+                    if ref:
+                        fd, tmp_in = tempfile.mkstemp(
+                            suffix=posixpath.splitext(ref.rel_posix)[1] or ".mkv",
+                            prefix=_ENCODER_TMP_PREFIX,
+                        )
+                        os.close(fd)
+                        tmp_cleanup.append(tmp_in)
+                        run_scp_from_remote(ref.target, ref.abs_posix, tmp_in, password_for_sshpass=pw)
+                        input_path = tmp_in
+                    else:
+                        input_path = item
+
+                    if not self._is_encoding:
+                        _finalize_encoder_temp_files(
+                            tmp_cleanup, success=False, local_in=input_path, local_out=""
+                        )
+                        _fin(
+                            False,
+                            logical_key,
+                            "",
+                            {
+                                "logical_key": logical_key,
+                                "local_in": "",
+                                "local_out": "",
+                                "remote_src_ref": ref,
+                                "tmp_cleanup": [],
+                            },
+                        )
+                        continue
+
+                    if self._settings.get("rejects_enabled"):
+                        dur = engine._get_video_duration(input_path)
+                        thr = (
+                            self._settings.get("rejects_h") * 3600
+                            + self._settings.get("rejects_m") * 60
+                            + self._settings.get("rejects_s")
+                        )
+                        if dur <= thr:
+                            bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(input_path)
+                            self._add_log(f"REJECTED: {bn} ({dur:.1f}s)")
+                            debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
+                            _finalize_encoder_temp_files(
+                                tmp_cleanup, success=True, local_in=input_path, local_out=""
+                            )
+                            _fin(
+                                True,
+                                logical_key,
+                                "",
+                                {
+                                    "logical_key": logical_key,
+                                    "local_in": input_path,
+                                    "local_out": "",
+                                    "remote_src_ref": ref,
+                                    "tmp_cleanup": [],
+                                },
+                            )
+                            continue
+
+                    ok, in_p, out_p = engine.encode_file(
+                        input_path,
+                        tpath_local,
+                        self._settings.get("quality"),
+                        self._settings.get("preset"),
+                        self._settings.get("reencode_audio"),
+                        hw_accel=self._settings.get("hw_accel_decode"),
+                    )
+
+                    if ok and dst_remote and remote_out_posix:
+                        try:
+                            parent = posixpath.dirname(remote_out_posix)
+                            if parent:
+                                remote_mkdir_p(dst_remote, parent, pw)
+                            run_scp_to_remote(
+                                out_p, dst_remote, remote_out_posix, password_for_sshpass=pw
+                            )
+                        except RemoteEncodeError as e:
+                            self._sig.log_msg.emit(f"Remote upload error: {e}")
+                            debug(UTILITY_MASS_AV1_ENCODER, f"scp push failed: {e}")
+                            ok = False
+
+                    if ok and dst_remote:
+                        tmp_cleanup.append(out_p)
+
+                    saved_hint = _finalize_encoder_temp_files(
+                        tmp_cleanup,
+                        success=ok,
+                        local_in=input_path,
+                        local_out=out_p or "",
+                    )
+                    meta = {
+                        "logical_key": logical_key,
+                        "local_in": input_path,
+                        "local_out": out_p,
+                        "remote_src_ref": ref,
+                        "tmp_cleanup": [],
+                    }
+                    if saved_hint is not None:
+                        meta["saved_bytes"] = saved_hint
+                    _fin(ok, logical_key, out_p if ok else out_p, meta)
+
+                except RemoteEncodeError as e:
+                    self._sig.log_msg.emit(f"Remote I/O error: {e}")
+                    debug(UTILITY_MASS_AV1_ENCODER, f"Remote encode error: {e}")
+                    _finalize_encoder_temp_files(
+                        tmp_cleanup, success=False, local_in="", local_out=""
+                    )
+                    _fin(
+                        False,
+                        logical_key,
+                        "",
+                        {
+                            "logical_key": logical_key,
+                            "local_in": "",
+                            "local_out": "",
+                            "remote_src_ref": ref,
+                            "tmp_cleanup": [],
+                        },
+                    )
+                except Exception as e:
+                    self._sig.log_msg.emit(f"ERROR: {e}")
+                    debug(UTILITY_MASS_AV1_ENCODER, f"Encoder job error: {e}")
+                    _finalize_encoder_temp_files(
+                        tmp_cleanup, success=False, local_in="", local_out=""
+                    )
+                    _fin(
+                        False,
+                        logical_key,
+                        "",
+                        {
+                            "logical_key": logical_key,
+                            "local_in": "",
+                            "local_out": "",
+                            "remote_src_ref": ref,
+                            "tmp_cleanup": [],
+                        },
+                    )
 
         except Exception as e:
             self._sig.log_msg.emit(f"ERROR: {e}")
@@ -1163,7 +1553,13 @@ class AV1EncoderPanel(QWidget):
     # ── signal handlers ───────────────────────────────────────────────────────
 
     def _on_progress(self, job_id, p: EncodingProgress):
-        if not self._is_encoding or job_id >= len(self._job_bars):
+        if (
+            not self._is_encoding
+            or job_id < 0
+            or job_id >= len(self._job_bars)
+            or job_id >= len(self._job_labels)
+            or job_id >= len(self._job_speeds)
+        ):
             return
         fname = p.file_name
         if len(fname) > 28:
@@ -1207,40 +1603,95 @@ class AV1EncoderPanel(QWidget):
             self._job_vid[job_id].setText(vid)
             self._job_aud[job_id].setText(aud)
 
-    def _on_encode_finished(self, job_id, success, in_p, out_p):
+    def _on_encode_finished(self, job_id, success, logical_key, local_out_disp, meta=None):
+        meta = meta if isinstance(meta, dict) else None
+        if meta:
+            lk = meta.get("logical_key") or logical_key
+            local_in = meta.get("local_in") or ""
+            local_out = meta.get("local_out") or ""
+            remote_ref = meta.get("remote_src_ref")
+            tmp_cleanup = list(meta.get("tmp_cleanup") or [])
+        else:
+            lk = logical_key
+            local_in = logical_key
+            local_out = local_out_disp
+            remote_ref = None
+            tmp_cleanup = []
+
         self._job_progress[job_id] = 0.0
         self._current_files.pop(job_id, None)
 
-        if success and in_p and out_p and os.path.exists(out_p):
-            try:
-                saved = os.path.getsize(in_p) - os.path.getsize(out_p)
-                if saved > 0:
-                    self._total_saved += saved
-                mb = self._total_saved / (1024 * 1024)
-                self._lbl_saved.setText(
-                    f"Space Saved: {mb / 1024:.2f} GB" if mb > 1024 else f"Space Saved: {mb:.1f} MB"
-                )
-                self._add_log(f"DONE: {os.path.basename(in_p)} | Saved {saved // (1024 * 1024)} MB")
-                debug(
-                    UTILITY_MASS_AV1_ENCODER,
-                    f"Done: {os.path.basename(in_p)} -> {os.path.basename(out_p)}, saved {saved // (1024 * 1024)} MB",
-                )
-                if self._chk_del1.isChecked() and self._chk_del2.isChecked():
+        disp_src = posixpath.basename((lk or "").replace("\\", "/")) or (
+            os.path.basename(local_in) if local_in else "?"
+        )
+
+        saved_override = meta.get("saved_bytes") if meta else None
+        if success:
+            if saved_override is not None:
+                try:
+                    saved = int(saved_override)
+                    if saved > 0:
+                        self._total_saved += saved
+                    mb = self._total_saved / (1024 * 1024)
+                    self._lbl_saved.setText(
+                        f"Space Saved: {mb / 1024:.2f} GB" if mb > 1024 else f"Space Saved: {mb:.1f} MB"
+                    )
+                    self._add_log(f"DONE: {disp_src} | Saved {max(0, saved) // (1024 * 1024)} MB")
+                    debug(
+                        UTILITY_MASS_AV1_ENCODER,
+                        f"Done: {disp_src} -> {os.path.basename(local_out or '?')}, saved {max(0, saved) // (1024 * 1024)} MB",
+                    )
+                except (TypeError, ValueError, OSError):
+                    pass
+            elif local_in and local_out and os.path.exists(local_out):
+                try:
+                    in_sz = os.path.getsize(local_in) if os.path.isfile(local_in) else 0
+                    saved = in_sz - os.path.getsize(local_out)
+                    if saved > 0:
+                        self._total_saved += saved
+                    mb = self._total_saved / (1024 * 1024)
+                    self._lbl_saved.setText(
+                        f"Space Saved: {mb / 1024:.2f} GB" if mb > 1024 else f"Space Saved: {mb:.1f} MB"
+                    )
+                    self._add_log(f"DONE: {disp_src} | Saved {saved // (1024 * 1024)} MB")
+                    debug(
+                        UTILITY_MASS_AV1_ENCODER,
+                        f"Done: {disp_src} -> {os.path.basename(local_out)}, saved {saved // (1024 * 1024)} MB",
+                    )
+                except Exception:
+                    pass
+            if self._chk_del1.isChecked() and self._chk_del2.isChecked():
+                if remote_ref:
                     try:
-                        os.remove(in_p)
-                        self._add_log(f"Deleted: {os.path.basename(in_p)}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Deleted source: {in_p}")
+                        remote_unlink(remote_ref.target, remote_ref.abs_posix, self._encode_pw)
+                        self._add_log(f"Deleted remote: {posixpath.basename(remote_ref.rel_posix)}")
+                        debug(
+                            UTILITY_MASS_AV1_ENCODER,
+                            f"Deleted remote source: {remote_ref.abs_posix}",
+                        )
+                    except Exception as e:
+                        self._add_log(f"Remote delete error: {e}")
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Remote delete error: {e}")
+                elif local_in and os.path.isfile(local_in):
+                    try:
+                        os.remove(local_in)
+                        self._add_log(f"Deleted: {os.path.basename(local_in)}")
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Deleted source: {local_in}")
                     except Exception as e:
                         self._add_log(f"Delete error: {e}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Delete error: {in_p} — {e}")
-            except Exception:
-                pass
+                        debug(UTILITY_MASS_AV1_ENCODER, f"Delete error: {local_in} — {e}")
         elif not success:
-            bn = os.path.basename(in_p) if in_p else "?"
-            self._add_log(f"FAILED: {bn}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Encode FAILED: {in_p or '?'}")
+            self._add_log(f"FAILED: {disp_src}")
+            debug(UTILITY_MASS_AV1_ENCODER, f"Encode FAILED: {lk or local_in or '?'}")
 
-        f_size = self._queue_sizes.get(in_p, 0.0)
+        for tmp in tmp_cleanup:
+            try:
+                if tmp and os.path.isfile(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+
+        f_size = self._queue_sizes.get(lk, 0.0)
         self._done_bytes += f_size
         self._done_count += 1
 
@@ -1281,6 +1732,10 @@ class AV1EncoderPanel(QWidget):
         if not self._is_encoding:
             return
         self._is_encoding = False
+        self._encode_pw = None
+        self._remote_dst_remote = None
+        self._remote_dst_root_posix = None
+        self._remote_src_structure_root_posix = None
         if self._fs_heavy_held:
             release_fs_heavy()
             self._fs_heavy_held = False
@@ -1303,12 +1758,33 @@ class AV1EncoderPanel(QWidget):
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 
+    def _sweep_chrono_encoder_tempdir(self) -> None:
+        """Remove leftover ``chronoarchiver_av1_*`` files under the system temp dir (STOP / safety net)."""
+        td = tempfile.gettempdir()
+        n = 0
+        try:
+            for name in os.listdir(td):
+                if not name.startswith(_ENCODER_TMP_PREFIX):
+                    continue
+                p = os.path.join(td, name)
+                if os.path.isfile(p):
+                    try:
+                        os.remove(p)
+                        n += 1
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        if n:
+            debug(UTILITY_MASS_AV1_ENCODER, f"Swept {n} chronoarchiver_av1_* temp file(s) under {td!r}")
+
     def shutdown_ffmpeg_on_quit(self):
         """Terminate encoder subprocess trees on application exit (avoid orphan FFmpeg)."""
         try:
             self._is_encoding = False
             for eng in getattr(self, "_engine_pool", None) or []:
                 eng.cancel()
+            self._sweep_chrono_encoder_tempdir()
         finally:
             if self._fs_heavy_held:
                 release_fs_heavy()

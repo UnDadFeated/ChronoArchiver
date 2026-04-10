@@ -6,6 +6,7 @@ from core.remote_ssh import (
     RemoteTarget,
     is_remote_path,
     parse_remote_destination,
+    ssh_command_environment,
     to_sftp_folder_uri,
 )
 
@@ -39,3 +40,14 @@ def test_is_remote_path():
 def test_to_sftp_folder_uri():
     r = RemoteTarget(host="h", path="/mnt/x", user="u")
     assert to_sftp_folder_uri(r) == "sftp://u@h/mnt/x/"
+
+
+def test_sshpass_env_strips_askpass(monkeypatch):
+    monkeypatch.setenv("SSH_ASKPASS", "/usr/bin/false")
+    monkeypatch.setenv("SSH_ASKPASS_REQUIRE", "force")
+    monkeypatch.setenv("GIT_ASKPASS", "/usr/bin/false")
+    env = ssh_command_environment(None, "secret")
+    assert env.get("SSHPASS") == "secret"
+    assert "SSH_ASKPASS" not in env
+    assert "SSH_ASKPASS_REQUIRE" not in env
+    assert "GIT_ASKPASS" not in env

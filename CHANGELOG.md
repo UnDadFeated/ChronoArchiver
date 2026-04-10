@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [5.6.3] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder / remote source scan**: Failures during SSH remote video scanning (including ``python3`` verification, empty SSH streams, and parse mismatches) are written to the session debug log at **WARNING** with the same detail as the pipe-format lines, so diagnostics are visible without relying on **INFO**-only panel mirroring.
+- **Remote AV1 scan + sshpass**: Environment variables ``SSH_ASKPASS``, ``SSH_ASKPASS_REQUIRE``, and ``GIT_ASKPASS`` inherited from the desktop session are cleared when using ``sshpass``, so OpenSSH in a non-TTY subprocess no longer prefers askpass over password injection (which could yield **empty captured stdout/stderr** despite a successful remote run). Behavior on Windows and macOS is unchanged except for correct stream capture when those env vars are set.
+- **Mass AV1 Encoder**: Remote/local encode scratch files use the prefix ``chronoarchiver_av1_`` under the OS temp directory (``tempfile.gettempdir()`` on Windows, macOS, and Linux); workers remove them after each job, **Stop encoding** schedules a delayed sweep, and quit sweeps the same prefix. **Scan progress** uses ``Signal(int, object)`` so total queue bytes over ~2 GiB no longer trigger a Shiboken **OverflowError** on scan complete.
+- **Mass AV1 Encoder**: Starting a batch no longer replaces ``_job_speeds`` (the per-thread Qt labels list) with an empty ``dict``, which caused **KeyError** in ``_on_progress`` and repeated **UNCAUGHT [sys.excepthook]** during encoding.
+
+## [5.6.2] - 2026-04-10
+
+### Fixed
+- **Remote AV1 scan / SSH**: Remote commands (``python3`` check, directory scan, ``mkdir`` / ``test`` / ``rm``) are run via ``sh -c '…'`` on the server so a **fish** (or other non-POSIX) login shell no longer misparses arguments (e.g. ``python3 -c 'import …; …'``).
+
+## [5.6.1] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder / Browse dialog**: The SSH password entered next to **Test SSH** is copied into the panel **SSH password** field when you confirm a **remote** source or target, so background remote scan and encoding use the same credentials (previously only the path was kept, which led to `Permission denied` while **Test SSH** succeeded).
+- **Remote encode errors**: SSH authentication failures are reported with an auth-focused message instead of implying `python3` is missing on the server.
+
+## [5.6.0] - 2026-04-10
+
+### Added
+- **Mass AV1 Encoder — remote source and/or destination**: When source or target is an `sftp://` (or SSH-style) path, each file is copied with **scp**, transcoded locally with **FFmpeg**, and uploaded with **scp** when the output is remote. Remote folders are listed over **SSH** using **python3** on the server. Optional SSH password uses **sshpass** when installed (same policy as other bulk SSH flows); keys or **ssh-agent** work with an empty password field.
+
+### Fixed
+- **Encoder guide**: With a local source and a remote destination, the onboarding highlight can reach **Start** instead of staying on **Browse**.
+
 ## [5.5.1] - 2026-04-10
 
 ### Fixed
@@ -10,7 +37,7 @@
 ## [5.5.0] - 2026-04-10
 
 ### Added
-- **Browse (Organizer, Mass AV1 Encoder, AI Media Scanner)**: optional pop-up to choose **Local folder** vs **Remote (SSH / SFTP)**; remote mode accepts `sftp://user@host/path` or `user@host:/path`, optional password (not persisted), and **Test SSH** (`echo ok` over OpenSSH). Confirmed remote paths are normalized to `sftp://…/` in the path field. Core processing remains local-only; jobs report a clear error if a remote URI is still selected when starting work.
+- **Browse (Organizer, Mass AV1 Encoder, AI Media Scanner)**: optional pop-up to choose **Local folder** vs **Remote (SSH / SFTP)**; remote mode accepts `sftp://user@host/path` or `user@host:/path`, optional password (not persisted), and **Test SSH** (`echo ok` over OpenSSH). Confirmed remote paths are normalized to `sftp://…/` in the path field. **Media Organizer** and **AI Media Scanner** report a clear error if a remote URI is still selected when starting work; remote batch encoding for the **Mass AV1 Encoder** shipped in v5.6.0.
 - **`core/remote_ssh`**, **`ui/local_remote_path_dialog`**, **`ui/ssh_askpass`**: remote path parsing, dialog, and `SSH_ASKPASS` helper (optional `sshpass` when a password is entered).
 - **`tests/test_remote_ssh`**: parser unit tests.
 
