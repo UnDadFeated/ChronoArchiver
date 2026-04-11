@@ -1,40 +1,18 @@
 # ChronoArchiver
 
-<div>
-<img src="src/ui/assets/icon.png" width="112" height="184" align="right" />
-<strong>Time to Archive!</strong> — A unified media management platform for archival, classification, and transcoding.
+<img src="src/ui/assets/icon.png" width="96" align="right" alt="" />
 
-ChronoArchiver consolidates date-based file organization, AI-driven image analysis, and batch AV1 encoding into a single desktop application. Built on PySide6 with an app-private Python environment; no system-wide package installation required.
-</div>
+Desktop app for organizing media by date, batch-encoding video to AV1, and optional local AI tools (scanner, upscalers). Cross-platform (Windows, Linux, macOS). Uses PySide6 and a private app environment—no need to install Python packages system-wide.
 
 [![Version](https://img.shields.io/badge/version-5.7.6-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#system-requirements)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/UnDadFeated/ChronoArchiver#overview)
 
----
+## Get started
 
-## What This App Does
+**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (current **5.7.6**).
 
-ChronoArchiver helps you clean up and process large photo/video collections in one place:
-
-- Organize files into date folders automatically.
-- Convert videos to AV1 in batches.
-- Scan images with local AI tools (no cloud upload required for scanner analysis).
-- Upscale images and videos with optional AI models.
-
----
-
-## Quick Start
-
-Release **5.7.6**.
-
-### Option 1: Download installer (Windows/macOS)
-
-Get the latest release from [Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
-
-### Option 2: Run from source (Linux/Windows/macOS)
-
-Requires Python 3.10+.
+**From source** (Python 3.10+):
 
 ```bash
 git clone https://github.com/UnDadFeated/ChronoArchiver.git
@@ -42,74 +20,35 @@ cd ChronoArchiver
 python src/bootstrap.py
 ```
 
-If your app environment breaks, rebuild it with:
+If the bundled environment breaks: `python src/bootstrap.py --reset-venv`.
 
-```bash
-python src/bootstrap.py --reset-venv
-```
+**Arch Linux:** [`chronoarchiver`](https://aur.archlinux.org/packages/chronoarchiver) — e.g. `paru -S chronoarchiver` or `yay -S chronoarchiver`.
 
-### Option 3: Arch Linux (AUR)
+## Overview
 
-Install package [`chronoarchiver`](https://aur.archlinux.org/packages/chronoarchiver):
+| Area | Role |
+|------|------|
+| Media Organizer | Sort files into date folders (EXIF, metadata, filename, or modified time). |
+| Mass AV1 Encoder | Batch transcode; software or hardware encoders when available. |
+| AI Media Scanner | Local OpenCV / ONNX classification (no cloud upload for analysis). |
+| AI Image / Video Upscaler | Optional AI upscaling workflows. |
 
-```bash
-paru -S chronoarchiver
-# or
-yay -S chronoarchiver
-```
+GPU support is optional; CPU paths are available. After launch, wait until the footer shows **READY**, then open a panel and set paths or models as prompted.
 
----
+**If something fails:** wait for **READY**, use each panel’s install/setup actions for engines and models, or open **HEALTH** / the **DEBUG** log path from the footer. Offline-only work continues when the network is unavailable; downloads may show **NO NETWORK**.
 
-## First Run Checklist
+For JSON logs: set `CHRONOARCHIVER_JSON_LOG=1` before starting the app.
 
-1. Launch the app and wait for footer status to show **READY**.
-2. Open the panel you want (Organizer, Encoder, Scanner, or Upscaler).
-3. Select required paths/models.
-4. Start the task.
+## Privacy
 
-The app keeps its own local data and environment in your user data directory.
+Scanner and inference run on your machine unless you choose to move data elsewhere. See [SECURITY.md](SECURITY.md) for policy and reporting.
 
----
+## Repository
 
-## Main Features
+| Resource | Link |
+|----------|------|
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| License | [LICENSE](LICENSE) |
 
-<a id="system-requirements"></a>
-
-- **Media Organizer**: Sort by date using EXIF, metadata, filename, or modified time.
-- **Mass AV1 Encoder**: Batch encode with software or available hardware acceleration.
-- **AI Media Scanner**: Detect and classify content with local OpenCV/ONNX models.
-- **AI Image Upscaler**: Improve image quality with optional AI workflows.
-- **AI Video Upscaler**: Upscale frames with Real-ESRGAN-based processing and re-export.
-
-GPU acceleration is optional; CPU paths remain available.
-
----
-
-## Troubleshooting
-
-- **App not ready**: wait for **READY** in the footer, then retry.
-- **Model/runtime issues**: use in-app setup/install buttons in each AI panel.
-- **Need diagnostics**: use **HEALTH** (environment summary) in the footer, or open the **DEBUG** log folder.
-- **Offline mode**: tasks that need downloads show **NO NETWORK**; local-only tasks still work.
-
-For machine-readable local logs, set `CHRONOARCHIVER_JSON_LOG=1` before launch.
-
----
-
-## Security and Privacy
-
-- Scanner analysis runs locally on your machine.
-- Diagnostics are local files unless you manually share them.
-- See [SECURITY.md](SECURITY.md) for policy and reporting.
-
----
-
-## Project Docs
-
-- Release notes: [CHANGELOG.md](CHANGELOG.md)
-- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- License: [LICENSE](LICENSE)
-
----
-
-*Maintained by [UnDadFeated](https://github.com/UnDadFeated)*
+Maintainer: [UnDadFeated](https://github.com/UnDadFeated).
