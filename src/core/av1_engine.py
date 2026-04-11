@@ -804,9 +804,7 @@ class AV1EncoderEngine:
                         pass
                 # Retry once with software decode on 183/218 (CUDA decode / hw surface) while keeping NVENC encode.
                 # Do not log ERROR here — this path is expected on some setups; the retry usually succeeds.
-                will_retry_sw_decode = (
-                    not _retry_software_decode and used_cuda_decode and rc in (183, 218)
-                )
+                will_retry_sw_decode = not _retry_software_decode and used_cuda_decode and rc in (183, 218)
                 if will_retry_sw_decode:
                     with AV1EncoderEngine._nvenc_cuda_lock:
                         first_cuda_fail = not AV1EncoderEngine._nvenc_skip_cuda_hwaccel
