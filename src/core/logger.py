@@ -7,9 +7,10 @@ from version import __version__, APP_NAME
 
 
 def setup_logger():
-    from core.debug_logger import get_log_path, init_log, install_global_exception_hooks
+    from core.debug_logger import get_log_path, init_log, install_crash_diagnostics, install_global_exception_hooks
 
     init_log()
+    install_crash_diagnostics()
     log_file = get_log_path()
 
     def _log_network():

@@ -13,6 +13,9 @@ import glob
 import json
 import logging
 import os
+import shutil
+import signal
+import subprocess
 import sys
 import threading
 import traceback
@@ -36,6 +39,8 @@ _jsonl_file = None
 _hooks_installed = False
 _prev_sys_excepthook = None
 _prev_thread_excepthook = None
+
+_crash_diagnostics_installed = False
 
 # Best-effort UI context for uncaught exceptions (set from the main window).
 _activity_context = ""
@@ -296,6 +301,131 @@ def install_global_exception_hooks() -> None:
             _prev_thread_excepthook = threading.excepthook
             threading.excepthook = _thread_excepthook
     _hooks_installed = True
+
+
+def _gdb_backtrace_env_enabled() -> bool:
+    v = (os.environ.get("CHRONOARCHIVER_GDB_BACKTRACE") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _try_gdb_live_backtrace_to_log() -> None:
+    """Best-effort ``gdb`` attach to this process; requires gdb, Linux-like host, ptrace permission."""
+    if not _gdb_backtrace_env_enabled():
+        return
+    if sys.platform.startswith("win"):
+        return
+    gdb = shutil.which("gdb")
+    if not gdb:
+        append_multiline(UTILITY_APP, "gdb backtrace (CHRONOARCHIVER_GDB_BACKTRACE=1)", "(gdb not found in PATH)")
+        return
+    pid = os.getpid()
+    try:
+        cp = subprocess.run(
+            [
+                gdb,
+                "-batch",
+                "-p",
+                str(pid),
+                "-ex",
+                "set pagination off",
+                "-ex",
+                "thread apply all bt",
+                "-ex",
+                "detach",
+                "-ex",
+                "quit",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+        out = ((cp.stdout or "") + (cp.stderr or "")).strip()
+        append_multiline(UTILITY_APP, "gdb thread apply all bt (live attach)", out or "(empty gdb output)")
+    except Exception as exc:
+        append_multiline(UTILITY_APP, "gdb backtrace", f"(failed: {exc})")
+
+
+def _dump_requested_stacks(reason: str) -> None:
+    """Python C-stack + threads via faulthandler; optional gdb (see env). Runs off the signal handler thread."""
+    try:
+        import faulthandler
+
+        _ensure_init()
+        if _file is None:
+            return
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        _file.write(f"{ts} | {UTILITY_APP} | STACK DUMP | {reason}\n")
+        _file.flush()
+        try:
+            faulthandler.dump_traceback(file=_file.fileno(), all_threads=True)
+        except Exception:
+            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        _file.flush()
+    except Exception:
+        pass
+    try:
+        _try_gdb_live_backtrace_to_log()
+    except Exception:
+        pass
+
+
+def _schedule_stack_dump(reason: str) -> None:
+    try:
+        threading.Thread(target=_dump_requested_stacks, args=(reason,), daemon=True).start()
+    except Exception:
+        pass
+
+
+def install_crash_diagnostics() -> None:
+    """
+    Log fatal signals (when the runtime can still react) into the session file via faulthandler,
+    and register SIGUSR2 (Unix) to dump Python stacks + optional gdb backtrace into the same log.
+    """
+    global _crash_diagnostics_installed
+    if _crash_diagnostics_installed:
+        return
+    _ensure_init()
+    _crash_diagnostics_installed = True
+    try:
+        import faulthandler
+
+        # File descriptor avoids text/binary mode mismatch; interleaves with UTF-8 lines acceptably for a debug log.
+        faulthandler.enable(_file.fileno() if _file is not None else sys.stderr.fileno(), all_threads=True)
+    except Exception:
+        pass
+    try:
+        pid = os.getpid()
+        parts = [
+            f"pid={pid}",
+            "fatal signals: faulthandler writes Python stacks to this log when possible",
+        ]
+        if hasattr(signal, "SIGUSR2"):
+            parts.append(f"if hung: kill -USR2 {pid} dumps stacks here")
+        if _gdb_backtrace_env_enabled():
+            parts.append("gdb live attach on SIGUSR2 enabled (CHRONOARCHIVER_GDB_BACKTRACE=1)")
+        debug(UTILITY_APP, "CRASH DIAG | " + " | ".join(parts))
+        if not sys.platform.startswith("win"):
+            debug(
+                UTILITY_APP,
+                "CRASH DIAG | native: from another terminal (app still running): gdb -p "
+                + str(pid)
+                + ' -batch -ex "thread apply all bt" -ex "detach" -ex "quit"',
+            )
+            debug(
+                UTILITY_APP,
+                "CRASH DIAG | post-mortem: ulimit -c unlimited ; re-run; after SIGSEGV use gdb $(which python3) core*",
+            )
+    except Exception:
+        pass
+    if hasattr(signal, "SIGUSR2"):
+
+        def _on_sigusr2(_signum, _frame) -> None:
+            _schedule_stack_dump("SIGUSR2")
+
+        try:
+            signal.signal(signal.SIGUSR2, _on_sigusr2)
+        except Exception:
+            pass
 
 
 def mirror_panel_line(panel: str, msg: str, *, max_len: int = 8000) -> None:

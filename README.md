@@ -4,13 +4,13 @@
 
 Desktop app for organizing media by date, batch-encoding video to AV1, and optional local AI tools (scanner, upscalers). Cross-platform (Windows, Linux, macOS). Uses PySide6 and a private app environment—no need to install Python packages system-wide.
 
-[![Version](https://img.shields.io/badge/version-5.7.11-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-5.8.0-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/UnDadFeated/ChronoArchiver#overview)
 
 ## Get started
 
-**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (Release **5.7.11**).
+**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (Release **5.8.0**).
 
 **From source** (Python 3.10+):
 
@@ -38,6 +38,8 @@ GPU support is optional; CPU paths are available. After launch, wait until the f
 **If something fails:** wait for **READY**, use each panel’s install/setup actions for engines and models, or open **HEALTH** / the **DEBUG** log path from the footer. Offline-only work continues when the network is unavailable; downloads may show **NO NETWORK**.
 
 For JSON logs: set `CHRONOARCHIVER_JSON_LOG=1` before starting the app.
+
+For **crash diagnostics**, the session debug log records **PID** and hints for **gdb** / **core** analysis. On Linux/macOS, if the app is **hung** (still running), `kill -USR2 <pid>` appends Python stack dumps to the same log; set `CHRONOARCHIVER_GDB_BACKTRACE=1` before that signal to also attempt a live **gdb** `thread apply all bt` (requires **gdb** and ptrace permission). Fatal native crashes may still omit Python stacks; use **core** files + **gdb** as logged.
 
 ## Privacy
 

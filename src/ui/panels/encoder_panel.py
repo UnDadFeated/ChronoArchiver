@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtGui import QCloseEvent, QShowEvent
 
 import sys
@@ -184,7 +184,7 @@ class ScanProgressDialog(QDialog):
             sz = f"{total_bytes} B"
         self._lbl_size.setText(f"Total size: {sz}")
         now = time.monotonic()
-        if count >= self._last_scan_count + 200 or (now - self._last_scan_log_ts) >= 3.0:
+        if count >= self._last_scan_count + 500 or (now - self._last_scan_log_ts) >= 5.0:
             self._last_scan_log_ts = now
             self._last_scan_count = count
             log_installer_popup(
@@ -1675,7 +1675,7 @@ class AV1EncoderPanel(QWidget):
                         )
                         if dur <= thr:
                             bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(tmp_in)
-                            self._add_log(f"REJECTED: {bn} ({dur:.1f}s)")
+                            self._sig.log_msg.emit(f"REJECTED: {bn} ({dur:.1f}s)")
                             debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
                             _finalize_encoder_temp_files(tmp_cleanup, success=True, local_in=tmp_in, local_out="")
                             _fin(
@@ -1833,7 +1833,7 @@ class AV1EncoderPanel(QWidget):
                                     "\\", "/"
                                 )
                             except ValueError:
-                                self._add_log(f"SKIP (invalid path): {posixpath.basename(ref.rel_posix)}")
+                                self._sig.log_msg.emit(f"SKIP (invalid path): {posixpath.basename(ref.rel_posix)}")
                                 _fin(False, logical_key, "", None)
                                 continue
                         elif ref:
@@ -1843,7 +1843,7 @@ class AV1EncoderPanel(QWidget):
                             rel = os.path.relpath(item, base)
                             rel_stem = os.path.splitext(rel)[0].replace(os.sep, "/")
                         if ".." in rel_stem.split("/"):
-                            self._add_log(
+                            self._sig.log_msg.emit(
                                 f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                             )
                             _fin(False, logical_key, "", None)
@@ -1854,7 +1854,7 @@ class AV1EncoderPanel(QWidget):
                             try:
                                 tpath_local = join_dst_local(dst, rel_stem)
                             except ValueError:
-                                self._add_log(
+                                self._sig.log_msg.emit(
                                     f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                 )
                                 _fin(False, logical_key, "", None)
@@ -1863,7 +1863,7 @@ class AV1EncoderPanel(QWidget):
                                 real_tpath = os.path.realpath(tpath_local)
                                 real_dst = os.path.realpath(dst)
                                 if not (real_tpath == real_dst or real_tpath.startswith(real_dst + os.sep)):
-                                    self._add_log(
+                                    self._sig.log_msg.emit(
                                         f"SKIP (path outside target): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                     )
                                     _fin(False, logical_key, "", None)
@@ -1897,7 +1897,7 @@ class AV1EncoderPanel(QWidget):
                                 if remote_out_posix
                                 else os.path.basename(tpath_local or "")
                             )
-                            self._add_log(f"SKIP (exists): {disp}")
+                            self._sig.log_msg.emit(f"SKIP (exists): {disp}")
                             debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
                             _fin(True, logical_key, "", None)
                             continue
@@ -1963,7 +1963,7 @@ class AV1EncoderPanel(QWidget):
                         )
                         if dur <= thr:
                             bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(input_path)
-                            self._add_log(f"REJECTED: {bn} ({dur:.1f}s)")
+                            self._sig.log_msg.emit(f"REJECTED: {bn} ({dur:.1f}s)")
                             debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
                             _finalize_encoder_temp_files(tmp_cleanup, success=True, local_in=input_path, local_out="")
                             _fin(
@@ -2189,8 +2189,15 @@ class AV1EncoderPanel(QWidget):
             remote_ref = None
             tmp_cleanup = []
 
-        self._job_progress[job_id] = 0.0
-        self._current_files.pop(job_id, None)
+        # Finish handling is deferred (singleShot drain). The worker may already have started
+        # the next file on this engine and updated _current_files[job_id]. Only clear the
+        # per-job slot when it still refers to this completion; otherwise we drop the guard
+        # in _on_progress and reset bars to 0% while encoding continues.
+        cur_slot = self._current_files.get(job_id)
+        slot_matches_finish = lk and cur_slot is not None and cur_slot == lk
+        if slot_matches_finish:
+            self._job_progress[job_id] = 0.0
+            self._current_files.pop(job_id, None)
 
         disp_src = posixpath.basename((lk or "").replace("\\", "/")) or (
             os.path.basename(local_in) if local_in else "?"
@@ -2285,7 +2292,7 @@ class AV1EncoderPanel(QWidget):
             elif pct_total >= 99.9:
                 self._lbl_eta.setText("ESTIMATED TIME REMAINING: 00:00:00")
 
-        if job_id < len(self._job_bars):
+        if slot_matches_finish and job_id < len(self._job_bars):
             self._job_bars[job_id].setValue(0)
             self._job_speeds[job_id].setText("-")
             self._job_labels[job_id].setText(f"Thread {job_id + 1}")
@@ -2418,6 +2425,14 @@ class AV1EncoderPanel(QWidget):
             msg = str(msg)
         if len(msg) > _ENCODER_LOG_LINE_MAX:
             msg = msg[: _ENCODER_LOG_LINE_MAX - 3] + "..."
+        # QPlainTextEdit must only be touched from the GUI thread; workers must not call
+        # appendPlainText directly (Qt text layout can SIGSEGV under parallel threads).
+        try:
+            if QThread.currentThread() is not self.thread():
+                self._sig.log_msg.emit(msg)
+                return
+        except RuntimeError:
+            return
         sb = self._log_edit.verticalScrollBar()
         at_bot = sb.value() >= sb.maximum() - 4
         self._log_edit.appendPlainText(msg)

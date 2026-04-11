@@ -15,6 +15,14 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "5.8.0": """## [5.8.0] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: **Worker threads** marshal console lines to the **GUI thread** (no direct **`QPlainTextEdit`** updates); **per-thread progress bars** stay in sync when **finish** handling is deferred vs the next encode on the same engine.
+
+### Added
+- **Debug log**: **Crash diagnostics** — **faulthandler** stacks in the session log; **PID** / **gdb** hints at startup; **SIGUSR2** stack dump; optional **`CHRONOARCHIVER_GDB_BACKTRACE`** live **gdb** backtrace (Linux).
+""",
     "5.7.11": """## [5.7.11] - 2026-04-12
 
 ### Fixed

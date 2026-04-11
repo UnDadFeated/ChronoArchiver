@@ -70,6 +70,7 @@ from core.debug_logger import (
     get_log_path,
     debug,
     init_log,
+    install_crash_diagnostics,
     install_global_exception_hooks,
     install_qt_message_handler,
     log_installer_popup,
@@ -1473,6 +1474,7 @@ if __name__ == "__main__":
     from core.single_instance import ensure_single_instance, release_single_instance
 
     init_log()
+    install_crash_diagnostics()
     install_global_exception_hooks()
 
     # Qt: org/app + QSettings path must be set before any QApplication (see QSettings.setPath docs).
