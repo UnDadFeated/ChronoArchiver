@@ -24,6 +24,8 @@ Run tests with `PYTHONPATH=src` or `pytest` (see `pyproject.toml` `pythonpath`).
 
 ## Release checklist (maintainers)
 
+Do **not** run the steps below for ordinary merges or feature work; keep changes in **`CHANGELOG.md`** under **`[Unreleased]`** until a release is intentional. Cursor agents: see **`.cursor/rules/rule-precedence-and-releases.mdc`**.
+
 1. Merge work to `main` and ensure **CI** is green.
 2. Bump the SemVer across the canonical files from the repo root:
    ```bash

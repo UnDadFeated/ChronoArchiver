@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [5.8.0] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: Encoder **worker threads** no longer call **`QPlainTextEdit.appendPlainText`** directly (remaining paths use **`log_msg`** or **`_add_log`** marshaling to the GUI thread), avoiding **SIGSEGV** in Qt text layout (**Harfbuzz** / **`QPlainTextDocumentLayout`**) during parallel encode.
+- **Mass AV1 Encoder**: **Per-thread progress bars** no longer stick at **0%** when **deferred** `_apply_encode_finished` runs after the same engine has already started the **next** file — **`_current_files`** / per-job bars are cleared only when the slot still matches the finished **`logical_key`**, so **`_on_progress`** keeps receiving updates for the active encode.
+
+### Added
+- **Debug log**: **Crash diagnostics** for native failures — **faulthandler** writes Python thread stacks into the session log when the runtime handles fatal signals (e.g. SIGSEGV); startup lines record **PID**, a non-interactive **gdb** one-liner, and **core-file** post-mortem guidance; on Unix, **SIGUSR2** triggers an explicit stack dump in the log (from a worker thread); **`CHRONOARCHIVER_GDB_BACKTRACE=1`** enables a best-effort live **gdb** backtrace on that path (Linux; requires **gdb** and ptrace access).
+
 ## [5.7.11] - 2026-04-12
 
 ### Fixed

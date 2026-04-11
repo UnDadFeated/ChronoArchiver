@@ -355,40 +355,49 @@ def _run_ssh_stdin_scan_streaming(
     last_emit_at = 0.0
     rc = 0
     try:
-        for line in proc.stdout:
-            stdout_parts.append(line)
-            if not on_progress:
-                continue
-            line_stripped = line.strip().lstrip("\ufeff")
-            if not line_stripped or "\t" not in line_stripped:
-                continue
-            if line_stripped.startswith("CHRONOARCHIVER_"):
-                continue
-            try:
-                sz_s, _ = line_stripped.split("\t", 1)
-            except ValueError:
-                continue
-            if not sz_s.isdigit():
-                continue
-            count += 1
-            total_b = max(0, total_b + int(sz_s))
-            now = time.monotonic()
-            if count == 1 or count % 25 == 0 or (now - last_emit_at) >= 0.15:
-                last_emit_at = now
-                try:
-                    on_progress(count, total_b)
-                except Exception:
-                    pass
-        rc = proc.wait()
-    except Exception:
         try:
-            proc.kill()
+            for line in proc.stdout:
+                stdout_parts.append(line)
+                if not on_progress:
+                    continue
+                line_stripped = line.strip().lstrip("\ufeff")
+                if not line_stripped or "\t" not in line_stripped:
+                    continue
+                if line_stripped.startswith("CHRONOARCHIVER_"):
+                    continue
+                try:
+                    sz_s, _ = line_stripped.split("\t", 1)
+                except ValueError:
+                    continue
+                if not sz_s.isdigit():
+                    continue
+                count += 1
+                total_b = max(0, total_b + int(sz_s))
+                now = time.monotonic()
+                # Coarser than local dir walk: huge remote queues (5k+ files) must not flood Qt.
+                if count == 1 or count % 100 == 0 or (now - last_emit_at) >= 0.35:
+                    last_emit_at = now
+                    try:
+                        on_progress(count, total_b)
+                    except Exception:
+                        pass
+            rc = proc.wait()
         except Exception:
-            pass
-        err_thread.join(timeout=30)
-        raise
-    else:
-        err_thread.join(timeout=300)
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            err_thread.join(timeout=30)
+            raise
+        else:
+            err_thread.join(timeout=300)
+    finally:
+        for stream in (getattr(proc, "stdout", None), getattr(proc, "stderr", None)):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
     stderr_text = stderr_chunks[0] if stderr_chunks else ""
     stdout_text = "".join(stdout_parts)
     return subprocess.CompletedProcess(args=cmd, returncode=rc, stdout=stdout_text, stderr=stderr_text)
