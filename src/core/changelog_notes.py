@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "5.7.4": """## [5.7.4] - 2026-04-10
+
+### Fixed
+- **Footer GPU %**: Stronger **discrete NVIDIA** selection (``lspci`` domain BDFs + ``nvidia-smi -L``); **encoder** utilization included; optional ``CHRONOARCHIVER_FOOTER_NVIDIA_GPU``.
+""",
     "5.7.3": """## [5.7.3] - 2026-04-10
 
 ### Fixed
