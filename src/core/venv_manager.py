@@ -21,6 +21,7 @@ except ImportError:
     requests = None
 
 import urllib.request
+from typing import Optional
 
 try:
     from .debug_logger import debug, UTILITY_OPENCV_INSTALL
@@ -77,6 +78,68 @@ def _pci_bdf_normalize(s: str) -> str:
     return m.group(1) if m else ""
 
 
+def _lspci_line_bus_bdf(line: str) -> str:
+    """
+    First PCI BDF on an ``lspci -nn`` line. Supports ``01:00.0`` and ``0000:01:00.0`` (4-digit domain).
+    Without this, hybrid laptops often fail to match ``nvidia-smi``, and the footer falls back to the wrong GPU.
+    """
+    s = (line or "").strip()
+    m = re.match(
+        r"^(?:[0-9a-f]{4}:)?([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\s",
+        s,
+        re.I,
+    )
+    return m.group(1).lower() if m else ""
+
+
+def _bdf_from_nvidia_smi_L_line(line: str) -> str:
+    """Extract normalized ``bb:dd.f`` from one ``nvidia-smi -L`` line if present."""
+    # Long form: 0000:01:00.0 or 00000000:01:00.0
+    mm = re.search(r"\b([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\b", line, re.I)
+    if mm:
+        return _pci_bdf_normalize(mm.group(1))
+    mm2 = re.search(r"\b([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\b", line, re.I)
+    if mm2:
+        return mm2.group(1).lower()
+    # "at PCI:1:0:0" (bus:device.function as decimal / hex)
+        mm3 = re.search(r"PCI:\s*([0-9a-fx]+):([0-9a-fx]+):([0-9a-fx]+)", line, re.I)
+        if mm3:
+            try:
+                bus, dev, fn = (int(mm3.group(i), 0) for i in (1, 2, 3))
+                return f"{bus & 0xFF:02x}:{dev & 0xFF:02x}.{fn & 0x7:x}"
+            except ValueError:
+                pass
+    return ""
+
+
+def _nvidia_smi_L_index_to_bdf() -> dict[int, str]:
+    """``nvidia-smi -L``: GPU index → normalized PCI BDF (authoritative vs CSV when lspci matching fails)."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return {}
+    try:
+        out = subprocess.check_output(
+            [smi, "-L"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            **win_hide_kw(),
+        )
+    except Exception:
+        return {}
+    m: dict[int, str] = {}
+    for raw in (out or "").splitlines():
+        line = raw.strip()
+        mi = re.match(r"GPU\s+(\d+)\s*:", line, re.I)
+        if not mi:
+            continue
+        idx = int(mi.group(1))
+        bdf = _bdf_from_nvidia_smi_L_line(line)
+        if bdf:
+            m[idx] = bdf
+    return m
+
+
 def _linux_lspci_display_controller_rows() -> list[tuple[str, str, bool]]:
     """
     Parse lspci display controllers in bus order: (vendor_key, pci_bdf, is_integrated_heuristic).
@@ -100,8 +163,7 @@ def _linux_lspci_display_controller_rows() -> list[tuple[str, str, bool]]:
                 re.I,
             ):
                 continue
-            m_bdf = re.match(r"^([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\s", line, re.I)
-            bdf = m_bdf.group(1).lower() if m_bdf else ""
+            bdf = _lspci_line_bus_bdf(line)
             lc = line.lower()
             vendor = ""
             if re.search(r"\b10de:|\[10de:|\bnvidia\b", line, re.I):
@@ -166,7 +228,12 @@ def preferred_nvidia_gpu_index_for_metrics() -> int:
     """
     Return the NVIDIA GPU index for footer **GPU %** (``nvidia-smi -i``), aligned with
     ``detect_gpu()`` / ``_pick_vendor_prefer_discrete``: discrete before integrated, then vendor rank.
-    ``CHRONOARCHIVER_FFMPEG_NVENC_GPU`` (integer) overrides when valid.
+
+    ``CHRONOARCHIVER_FOOTER_NVIDIA_GPU`` or ``CHRONOARCHIVER_FFMPEG_NVENC_GPU`` (integer) overrides when valid.
+
+    PCI matching uses ``nvidia-smi -L`` (primary) plus CSV ``pci.bus_id``, and ``lspci`` BDFs with domain
+    prefix support so the **discrete** NVIDIA card is chosen instead of falling back to index 0 (often wrong on hybrid iGPU + dGPU laptops).
+
     Result is cached for the process lifetime.
     """
     global _footer_metrics_nv_index
@@ -221,7 +288,10 @@ def preferred_nvidia_gpu_index_for_metrics() -> int:
         return 0
 
     indices = {r[0] for r in rows}
-    gpu_env = (os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "").strip()
+    gpu_env = (
+        (os.environ.get("CHRONOARCHIVER_FOOTER_NVIDIA_GPU") or os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "")
+        .strip()
+    )
     if gpu_env:
         try:
             want = int(gpu_env)
@@ -235,13 +305,21 @@ def preferred_nvidia_gpu_index_for_metrics() -> int:
         _footer_metrics_nv_index = rows[0][0]
         return rows[0][0]
 
+    # BDF → index: merge CSV pci.bus_id with ``nvidia-smi -L`` (latter wins per index).
+    l_map = _nvidia_smi_L_index_to_bdf()
+    smi_by_bdf: dict[str, int] = {}
+    for idx, bdf_csv, _mem in rows:
+        if bdf_csv:
+            smi_by_bdf[bdf_csv] = idx
+    for idx, bdf_l in l_map.items():
+        smi_by_bdf[bdf_l] = idx
+
     if platform.system() == "Linux":
         full = _linux_lspci_display_controller_rows()
         nv_lines = [(v, bdf, ig) for v, bdf, ig in full if v == "nvidia" and bdf]
         if nv_lines:
             non_i = [x for x in nv_lines if not x[2]]
             pool = non_i if non_i else nv_lines
-            smi_by_bdf = {bdf: idx for idx, bdf, _m in rows if bdf}
             for _v, bdf, _ig in pool:
                 if bdf in smi_by_bdf:
                     _footer_metrics_nv_index = smi_by_bdf[bdf]
@@ -252,22 +330,36 @@ def preferred_nvidia_gpu_index_for_metrics() -> int:
     return best_idx
 
 
+def _parse_nvidia_smi_util_csv_cell(s: str) -> Optional[int]:
+    t = (s or "").strip()
+    if not t or t.upper() in ("N/A", "[N/A]"):
+        return None
+    try:
+        return int(float(t))
+    except ValueError:
+        return None
+
+
 def footer_nvidia_gpu_utilization_text() -> str:
     """
     ``nvidia-smi`` utilization for ``preferred_nvidia_gpu_index_for_metrics()``, formatted like ``' 12%'``
     (fixed width for UI) or ``'  N/A'`` on failure.
+
+    Uses the max of ``utilization.gpu`` and ``utilization.encoder`` when both exist, so NVENC-heavy work shows up
+    even when SM utilization stays low (common on hybrid laptops).
     """
     smi = shutil.which("nvidia-smi")
     if not smi:
         return "  N/A"
     idx = preferred_nvidia_gpu_index_for_metrics()
-    try:
-        out = subprocess.check_output(
+
+    def _query(fields: str) -> str:
+        return subprocess.check_output(
             [
                 smi,
                 "-i",
                 str(idx),
-                "--query-gpu=utilization.gpu",
+                "--query-gpu=" + fields,
                 "--format=csv,noheader,nounits",
             ],
             text=True,
@@ -275,11 +367,27 @@ def footer_nvidia_gpu_utilization_text() -> str:
             timeout=3,
             **win_hide_kw(),
         ).strip()
-        line = out.split("\n")[0].strip() if out else ""
-        g = int(line) if line.isdigit() else 0
-        return f"{min(999, g):3d}%"
+
+    try:
+        out = _query("utilization.gpu,utilization.encoder")
     except Exception:
-        return "  N/A"
+        try:
+            out = _query("utilization.gpu")
+        except Exception:
+            return "  N/A"
+    line0 = (out or "").split("\n")[0].strip() if out else ""
+    parts = [p.strip() for p in line0.split(",")] if line0 else []
+    vals: list[int] = []
+    if parts:
+        v0 = _parse_nvidia_smi_util_csv_cell(parts[0])
+        if v0 is not None:
+            vals.append(v0)
+        if len(parts) > 1:
+            v1 = _parse_nvidia_smi_util_csv_cell(parts[1])
+            if v1 is not None:
+                vals.append(v1)
+    g = max(vals) if vals else 0
+    return f"{min(999, g):3d}%"
 
 
 def detect_gpu() -> str:

@@ -5,6 +5,11 @@
 ### Changed
 - **Release tooling**: `tools/bump_version.py` updates `.github/workflows/release-installers.yml` manual default; **CONTRIBUTING** documents AUR `.SRCINFO` generation.
 
+## [5.7.4] - 2026-04-10
+
+### Fixed
+- **Footer GPU %** (`nvidia-smi`): **PCI matching** for hybrid systems — `lspci` lines with a **domain prefix** (`0000:01:00.0`) are parsed correctly; **`nvidia-smi -L`** is merged with CSV `pci.bus_id` to map the **discrete** NVIDIA adapter (same discrete-first policy as `detect_gpu()`). Optional **`CHRONOARCHIVER_FOOTER_NVIDIA_GPU`** overrides footer selection (in addition to **`CHRONOARCHIVER_FFMPEG_NVENC_GPU`**). Utilization uses **`max(utilization.gpu, utilization.encoder)`** when the driver reports both so NVENC-heavy encode does not read as idle.
+
 ## [5.7.3] - 2026-04-10
 
 ### Fixed
