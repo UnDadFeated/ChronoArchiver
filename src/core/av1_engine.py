@@ -795,14 +795,7 @@ class AV1EncoderEngine:
                 success = proc.returncode == 0
             if not success:
                 rc = proc.returncode if proc else None
-                self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
-                debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={rc})")
-                # Log last FFmpeg stderr lines for diagnostics
-                if error_log:
-                    tail = list(error_log)[-8:]
-                    for ln in tail:
-                        debug(UTILITY_MASS_AV1_ENCODER, f"ffmpeg stderr: {ln[:200]}")
-                # Remove partial output on failure
+                # Remove partial output before retry or hard failure
                 if output_path and os.path.exists(output_path):
                     try:
                         os.remove(output_path)
@@ -810,22 +803,23 @@ class AV1EncoderEngine:
                     except OSError:
                         pass
                 # Retry once with software decode on 183/218 (CUDA decode / hw surface) while keeping NVENC encode.
-                # If CUDA decode keeps failing, _nvenc_skip_cuda_hwaccel avoids a wasted attempt on later files.
-                if not _retry_software_decode and used_cuda_decode and rc in (183, 218):
+                # Do not log ERROR here — this path is expected on some setups; the retry usually succeeds.
+                will_retry_sw_decode = (
+                    not _retry_software_decode and used_cuda_decode and rc in (183, 218)
+                )
+                if will_retry_sw_decode:
                     with AV1EncoderEngine._nvenc_cuda_lock:
                         first_cuda_fail = not AV1EncoderEngine._nvenc_skip_cuda_hwaccel
                         AV1EncoderEngine._nvenc_skip_cuda_hwaccel = True
-                    if first_cuda_fail:
-                        self.logger.info(
-                            "NVENC: CUDA hwaccel decode failed (FFmpeg exit %s). "
-                            "Using software decode + NVENC for this file and the rest of this encode run.",
-                            rc,
-                        )
-                    else:
-                        debug(
-                            UTILITY_MASS_AV1_ENCODER,
-                            f"Retry software decode (keep NVENC): {input_path} rc={rc}",
-                        )
+                    self.logger.info(
+                        "NVENC: FFmpeg exit %s on CUDA hwaccel decode — retrying this file with software decode + NVENC%s.",
+                        rc,
+                        " (batch will skip CUDA decode afterward)" if first_cuda_fail else "",
+                    )
+                    debug(
+                        UTILITY_MASS_AV1_ENCODER,
+                        f"NVENC retry after rc={rc}: {input_path}",
+                    )
                     return self.encode_file(
                         input_path,
                         output_path,
@@ -835,6 +829,12 @@ class AV1EncoderEngine:
                         hw_accel_decode=True,
                         _retry_software_decode=True,
                     )
+                self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
+                debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={rc})")
+                if error_log:
+                    tail = list(error_log)[-8:]
+                    for ln in tail:
+                        debug(UTILITY_MASS_AV1_ENCODER, f"ffmpeg stderr: {ln[:200]}")
             else:
                 debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
             return success, input_path, output_path

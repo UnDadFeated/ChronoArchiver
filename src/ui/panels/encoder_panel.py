@@ -203,11 +203,12 @@ class AV1EncoderPanel(QWidget):
         # Workers emit from encoder threads; queue slots on the GUI thread so codec/progress labels update reliably.
         self._sig.progress.connect(self._on_progress, Qt.ConnectionType.QueuedConnection)
         self._sig.details.connect(self._on_details, Qt.ConnectionType.QueuedConnection)
-        self._sig.finished.connect(self._on_encode_finished)
-        self._sig.log_msg.connect(self._add_log)
-        self._sig.batch_complete.connect(self._on_batch_complete)
-        self._sig.scan_done.connect(self._on_scan_done)
-        self._sig.scan_done_then_start.connect(self._on_scan_done_then_start)
+        # Workers emit these from non-GUI threads; force queued delivery to avoid undefined Qt behavior / crashes (SIGSEGV).
+        self._sig.finished.connect(self._on_encode_finished, Qt.ConnectionType.QueuedConnection)
+        self._sig.log_msg.connect(self._add_log, Qt.ConnectionType.QueuedConnection)
+        self._sig.batch_complete.connect(self._on_batch_complete, Qt.ConnectionType.QueuedConnection)
+        self._sig.scan_done.connect(self._on_scan_done, Qt.ConnectionType.QueuedConnection)
+        self._sig.scan_done_then_start.connect(self._on_scan_done_then_start, Qt.ConnectionType.QueuedConnection)
 
         self._settings = AV1Settings()
 
@@ -951,7 +952,7 @@ class AV1EncoderPanel(QWidget):
 
             scan_dialog = ScanProgressDialog(self)
             self._scan_dialog = scan_dialog
-            self._sig.scan_progress.connect(scan_dialog.update_progress)
+            self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
             scan_dialog.show()
 
             def _scan_remote():
@@ -977,7 +978,7 @@ class AV1EncoderPanel(QWidget):
 
         scan_dialog = ScanProgressDialog(self)
         self._scan_dialog = scan_dialog
-        self._sig.scan_progress.connect(scan_dialog.update_progress)
+        self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
         scan_dialog.show()
 
         def _scan():
@@ -1090,7 +1091,7 @@ class AV1EncoderPanel(QWidget):
             debug(UTILITY_MASS_AV1_ENCODER, f"Start encoding: queue empty, scanning src={src}")
             scan_dialog = ScanProgressDialog(self)
             self._scan_dialog = scan_dialog
-            self._sig.scan_progress.connect(scan_dialog.update_progress)
+            self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
             scan_dialog.show()
 
             def _scan_then_start():
