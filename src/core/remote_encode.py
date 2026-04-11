@@ -688,9 +688,7 @@ def remote_scan_videos(
             _debug_remote_scan("remote_scan: argv transport empty; retry scp upload + remote python3 /tmp/ script")
             cp = _remote_scan_via_scp_and_ssh(remote, script, batch, password_for_sshpass)
             return _finalize(
-                _remote_scan_parse_cp_result(
-                    cp, remote, root_norm, transport="scp_tmp", all_transports_exhausted=True
-                )
+                _remote_scan_parse_cp_result(cp, remote, root_norm, transport="scp_tmp", all_transports_exhausted=True)
             )
         return _finalize(_remote_scan_parse_cp_result(cp, remote, root_norm, transport="argv_embedded"))
     return _finalize(_remote_scan_parse_cp_result(cp, remote, root_norm, transport="stdin_script"))
