@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [5.9.0] - 2026-04-11
+
+### Changed
+- **Mass AV1 Encoder**: **If output exists** defaults to **Skip** (not **Overwrite**) for new installs and invalid config values, so re-runs do not replace finished **`_av1`** files by accident.
+
+### Fixed
+- **Mass AV1 Encoder**: Stopping encoding (**STOP**) no longer logs **ERROR** / **FAILED** for in-progress files when FFmpeg exits on **SIGTERM** (e.g. returncode 255, “received signal 15”) — those are treated as **user interrupt**, not encode failures.
+- **Mass AV1 Encoder**: After a batch finishes, **Start** is enabled again for the next run (no restart required). The previous **ENCODING COMPLETE** state left the button disabled and blocked `_update_start_enabled`.
+- **Mass AV1 Encoder / FFmpeg**: Encode maps **first video + first audio** only (`-map 0:v:0` / `-map 0:a:0?`) instead of **all** streams from input. This covers **libopus** failures on extra audio tracks (e.g. `af#0:2`), and **MP4 mux** failures from extra **subtitle/data/unknown** streams (e.g. `codec none in stream #2`, `mp4s incompatible`). **AV1 passthrough** remux (non-MP4→MP4) uses the same mapping. Video-only sources still work via optional audio map. Remaining edge cases (e.g. **SIGKILL** / **`-9`**, **MPEG `dvd_nav_packet`**) are separate.
+- **Mass AV1 Encoder**: After **FAILED:**, the console may show a **TIP** when FFmpeg exits with **SIGKILL** (e.g. OOM / fewer concurrent jobs) or when stderr indicates **MPEG/DVD navigation** streams (`dvd_nav` / `nav_packet`).
+
 ## [5.8.0] - 2026-04-10
 
 ### Fixed

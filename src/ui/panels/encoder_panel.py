@@ -494,7 +494,7 @@ class AV1EncoderPanel(QWidget):
         self._combo_exist.addItems(["Overwrite", "Skip", "Rename"])
         self._combo_exist.setCurrentText(
             {"overwrite": "Overwrite", "skip": "Skip", "rename": "Rename"}.get(
-                self._settings.get("existing_output"), "Overwrite"
+                self._settings.get("existing_output"), "Skip"
             )
         )
         self._combo_exist.setStyleSheet(COMBO_BOX_PANEL_QSS + "QComboBox { color: #aaa; }")
@@ -797,7 +797,7 @@ class AV1EncoderPanel(QWidget):
         return bool(os.path.isdir(dst))
 
     def _get_guide_target(self):
-        if self._is_encoding or self._btn_start.text() == "ENCODING COMPLETE":
+        if self._is_encoding:
             return None
         src = self._edit_src.text().strip()
         if not src:
@@ -871,8 +871,6 @@ class AV1EncoderPanel(QWidget):
         return r
 
     def _update_start_enabled(self):
-        if self._btn_start.text() == "ENCODING COMPLETE":
-            return
         if self._is_encoding:
             self._btn_start.setEnabled(True)
             apply_start_button_hint(
@@ -1714,12 +1712,14 @@ class AV1EncoderPanel(QWidget):
                         )
                         continue
 
+                    enc_fail_hint: str | None = None
+                    enc_user_stop = False
                     if engine.try_passthrough_existing_av1(tmp_in, tpath_local):
                         disp = posixpath.basename(ref.rel_posix)
                         self._sig.log_msg.emit(f"Already AV1 (passthrough): {disp}")
                         ok, in_p, out_p = True, tmp_in, tpath_local
                     else:
-                        ok, in_p, out_p = engine.encode_file(
+                        ok, in_p, out_p, enc_fail_hint, enc_user_stop = engine.encode_file(
                             tmp_in,
                             tpath_local,
                             self._settings.get("quality"),
@@ -1759,6 +1759,10 @@ class AV1EncoderPanel(QWidget):
                     }
                     if saved_hint is not None:
                         meta["saved_bytes"] = saved_hint
+                    if enc_fail_hint:
+                        meta["encode_failure_hint"] = enc_fail_hint
+                    if enc_user_stop:
+                        meta["encode_user_cancelled"] = True
                     _fin(ok, logical_key, out_p if ok else out_p, meta)
                 except Exception as job_e:
                     self._sig.log_msg.emit(f"ERROR: {job_e}")
@@ -2003,11 +2007,13 @@ class AV1EncoderPanel(QWidget):
                         continue
 
                     disp_bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(input_path)
+                    enc_fail_hint: str | None = None
+                    enc_user_stop = False
                     if engine.try_passthrough_existing_av1(input_path, tpath_local):
                         self._sig.log_msg.emit(f"Already AV1 (passthrough): {disp_bn}")
                         ok, in_p, out_p = True, input_path, tpath_local
                     else:
-                        ok, in_p, out_p = engine.encode_file(
+                        ok, in_p, out_p, enc_fail_hint, enc_user_stop = engine.encode_file(
                             input_path,
                             tpath_local,
                             self._settings.get("quality"),
@@ -2047,6 +2053,10 @@ class AV1EncoderPanel(QWidget):
                     }
                     if saved_hint is not None:
                         meta["saved_bytes"] = saved_hint
+                    if enc_fail_hint:
+                        meta["encode_failure_hint"] = enc_fail_hint
+                    if enc_user_stop:
+                        meta["encode_user_cancelled"] = True
                     _fin(ok, logical_key, out_p if ok else out_p, meta)
 
                 except RemoteEncodeError as e:
@@ -2259,8 +2269,17 @@ class AV1EncoderPanel(QWidget):
                         self._add_log(f"Delete error: {e}")
                         debug(UTILITY_MASS_AV1_ENCODER, f"Delete error: {local_in} — {e}")
         elif not success:
-            self._add_log(f"FAILED: {disp_src}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Encode FAILED: {lk or local_in or '?'}")
+            if not (meta and meta.get("encode_user_cancelled")):
+                self._add_log(f"FAILED: {disp_src}")
+                hint = meta.get("encode_failure_hint") if meta else None
+                if hint:
+                    self._add_log(hint)
+                debug(UTILITY_MASS_AV1_ENCODER, f"Encode FAILED: {lk or local_in or '?'}")
+            else:
+                debug(
+                    UTILITY_MASS_AV1_ENCODER,
+                    f"Encode interrupted by STOP (no FAILED line): {lk or local_in or '?'}",
+                )
 
         for tmp in tmp_cleanup:
             try:
@@ -2330,10 +2349,11 @@ class AV1EncoderPanel(QWidget):
         self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
         self._lbl_io.setText("I/O: 0.0 MB/s")
         self._btn_start.setStyleSheet("")
+        self._btn_start.setText("START ENCODING")
         self._btn_start.setObjectName("btnStart")
-        self._btn_start.setText("ENCODING COMPLETE")
-        self._btn_start.setEnabled(False)
+        self._btn_start.setStyle(self.style())
         self._btn_pause.setEnabled(False)
+        self._update_start_enabled()
         debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
         structured_event(
             "encode_batch_complete",
