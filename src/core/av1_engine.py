@@ -2,6 +2,7 @@ import glob
 import os
 import platform
 import shutil
+import signal
 import time
 import threading
 import subprocess
@@ -10,7 +11,7 @@ import json
 import psutil
 import logging
 from dataclasses import dataclass
-from typing import Optional, Callable, Generator
+from typing import Optional, Callable, Generator, Sequence
 from collections import deque
 
 try:
@@ -45,6 +46,36 @@ def _ffmpeg_progress_fps_speed(line: str) -> tuple[Optional[float], Optional[flo
     fps_v = float(fps_m.group(1)) if fps_m else None
     spd_v = float(spd_m.group(1)) if spd_m else None
     return fps_v, spd_v
+
+
+def _ffmpeg_encode_failure_hint(
+    returncode: Optional[int],
+    stderr_lines: Sequence[str],
+    _input_path: str,
+) -> Optional[str]:
+    """
+    One-line hints for the Mass AV1 console after FFmpeg fails (OOM/kill, MPEG nav, etc.).
+    """
+    tips: list[str] = []
+    rc = returncode
+    blob = "\n".join(stderr_lines).lower()
+    # Unix: subprocess uses negative -N when child killed by signal N (e.g. -9 = SIGKILL).
+    if rc is not None and rc < 0 and -rc == signal.SIGKILL:
+        tips.append(
+            "TIP: FFmpeg was killed (SIGKILL): often OOM, manual stop, or system pressure — "
+            "try fewer concurrent jobs, free RAM, or stabilize NAS/USB I/O."
+        )
+    # Watchdog / OOM killer sometimes surface as SIGKILL; same guidance.
+
+    if "dvd_nav" in blob or "nav_packet" in blob:
+        tips.append(
+            "TIP: MPEG/DVD-style stream (e.g. dvd_nav) may not mux to MP4 as-is — "
+            "try remuxing with ffmpeg externally or use a clean rip."
+        )
+
+    if not tips:
+        return None
+    return " ".join(tips)
 
 
 def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
@@ -170,6 +201,8 @@ def passthrough_av1_to_output(
                 log.warning("AV1 passthrough: copy failed: %s", e)
             return False
     try:
+        # Match encode_file: first video + first audio only. Full ``-map 0`` can pull subtitle/data/
+        # ``codec none`` tracks that MP4 rejects on remux (same class of failures as multi-audio libopus).
         cmd = [
             "ffmpeg",
             "-y",
@@ -179,6 +212,12 @@ def passthrough_av1_to_output(
             "-i",
             input_path,
             "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-map_metadata",
+            "0",
+            "-map_chapters",
             "0",
             "-c",
             "copy",
@@ -288,6 +327,8 @@ class AV1EncoderEngine:
         self._current_process: Optional[subprocess.Popen] = None
         self._is_paused = False
         self._lock = threading.Lock()
+        # Set True in cancel() so encode_file does not log ERROR when FFmpeg exits on SIGTERM (user STOP).
+        self._encode_stop_requested = False
         self.logger = logging.getLogger("ChronoArchiver.Encoder")
         if self._hw_encoder:
             self.logger.info(f"HW encoder: {self._hw_encoder}")
@@ -369,6 +410,7 @@ class AV1EncoderEngine:
     def cancel(self):
         """Cancels the current encoding process."""
         with self._lock:
+            self._encode_stop_requested = True
             if self._current_process:
                 try:
                     terminate_ffmpeg_process_tree(self._current_process, log=self.logger)
@@ -549,13 +591,20 @@ class AV1EncoderEngine:
         reencode_audio: bool,
         hw_accel_decode: bool = False,
         _retry_software_decode: bool = False,
-    ) -> tuple:
+    ) -> tuple[bool, str, str, Optional[str], bool]:
         """Encodes a single file and emits progress.
+
+        Returns ``(success, input_path, output_path, failure_hint, user_stopped)``.
+        ``failure_hint`` is for real failures; ``user_stopped`` is True when STOP cancelled FFmpeg
+        (avoid logging those as ERROR / FAILED).
 
         When FFmpeg lists ``av1_nvenc``, encoding uses the NVIDIA encoder whenever this build
         supports it. ``hw_accel_decode`` only toggles CUDA *decode* (demux/decode) acceleration;
         with it off, frames are decoded in software and still encoded on the GPU.
         """
+        # Do not clear stop flag on NVENC CUDA→SW retry so a cancel during the first attempt persists.
+        if not _retry_software_decode:
+            self._encode_stop_requested = False
         duration = self._get_video_duration(input_path)
         hdr_info = self._detect_hdr(input_path)
 
@@ -642,9 +691,23 @@ class AV1EncoderEngine:
         if reencode_audio:
             a_args = ["-c:a", "libopus", "-b:a", "128k", "-af", "aresample=async=1"]
 
+        # Map primary video + first audio only. ``-map 0`` muxes every audio/subtitle/data stream;
+        # libopus then runs per audio stream and a bad/extra track (e.g. third stream EINVAL) aborts the whole job.
+        # ``0:a:0?`` is optional when there is no audio (e.g. silent video).
         cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
         cmd += (
-            ["-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-fps_mode", "passthrough"]
+            [
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a:0?",
+                "-map_metadata",
+                "0",
+                "-map_chapters",
+                "0",
+                "-fps_mode",
+                "passthrough",
+            ]
             + v_args
             + a_args
             + [output_path]
@@ -827,15 +890,30 @@ class AV1EncoderEngine:
                         hw_accel_decode=True,
                         _retry_software_decode=True,
                     )
+                if self._encode_stop_requested:
+                    self.logger.info(
+                        "FFmpeg ended after stop request: %s (returncode=%s)",
+                        os.path.basename(input_path),
+                        rc,
+                    )
+                    debug(
+                        UTILITY_MASS_AV1_ENCODER,
+                        f"Encode stopped by user (not a failure): {input_path} (returncode={rc})",
+                    )
+                    return False, input_path, output_path, None, True
                 self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
                 debug(UTILITY_MASS_AV1_ENCODER, f"FFmpeg failed: {input_path} (returncode={rc})")
                 if error_log:
                     tail = list(error_log)[-8:]
                     for ln in tail:
                         debug(UTILITY_MASS_AV1_ENCODER, f"ffmpeg stderr: {ln[:200]}")
-            else:
-                debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
-            return success, input_path, output_path
+                fail_hint = _ffmpeg_encode_failure_hint(rc, list(error_log), input_path)
+                if fail_hint:
+                    self.logger.info("%s", fail_hint)
+                    debug(UTILITY_MASS_AV1_ENCODER, fail_hint)
+                return False, input_path, output_path, fail_hint, False
+            debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
+            return True, input_path, output_path, None, False
         except Exception as e:
             self.logger.error(f"Error encoding {input_path}: {e}")
             debug(UTILITY_MASS_AV1_ENCODER, f"Encode exception: {input_path} — {e}")
@@ -845,7 +923,7 @@ class AV1EncoderEngine:
                     debug(UTILITY_MASS_AV1_ENCODER, f"Removed partial: {output_path}")
                 except OSError:
                     pass
-            return False, input_path, output_path
+            return False, input_path, output_path, None, False
         finally:
             _watchdog_stop.set()
             # Clear engine handle and close this invocation's stderr. Use local `proc`, not

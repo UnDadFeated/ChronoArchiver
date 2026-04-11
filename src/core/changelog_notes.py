@@ -15,6 +15,14 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "5.9.0": """## [5.9.0] - 2026-04-11
+
+### Changed
+- **Mass AV1 Encoder**: **If output exists** defaults to **Skip** so re-runs do not overwrite finished **`_av1`** outputs by accident.
+
+### Fixed
+- **Mass AV1 Encoder**: **Start** works again after a batch completes (no stuck grey button). **STOP** does not log spurious **FAILED** on **SIGTERM**. **FFmpeg** maps **first video + first audio** only (fixes multi-track / junk-stream mux failures); **AV1** remux passthrough aligned. **TIP** lines after real failures (**SIGKILL**, **dvd_nav**).
+""",
     "5.8.0": """## [5.8.0] - 2026-04-10
 
 ### Fixed

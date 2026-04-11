@@ -44,7 +44,7 @@ def _sanitize_encoder_config(data: dict, defaults: dict) -> dict:
         out[k] = max(lo, min(hi, v))
     eo = out.get("existing_output")
     if eo not in ("overwrite", "skip", "rename"):
-        out["existing_output"] = "overwrite"
+        out["existing_output"] = "skip"
     p = str(out.get("preset", "p4")).lower().strip()
     if len(p) == 2 and p[0] == "p" and p[1].isdigit():
         pn = int(p[1])
@@ -107,7 +107,7 @@ class AV1Settings:
             "delete_on_success_confirm": False,
             "hw_accel_decode": False,
             "shutdown_on_finish": False,
-            "existing_output": "overwrite",  # overwrite | skip | rename
+            "existing_output": "skip",  # overwrite | skip | rename
         }
         self.data = self.load()
 
