@@ -71,12 +71,18 @@ def _vendor_rank(v: str) -> int:
     return {"nvidia": 3, "amd": 2, "intel": 1}.get(v, 0)
 
 
-def _linux_lspci_gpu_candidates() -> list[tuple[str, bool]]:
+def _pci_bdf_normalize(s: str) -> str:
+    """Normalize PCI bus id from lspci or nvidia-smi (e.g. ``00000000:01:00.0`` → ``01:00.0``)."""
+    m = re.search(r"([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])", (s or "").lower())
+    return m.group(1) if m else ""
+
+
+def _linux_lspci_display_controller_rows() -> list[tuple[str, str, bool]]:
     """
-    Parse lspci display controllers: list of (vendor_key, is_integrated_heuristic).
-    Used on Linux for discrete-before-integrated ordering.
+    Parse lspci display controllers in bus order: (vendor_key, pci_bdf, is_integrated_heuristic).
+    ``pci_bdf`` is normalized ``bb:dd.f`` for matching ``nvidia-smi`` pci.bus_id.
     """
-    cand: list[tuple[str, bool]] = []
+    cand: list[tuple[str, str, bool]] = []
     try:
         r = subprocess.run(
             ["lspci", "-nn"],
@@ -94,6 +100,8 @@ def _linux_lspci_gpu_candidates() -> list[tuple[str, bool]]:
                 re.I,
             ):
                 continue
+            m_bdf = re.match(r"^([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\s", line, re.I)
+            bdf = m_bdf.group(1).lower() if m_bdf else ""
             lc = line.lower()
             vendor = ""
             if re.search(r"\b10de:|\[10de:|\bnvidia\b", line, re.I):
@@ -124,10 +132,18 @@ def _linux_lspci_gpu_candidates() -> list[tuple[str, bool]]:
                     )
                 )
                 integrated = not discrete_intel
-            cand.append((vendor, integrated))
+            cand.append((vendor, bdf, integrated))
     except Exception:
         pass
     return cand
+
+
+def _linux_lspci_gpu_candidates() -> list[tuple[str, bool]]:
+    """
+    Parse lspci display controllers: list of (vendor_key, is_integrated_heuristic).
+    Used on Linux for discrete-before-integrated ordering.
+    """
+    return [(v, integrated) for v, _bdf, integrated in _linux_lspci_display_controller_rows()]
 
 
 def _pick_vendor_prefer_discrete(candidates: list[tuple[str, bool]]) -> str:
@@ -140,6 +156,130 @@ def _pick_vendor_prefer_discrete(candidates: list[tuple[str, bool]]) -> str:
     pool = non_i if non_i else candidates
     best = max(pool, key=lambda c: (_vendor_rank(c[0]),))
     return best[0]
+
+
+# Footer / status metrics: which NVIDIA adapter index `nvidia-smi` should query (discrete-first, same policy as ``detect_gpu``).
+_footer_metrics_nv_index: int | None = None
+
+
+def preferred_nvidia_gpu_index_for_metrics() -> int:
+    """
+    Return the NVIDIA GPU index for footer **GPU %** (``nvidia-smi -i``), aligned with
+    ``detect_gpu()`` / ``_pick_vendor_prefer_discrete``: discrete before integrated, then vendor rank.
+    ``CHRONOARCHIVER_FFMPEG_NVENC_GPU`` (integer) overrides when valid.
+    Result is cached for the process lifetime.
+    """
+    global _footer_metrics_nv_index
+    if _footer_metrics_nv_index is not None:
+        return _footer_metrics_nv_index
+
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        _footer_metrics_nv_index = 0
+        return 0
+
+    try:
+        out = subprocess.check_output(
+            [
+                smi,
+                "--query-gpu=index,pci.bus_id,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            **win_hide_kw(),
+        )
+    except Exception:
+        _footer_metrics_nv_index = 0
+        return 0
+
+    rows: list[tuple[int, str, int]] = []
+    for ln in (out or "").strip().splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        parts = [p.strip() for p in ln.split(",")]
+        if len(parts) < 2:
+            continue
+        try:
+            idx = int(float(parts[0]))
+        except ValueError:
+            continue
+        pci_raw = parts[1] if len(parts) > 1 else ""
+        mem_mb = 0
+        if len(parts) > 2:
+            try:
+                mem_mb = int(float(parts[2]))
+            except ValueError:
+                pass
+        bdf = _pci_bdf_normalize(pci_raw)
+        rows.append((idx, bdf, mem_mb))
+
+    if not rows:
+        _footer_metrics_nv_index = 0
+        return 0
+
+    indices = {r[0] for r in rows}
+    gpu_env = (os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "").strip()
+    if gpu_env:
+        try:
+            want = int(gpu_env)
+            if want in indices:
+                _footer_metrics_nv_index = want
+                return want
+        except ValueError:
+            pass
+
+    if len(rows) == 1:
+        _footer_metrics_nv_index = rows[0][0]
+        return rows[0][0]
+
+    if platform.system() == "Linux":
+        full = _linux_lspci_display_controller_rows()
+        nv_lines = [(v, bdf, ig) for v, bdf, ig in full if v == "nvidia" and bdf]
+        if nv_lines:
+            non_i = [x for x in nv_lines if not x[2]]
+            pool = non_i if non_i else nv_lines
+            smi_by_bdf = {bdf: idx for idx, bdf, _m in rows if bdf}
+            for _v, bdf, _ig in pool:
+                if bdf in smi_by_bdf:
+                    _footer_metrics_nv_index = smi_by_bdf[bdf]
+                    return smi_by_bdf[bdf]
+
+    best_idx, _bdf, _m = max(rows, key=lambda t: t[2])
+    _footer_metrics_nv_index = best_idx
+    return best_idx
+
+
+def footer_nvidia_gpu_utilization_text() -> str:
+    """
+    ``nvidia-smi`` utilization for ``preferred_nvidia_gpu_index_for_metrics()``, formatted like ``' 12%'``
+    (fixed width for UI) or ``'  N/A'`` on failure.
+    """
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return "  N/A"
+    idx = preferred_nvidia_gpu_index_for_metrics()
+    try:
+        out = subprocess.check_output(
+            [
+                smi,
+                "-i",
+                str(idx),
+                "--query-gpu=utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            **win_hide_kw(),
+        ).strip()
+        line = out.split("\n")[0].strip() if out else ""
+        g = int(line) if line.isdigit() else 0
+        return f"{min(999, g):3d}%"
+    except Exception:
+        return "  N/A"
 
 
 def detect_gpu() -> str:

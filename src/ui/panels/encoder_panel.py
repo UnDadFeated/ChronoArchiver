@@ -31,11 +31,11 @@ from PySide6.QtWidgets import (
     QSlider,
     QSizePolicy,
     QDialog,
-    QTextEdit,
+    QPlainTextEdit,
     QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
-from PySide6.QtGui import QCloseEvent, QShowEvent, QTextCursor
+from PySide6.QtGui import QCloseEvent, QShowEvent
 
 import sys
 import logging
@@ -61,10 +61,11 @@ from core.remote_encode import (
 from core.remote_ssh import is_remote_path
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.panel_start_hint import apply_start_button_hint
-from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
+from ui.console_style import PANEL_CONSOLE_TEXTEDIT_STYLE
 from ui.panel_widgets import COMBO_BOX_PANEL_QSS, path_browse_btn_qss
 from ui.local_remote_path_dialog import run_local_remote_path_dialog
 from core.av1_settings import AV1Settings
+from core.venv_manager import footer_nvidia_gpu_utilization_text
 from core.debug_logger import (
     INSTALLER_APP_MASS_AV1_ENCODER,
     debug,
@@ -77,6 +78,8 @@ from version import APP_NAME
 
 # mkstemp prefix so STOP / quit can sweep orphans; must match _sweep_chrono_encoder_tempdir.
 _ENCODER_TMP_PREFIX = "chronoarchiver_av1_"
+# Plain console lines only (no rich HTML): long runs used to crash Qt in QTextEdit::paintEvent.
+_ENCODER_LOG_LINE_MAX = 4000
 
 
 def _remote_pipeline_queue_cap(num_workers: int) -> int:
@@ -673,12 +676,12 @@ class AV1EncoderPanel(QWidget):
         v_log = QVBoxLayout(grp_log)
         v_log.setContentsMargins(6, 2, 6, 4)
         v_log.setSpacing(0)
-        self._log_edit = QTextEdit()
+        self._log_edit = QPlainTextEdit()
         self._log_edit.setObjectName("panelConsole")
         self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
-        self._log_edit.setAcceptRichText(True)
-        self._log_edit.document().setMaximumBlockCount(1000)
+        self._log_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._log_edit.setMaximumBlockCount(800)
         v_log.addWidget(self._log_edit)
         root.addWidget(grp_log, 1)  # Stretch: console takes all remaining vertical space
 
@@ -2336,24 +2339,18 @@ class AV1EncoderPanel(QWidget):
 
     def _get_gpu(self) -> str:
         try:
-            out = subprocess.check_output(
-                ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-                text=True,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-            line = out.strip().split("\n")[0].strip() if out else ""
-            g = int(line) if line.isdigit() else 0
-            return f"{min(999, g):3d}%"
+            return footer_nvidia_gpu_utilization_text()
         except Exception:
-            return "  0%"
+            return "  N/A"
 
     def _add_log(self, msg):
+        if not isinstance(msg, str):
+            msg = str(msg)
+        if len(msg) > _ENCODER_LOG_LINE_MAX:
+            msg = msg[: _ENCODER_LOG_LINE_MAX - 3] + "..."
         sb = self._log_edit.verticalScrollBar()
         at_bot = sb.value() >= sb.maximum() - 4
-        html_line = message_to_html(msg)
-        cursor = self._log_edit.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml(html_line + "<br>")
+        self._log_edit.appendPlainText(msg)
         if at_bot:
             sb.setValue(sb.maximum())
         if self._log_cb:

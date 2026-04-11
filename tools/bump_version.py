@@ -6,7 +6,8 @@ Usage:
   python tools/bump_version.py 5.1.5
 
 Updates: src/version.py, pyproject.toml, README.md (badge + release table + AUR line),
-         PKGBUILD, tools/setup_launcher.py, tools/chronoarchiver_setup.spec
+         PKGBUILD, tools/setup_launcher.py, tools/chronoarchiver_setup.spec,
+         .github/workflows/release-installers.yml (workflow_dispatch default)
 """
 
 from __future__ import annotations
@@ -101,6 +102,14 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
+
+    # 7) GitHub Actions: manual installer workflow default + description example
+    wf = ROOT / ".github" / "workflows" / "release-installers.yml"
+    if wf.is_file():
+        wtxt = wf.read_text(encoding="utf-8")
+        wtxt = re.sub(r"default:\s*'[\d.]+'", f"default: '{new_v}'", wtxt, count=1)
+        wtxt = re.sub(r"\(e\.g\. [\d.]+\)", f"(e.g. {new_v})", wtxt, count=1)
+        wf.write_text(wtxt, encoding="utf-8")
 
     print(f"Bumped {prev} -> {new_v}")
     print(
