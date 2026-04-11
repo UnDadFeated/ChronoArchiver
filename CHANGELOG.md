@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [5.7.9] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: Worker **finally** blocks now decrement **`_active_jobs`** and evaluate **last-worker / empty-queue** rules under a **consistent lock order** (fixes a race where **`_active_jobs == 0`** was read outside **`_active_lock`**, mainly in the **remote pipeline** path).
+- **Mass AV1 Encoder**: **`batch_complete`** backup emission is suppressed after **STOP** when the **remote pipeline** had cleared **`_queue`** but not all files finished; **`_encoding_batch_ui_finalized`** avoids duplicate finalize work when the GUI path already completed the batch.
+
+### Changed
+- **Mass AV1 Encoder**: Periodic **`gc.collect(0)`** every **400** completed files during long batches to limit heap growth over multi-day runs.
+
 ## [5.7.8] - 2026-04-12
 
 ### Fixed

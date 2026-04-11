@@ -4,6 +4,7 @@ Visual style exactly matches Mass AV1 Encoder v12.
 Uses src/core/av1_engine.py and src/core/av1_settings.py unchanged.
 """
 
+import gc
 import os
 import platform
 import posixpath
@@ -224,6 +225,7 @@ class AV1EncoderPanel(QWidget):
         self._done_count = 0
         self._active_jobs = 0
         self._active_lock = threading.Lock()
+        self._encoding_batch_ui_finalized = False
         self._job_progress = {}
         self._current_files = {}
         self._total_saved = 0
@@ -1187,6 +1189,7 @@ class AV1EncoderPanel(QWidget):
         self._done_count = 0
         self._active_jobs = 0
         self._active_lock = threading.Lock()
+        self._encoding_batch_ui_finalized = False
         self._job_progress = {}
         self._current_files = {}
         self._total_saved = 0
@@ -1536,6 +1539,34 @@ class AV1EncoderPanel(QWidget):
             except Exception:
                 pass
 
+    def _encoder_worker_exit_finalize(self, *, pipeline_mode: bool) -> None:
+        """Decrement ``_active_jobs`` atomically; emit ``batch_complete`` at most once as a finalize backup.
+
+        Lock order: ``_queue_lock`` then ``_active_lock`` (legacy workers already pop under ``_queue_lock``).
+
+        Avoids lost updates from ``_active_jobs -= 1`` vs ``if _active_jobs == 0`` split across threads; suppresses
+        spurious "batch complete" after **STOP** when the remote pipeline left ``_queue`` empty.
+        """
+        should_emit = False
+        with self._queue_lock:
+            with self._active_lock:
+                self._active_jobs -= 1
+                if self._active_jobs != 0:
+                    return
+                if not pipeline_mode and len(self._queue) > 0:
+                    return
+                if self._encoding_batch_ui_finalized:
+                    return
+                if not self._is_encoding and self._done_count < self._total_count:
+                    return
+                if not (self._is_encoding or self._done_count >= self._total_count):
+                    return
+                should_emit = True
+        if should_emit:
+            self._sig.log_msg.emit("Encoding batch complete.")
+            self._sig.batch_complete.emit()
+            debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete (worker drain).")
+
     def _job_worker_pipeline(self, engine, src, dst, structure_root=None):
         """Consumer for prefetched remote files (overlap download + NVENC)."""
         pw = self._encode_pw
@@ -1741,12 +1772,7 @@ class AV1EncoderPanel(QWidget):
             debug(UTILITY_MASS_AV1_ENCODER, f"Encoder pipeline worker: {e}")
             log_exception(e, context="encoder_pipeline_worker", utility=UTILITY_MASS_AV1_ENCODER)
         finally:
-            with self._active_lock:
-                self._active_jobs -= 1
-            if self._active_jobs == 0:
-                self._sig.log_msg.emit("Encoding batch complete.")
-                self._sig.batch_complete.emit()
-                debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
+            self._encoder_worker_exit_finalize(pipeline_mode=True)
 
     def _job_worker(self, engine, src, dst, structure_root=None):
         if self._encode_pipeline_q is not None:
@@ -2046,12 +2072,7 @@ class AV1EncoderPanel(QWidget):
             self._sig.log_msg.emit(f"ERROR: {e}")
             debug(UTILITY_MASS_AV1_ENCODER, f"Encoder worker exception: {e}")
         finally:
-            with self._active_lock:
-                self._active_jobs -= 1
-            if self._active_jobs == 0 and not self._queue:
-                self._sig.log_msg.emit("Encoding batch complete.")
-                self._sig.batch_complete.emit()
-                debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete.")
+            self._encoder_worker_exit_finalize(pipeline_mode=False)
 
     # ── signal handlers ───────────────────────────────────────────────────────
 
@@ -2198,6 +2219,8 @@ class AV1EncoderPanel(QWidget):
         f_size = self._queue_sizes.get(lk, 0.0)
         self._done_bytes += f_size
         self._done_count += 1
+        if self._done_count % 400 == 0:
+            gc.collect(0)
 
         # Update master bar + ETA on every file completion (progress may never fire for short encodes)
         if self._total_q_bytes > 0 and self._is_encoding:
@@ -2235,6 +2258,7 @@ class AV1EncoderPanel(QWidget):
         """Transition UI to encoding-complete state (idempotent)."""
         if not self._is_encoding:
             return
+        self._encoding_batch_ui_finalized = True
         self._is_encoding = False
         self._encode_pw = None
         self._remote_dst_remote = None
