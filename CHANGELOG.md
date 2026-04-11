@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [5.7.8] - 2026-04-12
+
+### Fixed
+- **Mass AV1 Encoder**: **FFmpeg exit 183/218** (CUDA hwaccel decode) no longer logs a spurious **ERROR** before the automatic **software decode + NVENC** retry; one **INFO** line describes the retry.
+- **Mass AV1 Encoder**: **`finished`**, **`log_msg`**, **`batch_complete`**, **scan** signals use **explicit `QueuedConnection`** so worker-thread emits always run on the GUI thread (avoids cross-thread Qt widget access and reduces **SIGSEGV** risk during long batches).
+
 ## [5.7.7] - 2026-04-12
 
 ### Fixed
