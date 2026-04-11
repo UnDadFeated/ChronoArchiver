@@ -15,6 +15,21 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "5.7.3": """## [5.7.3] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: Console uses **plain text** (`QPlainTextEdit`) instead of rich HTML so long encode batches do not crash Qt during repaint.
+""",
+    "5.7.2": """## [5.7.2] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: Per-job **fps / speed** line parses current FFmpeg progress fields (including ``time=N/A`` warmup and ``KiB``/``Lsize``).
+""",
+    "5.7.1": """## [5.7.1] - 2026-04-10
+
+### Changed
+- **Footer GPU %** (`nvidia-smi`): Uses the same preferred NVIDIA adapter as `detect_gpu()` (discrete before integrated; ``CHRONOARCHIVER_FFMPEG_NVENC_GPU`` override). Linux matches **lspci** to ``pci.bus_id``; Windows multi-GPU falls back to largest **memory.total** when needed.
+""",
     "5.7.0": """## [5.7.0] - 2026-04-10
 
 ### Added

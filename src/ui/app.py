@@ -23,6 +23,7 @@ from core.venv_manager import (
     check_opencv_in_venv,
     check_ffmpeg_in_venv,
     ensure_bundled_ffmpeg,
+    footer_nvidia_gpu_utilization_text,
     get_pip_exe,
     _is_frozen,
 )
@@ -63,7 +64,6 @@ from core.updater import ApplicationUpdater
 from core.subprocess_tee import (
     set_subprocess_tee_callback,
     set_subprocess_channel,
-    win_hide_kw,
 )
 from core.debug_logger import (
     INSTALLER_APP_MAIN,
@@ -1199,20 +1199,7 @@ class ChronoArchiverApp(QMainWindow):
             self._metrics_gpu_counter += 1
             if self._metrics_gpu_counter >= 3:
                 try:
-                    out = subprocess.check_output(
-                        [
-                            "nvidia-smi",
-                            "--query-gpu=utilization.gpu",
-                            "--format=csv,noheader,nounits",
-                        ],
-                        text=True,
-                        stderr=subprocess.DEVNULL,
-                        timeout=3,
-                        **win_hide_kw(),
-                    ).strip()
-                    line = out.strip().split("\n")[0].strip() if out else ""
-                    g = int(line) if line.isdigit() else 0
-                    self._metrics_gpu_cache = f"{min(999, g):3d}%"
+                    self._metrics_gpu_cache = footer_nvidia_gpu_utilization_text()
                 except Exception:
                     self._metrics_gpu_cache = "  N/A"
                 self._metrics_gpu_counter = 0

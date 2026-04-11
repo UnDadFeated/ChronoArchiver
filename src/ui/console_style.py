@@ -167,9 +167,9 @@ def message_to_html(msg: str) -> str:
     return "".join(parts) if parts else _span(msg, line_color)
 
 
-# Shared QTextEdit look (matches app.py QSS) so Organizer / Encoder / Scanner consoles match.
+# Shared console look (matches app.py QSS). QTextEdit (rich HTML) or QPlainTextEdit (Mass AV1 Encoder log).
 PANEL_CONSOLE_TEXTEDIT_STYLE = (
-    "QTextEdit#panelConsole {"
+    "QTextEdit#panelConsole, QPlainTextEdit#panelConsole {"
     " background-color: #080808;"
     " border: 1px solid #141414;"
     " font-family: 'Inter', 'JetBrains Mono', 'Consolas', 'Cascadia Code', 'DejaVu Sans Mono', monospace;"

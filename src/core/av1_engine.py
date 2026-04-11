@@ -20,6 +20,34 @@ except ImportError:
     from core.debug_logger import debug, UTILITY_MASS_AV1_ENCODER
 
 
+def _ffmpeg_muxed_size_bytes(line: str) -> int:
+    """
+    Best-effort parse of FFmpeg progress ``(L)size=`` (``KiB`` / ``kB`` / ``MiB`` / ``GiB``).
+    Matches modern FFmpeg lines such as ``size=     256KiB`` and final ``Lsize= ...``.
+    """
+    m = re.search(r"(?:L)?size=\s*(\d+)\s*(KiB|kB|MiB|GiB)?", line, re.I)
+    if not m:
+        return 0
+    n = int(m.group(1))
+    suf = (m.group(2) or "KiB").lower()
+    if suf == "kib" or suf == "kb":
+        return n * 1024
+    if suf == "mib":
+        return n * 1024 * 1024
+    if suf == "gib":
+        return n * 1024 * 1024 * 1024
+    return n * 1024
+
+
+def _ffmpeg_progress_fps_speed(line: str) -> tuple[Optional[float], Optional[float]]:
+    """Parse ``fps=`` and ``speed=…x`` from a FFmpeg status line (encoding throughput)."""
+    fps_m = re.search(r"fps=\s*([\d.]+)", line)
+    spd_m = re.search(r"speed=\s*([\d.]+)\s*x", line)
+    fps_v = float(fps_m.group(1)) if fps_m else None
+    spd_v = float(spd_m.group(1)) if spd_m else None
+    return fps_v, spd_v
+
+
 def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
     """
     Ensure a local path is fully written and readable as video before FFmpeg runs.
@@ -656,6 +684,7 @@ class AV1EncoderEngine:
             details_detected = emitted_probe_details
             video_info, audio_info = "Unknown", "Unknown"
             error_log = deque(maxlen=50)
+            last_pct = 0.0
 
             for raw in proc.stderr:
                 _last_output[0] = time.time()
@@ -692,43 +721,63 @@ class AV1EncoderEngine:
                         r"out_time=(\d+):(\d+):(\d+\.?\d*)", line
                     )
                     out_time_ms = re.search(r"out_time_ms=(\d+)", line)
-                    if out_time_ms and duration > 0:
-                        curr_time = int(out_time_ms.group(1)) / 1_000_000.0
-                        percent = min((curr_time / duration) * 100, 100.0)
-                        fps_match = re.search(r"fps=\s*([\d.]+)", line)
-                        speed_match = re.search(r"speed=\s*([\d.]+)x", line)
-                        size_match = re.search(r"size=\s*(\d+)kB", line)
-                        if self.on_progress:
-                            self.on_progress(
-                                self.job_id,
-                                EncodingProgress(
-                                    file_name=os.path.basename(input_path),
-                                    percent=percent,
-                                    time_elapsed=f"{int(curr_time // 3600):02}:{int((curr_time % 3600) // 60):02}:{int(curr_time % 60):02}",
-                                    fps=float(fps_match.group(1)) if fps_match else 0.0,
-                                    speed=float(speed_match.group(1)) if speed_match else 0.0,
-                                    bytes_processed=int(size_match.group(1)) * 1024 if size_match else 0,
-                                ),
-                            )
-                    elif time_match and duration > 0:
-                        h, m, s = map(float, time_match.groups())
-                        curr_time = (h * 3600) + (m * 60) + s
-                        percent = min((curr_time / duration) * 100, 100.0)
-                        fps_match = re.search(r"fps=\s*([\d.]+)", line)
-                        speed_match = re.search(r"speed=\s*([\d.]+)x", line)
-                        size_match = re.search(r"size=\s*(\d+)kB", line)
-                        if self.on_progress:
-                            self.on_progress(
-                                self.job_id,
-                                EncodingProgress(
-                                    file_name=os.path.basename(input_path),
-                                    percent=percent,
-                                    time_elapsed=f"{int(h):02}:{int(m):02}:{int(s):02}",
-                                    fps=float(fps_match.group(1)) if fps_match else 0.0,
-                                    speed=float(speed_match.group(1)) if speed_match else 0.0,
-                                    bytes_processed=int(size_match.group(1)) * 1024 if size_match else 0,
-                                ),
-                            )
+                    fps_v, spd_v = _ffmpeg_progress_fps_speed(line)
+                    sz_b = _ffmpeg_muxed_size_bytes(line)
+
+                    pct_val: Optional[float] = None
+                    curr_time = 0.0
+                    time_elapsed_str = "00:00:00"
+
+                    if duration > 0:
+                        if out_time_ms:
+                            curr_time = int(out_time_ms.group(1)) / 1_000_000.0
+                            pct_val = min((curr_time / duration) * 100, 100.0)
+                            time_elapsed_str = f"{int(curr_time // 3600):02}:{int((curr_time % 3600) // 60):02}:{int(curr_time % 60):02}"
+                        elif time_match:
+                            h, m, s = map(float, time_match.groups())
+                            curr_time = (h * 3600) + (m * 60) + s
+                            pct_val = min((curr_time / duration) * 100, 100.0)
+                            time_elapsed_str = f"{int(h):02}:{int(m):02}:{int(s):02}"
+
+                    if pct_val is not None:
+                        last_pct = pct_val
+
+                    if not self.on_progress:
+                        continue
+
+                    fps_out = fps_v if fps_v is not None else 0.0
+                    spd_out = spd_v if spd_v is not None else 0.0
+
+                    if pct_val is not None:
+                        self.on_progress(
+                            self.job_id,
+                            EncodingProgress(
+                                file_name=os.path.basename(input_path),
+                                percent=pct_val,
+                                time_elapsed=time_elapsed_str,
+                                fps=fps_out,
+                                speed=spd_out,
+                                bytes_processed=sz_b,
+                            ),
+                        )
+                    elif (
+                        duration > 0
+                        and "frame=" in line
+                        and re.search(r"time=\s*N/A", line)
+                        and (fps_v is not None or spd_v is not None)
+                    ):
+                        # FFmpeg often reports encoding fps/speed while mux time is not ready yet.
+                        self.on_progress(
+                            self.job_id,
+                            EncodingProgress(
+                                file_name=os.path.basename(input_path),
+                                percent=last_pct,
+                                time_elapsed=time_elapsed_str,
+                                fps=fps_out,
+                                speed=spd_out,
+                                bytes_processed=sz_b,
+                            ),
+                        )
 
             success = False
             if proc:

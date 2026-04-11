@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed
+- **Release tooling**: `tools/bump_version.py` updates `.github/workflows/release-installers.yml` manual default; **CONTRIBUTING** documents AUR `.SRCINFO` generation.
+
+## [5.7.3] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder / console**: Replaced rich **`QTextEdit`** (HTML per line via `insertHtml`) with **`QPlainTextEdit`** and **`appendPlainText`**, capped line length, and **`setMaximumBlockCount(800)`** so multi-day batches no longer stress Qt text layout (addresses **SIGABRT** in `QTextEdit::paintEvent` / `realloc` seen after ~1h39m runs).
+
+## [5.7.2] - 2026-04-10
+
+### Fixed
+- **Mass AV1 Encoder**: Per-job **fps / speed** line (below codec rows) parses modern FFmpeg stats: optional space before ``speed=`` multiplier ``x``, ``Lsize=`` / ``KiB`` / ``MiB`` for muxed size, and emits fps/speed while ``time=N/A`` at stream start so the third line updates instead of staying stale until the first timed progress line.
+
+## [5.7.1] - 2026-04-10
+
+### Changed
+- **Footer GPU %** (`nvidia-smi`): Reports utilization for the **preferred NVIDIA GPU** using the same rules as `detect_gpu()` (discrete before integrated; **`CHRONOARCHIVER_FFMPEG_NVENC_GPU`** overrides when set). Previously the first row from `--query-gpu` was always used. Linux matches **lspci** PCI BDFs to `nvidia-smi` `pci.bus_id`; on multi-GPU Windows systems without a match, the adapter with the largest **memory.total** is used.
+
 ## [5.7.0] - 2026-04-10
 
 ### Added
