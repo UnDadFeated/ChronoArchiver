@@ -7,6 +7,7 @@ from core.remote_ssh import (
     is_remote_path,
     parse_remote_destination,
     ssh_command_environment,
+    ssh_connection_multiplex_argv,
     to_sftp_folder_uri,
 )
 
@@ -40,6 +41,16 @@ def test_is_remote_path():
 def test_to_sftp_folder_uri():
     r = RemoteTarget(host="h", path="/mnt/x", user="u")
     assert to_sftp_folder_uri(r) == "sftp://u@h/mnt/x/"
+
+
+def test_ssh_connection_multiplex_argv_stable():
+    r = RemoteTarget(host="192.168.4.112", path="/mnt/x", user="u")
+    a = ssh_connection_multiplex_argv(r)
+    assert "-o" in a
+    assert any("ControlMaster=auto" == x for x in a)
+    assert any("ControlPath=" in x for x in a)
+    b = ssh_connection_multiplex_argv(r)
+    assert a == b
 
 
 def test_sshpass_env_strips_askpass(monkeypatch):

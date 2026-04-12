@@ -54,6 +54,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from core.app_paths import settings_dir
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from core.media_capture_time import apply_preserved_times_from_source
 from ui.panel_start_hint import apply_start_button_hint
 from core.debug_logger import (
     INSTALLER_APP_AI_IMAGE_UPSCALER,
@@ -1605,6 +1606,8 @@ class AIImageUpscalerPanel(QWidget):
                 if not p.lower().endswith(".png"):
                     p += ".png"
                 self._last_result.save(p, format="PNG")
+            if self._source_path and os.path.isfile(self._source_path):
+                apply_preserved_times_from_source(self._source_path, p)
             self._add_log(f"Saved: {p}")
         except Exception as e:
             self._add_log(f"ERROR saving: {e}")

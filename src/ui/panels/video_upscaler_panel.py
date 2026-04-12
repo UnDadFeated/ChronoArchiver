@@ -67,6 +67,11 @@ from core.ml_runtime import (
 from core.lama_inpaint_models import APPROX_LAMA_BYTES, LAMA_FILENAME, LamaInpaintModelManager
 from core.lama_inpaint_runner import LamaInpaintRunner
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
+from core.media_capture_time import (
+    apply_preserved_filesystem_times,
+    ffmpeg_metadata_creation_args,
+    resolve_best_capture_epoch,
+)
 from ui.panel_start_hint import apply_start_button_hint
 from core.realesrgan_models import (
     RealESRGANModelManager,
@@ -1809,6 +1814,9 @@ class VideoUpscalerPanel(QWidget):
         def work():
             import cv2
 
+            capture_epoch = resolve_best_capture_epoch(path)
+            vup_meta = ffmpeg_metadata_creation_args(capture_epoch)
+
             tmp_vid = None
             artifact_dir: str | None = None
             try:
@@ -2079,8 +2087,7 @@ class VideoUpscalerPanel(QWidget):
                     "-b:a",
                     "192k",
                     "-shortest",
-                    dest,
-                ]
+                ] + vup_meta + [dest]
                 try:
                     mx = subprocess.run(
                         mux_cmd,
@@ -2110,8 +2117,9 @@ class VideoUpscalerPanel(QWidget):
                                 "0:v:0",
                                 "-c:v",
                                 "copy",
-                                dest,
-                            ],
+                            ]
+                            + vup_meta
+                            + [dest],
                             capture_output=True,
                             timeout=3600,
                         )
@@ -2143,8 +2151,9 @@ class VideoUpscalerPanel(QWidget):
                             "0:v:0",
                             "-c:v",
                             "copy",
-                            dest,
-                        ],
+                        ]
+                        + vup_meta
+                        + [dest],
                         capture_output=True,
                         timeout=3600,
                     )
@@ -2152,6 +2161,7 @@ class VideoUpscalerPanel(QWidget):
                         self._sig.log_msg.emit(f"ERROR: could not write output: {mux_e}")
                         return
                     self._sig.log_msg.emit(f"Saved video-only (audio mux skipped or unavailable): {mux_e}")
+                apply_preserved_filesystem_times(dest, capture_epoch)
                 self._last_output_path = dest
                 self._sig.log_msg.emit(f"Done: {dest}")
             except Exception as e:

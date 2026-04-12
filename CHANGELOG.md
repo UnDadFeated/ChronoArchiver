@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [5.10.0] - 2026-04-12
+
+### Changed
+- **Mass AV1 Encoder**: **"Fix media dates" checkbox removed** — media date preservation from source (filesystem times + MP4 `creation_time` metadata) is now **automatically applied to all encodes** without requiring a separate mode. Simplifies configuration and ensures archival data is always preserved (ffprobe / EXIF / filename / mtime resolution).
+- **`media_capture_time` · filename dates**: When **EXIF** / **ffprobe** do not yield a date, a **leading** `YYYY-MM-DD_` / `YYYY-MM-DD.` / `YYYY-MM-DD-` prefix (typical **Advanced Renamer** / export style) is preferred over another date embedded later in the basename (e.g. a second `YYYY-MM-DD` in the stem).
+- **`media_capture_time` · filesystem dates**: **Modified** time is set to the resolved capture epoch; **created** time is set to the same on **Windows** (`SetFileTime`). **Access** time is no longer overwritten to match the capture date — on POSIX **atime** is left unchanged; on Windows last-access is left unchanged when `SetFileTime` succeeds. Hardened: **FILETIME** range check, **CreateFileW** invalid-handle detection (32/64-bit), duplicate **FILETIME** structs for **SetFileTime**, and fallback to **utime** on any Windows/ctypes failure.
+- **Mass AV1 Encoder · SSH / SFTP**: **`scp`** uses OpenSSH **connection sharing** (`ControlMaster=auto` + a per-host control socket under the temp directory) so repeated transfers to the same host reuse the TCP session instead of paying a full handshake every file.
+- **Media Organizer**: **Scanning source** uses the same **popup** pattern as Mass AV1 (**`ui/scan_progress_dialog.py`**). **`os.walk`** reports **throttled** progress (count + bytes) so slow paths (e.g. NAS) do not sit at **0/0**; the main **Progress** bar is for the **organize** phase only. **Moved / Skipped / Duplicates** print to the **console** when the batch finishes; scan milestones use **throttled** console lines for very large trees. Status line above **Start** removed; **console** gets more vertical space and **unlimited** block history for huge runs.
+- **Code cleanup**: Removed unused `pathlib` import from **`scanner_panel.py`**; codebase remains clean after extensive audit.
+
+### Fixed
+- **Media date preservation · UTC ``creation_time`` tags**: ISO-8601 values with **Z** / timezone (typical **ffprobe** ``creation_time``) are kept as **timezone-aware UTC**. Previously they were converted to **naive** values; ``datetime.timestamp()`` then treated those clock components as **local** time, shifting epochs by several hours vs the source file (e.g. **+5 h** vs the SFTP original’s modified time).
+- **Media date preservation · time-of-day**: When **ffprobe** / filename / path yield **midnight** on the same **local calendar day** as the file’s **mtime**, but **mtime** has a non-midnight time (typical **date-only** ``creation_time`` tags), resolution now **prefers the mtime instant** so **container metadata** and filesystem times match the real recording time, not 12:00 AM. **UTC** ``00:00:00`` placeholders are also treated as date-only for the mtime preference rule.
+- **Media date preservation / Mass AV1 Encoder**: **FFmpeg** now sets **`creation_time` on the first video stream** (`-metadata:s:v:0`) as well as the **container** (`-metadata`). Many players show the **stream** tag; FFmpeg often defaulted it to **encode time** (today) while the **format** tag matched the capture date.
+- **Media date preservation · `apply_resolved_epoch_to_existing_output`**: If FFmpeg **remux** failed, **mtime/atime** were still updated while **MP4** tags stayed old — inconsistent file state on a reported failure. Filesystem times are applied only after remux succeeds (or when the path is not MP4/MOV/M4V remux-eligible).
+- **Media date preservation · MP4 ``creation_time`` written for FFmpeg**: Tags are now **ISO-8601 with the system local offset** (e.g. ``-08:00`` Pacific) instead of **UTC ``Z``** only. Some file managers mis-read ``Z`` as a local wall clock, so **Created** (from metadata) looked **later** than **Modified** (**mtime**) for the **same** instant. The Unix instant is unchanged; display on the machine that ran the fix aligns **Created** with **Modified**.
+
+### Added
+- **Media date preservation (app-wide · standardized)**: Shared **`media_capture_time`** resolution (EXIF / ffprobe / filename / parent folders / mtime / birth time) is now **consistently applied across all operations** — **Media Organizer** move/copy, **AI Media Scanner** move/copy, **Mass AV1 Encoder** encode + passthrough (FFmpeg **`creation_time`** metadata + filesystem times), **AI Image Upscaler** saves, and **AI Video Upscaler** final mux/remux. **No configuration needed**; archival metadata is preserved automatically by default.
+
+### Removed
+- **Mass AV1 Encoder**: "**Fix media dates**" checkbox and associated **configuration setting** (`fix_media_dates`). Date preservation is now **automatic for all operations** without requiring a separate UI mode or settings entry. Simplifies internal app logic and ensures consistent archival behavior.
+
 ## [5.9.0] - 2026-04-11
 
 ### Changed

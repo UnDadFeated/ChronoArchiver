@@ -25,7 +25,13 @@ import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from core.remote_ssh import RemoteTarget, parse_remote_destination, ssh_command_environment, ssh_extra_argv
+from core.remote_ssh import (
+    RemoteTarget,
+    parse_remote_destination,
+    ssh_command_environment,
+    ssh_connection_multiplex_argv,
+    ssh_extra_argv,
+)
 
 CONNECT_SCP = 60
 ENCODE_SCAN_CONNECT = 30
@@ -165,8 +171,11 @@ def _scp_argv(
     password_for_sshpass: Optional[str],
     src_spec: str,
     dst_spec: str,
+    *,
+    remote_for_mux: Optional[RemoteTarget] = None,
 ) -> List[str]:
-    inner = ["scp", "-q", *ssh_extra_argv(connect_timeout, batch_mode), src_spec, dst_spec]
+    mux = ssh_connection_multiplex_argv(remote_for_mux) if remote_for_mux else []
+    inner = ["scp", "-q", *ssh_extra_argv(connect_timeout, batch_mode), *mux, src_spec, dst_spec]
     if password_for_sshpass:
         ss = shutil.which("sshpass")
         if not ss:
@@ -184,7 +193,14 @@ def run_scp_from_remote(
 ) -> None:
     spec = f"{remote.ssh_spec()}:{remote_posix}"
     batch = password_for_sshpass is None
-    cmd = _scp_argv(CONNECT_SCP, batch, password_for_sshpass, spec, local_path)
+    cmd = _scp_argv(
+        CONNECT_SCP,
+        batch,
+        password_for_sshpass,
+        spec,
+        local_path,
+        remote_for_mux=remote,
+    )
     env = ssh_command_environment(None, password_for_sshpass)
     kw: dict = {
         "stdin": subprocess.DEVNULL,
@@ -210,7 +226,14 @@ def run_scp_to_remote(
 ) -> None:
     spec = f"{remote.ssh_spec()}:{remote_posix}"
     batch = password_for_sshpass is None
-    cmd = _scp_argv(CONNECT_SCP, batch, password_for_sshpass, local_path, spec)
+    cmd = _scp_argv(
+        CONNECT_SCP,
+        batch,
+        password_for_sshpass,
+        local_path,
+        spec,
+        remote_for_mux=remote,
+    )
     env = ssh_command_environment(None, password_for_sshpass)
     kw: dict = {
         "stdin": subprocess.DEVNULL,
@@ -282,6 +305,7 @@ def run_ssh_argv(
     password_for_sshpass: Optional[str],
     timeout: Optional[float],
     stdin: Optional[str] = None,
+    start_new_session: Optional[bool] = None,
 ) -> subprocess.CompletedProcess:
     core = argv
     if password_for_sshpass:
@@ -304,7 +328,11 @@ def run_ssh_argv(
         kw["input"] = stdin
     else:
         kw["stdin"] = subprocess.DEVNULL
-    if os.name != "nt":
+    # Default True on Unix (isolate from Ctrl+C / signals). For short remote commands that must
+    # return captured stdout, ``start_new_session=True`` can yield empty pipes with OpenSSH + sshpass.
+    if start_new_session is None:
+        start_new_session = os.name != "nt"
+    if start_new_session:
         kw["start_new_session"] = True
     return subprocess.run(cmd, **kw)
 

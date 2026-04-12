@@ -32,12 +32,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QSlider,
     QSizePolicy,
-    QDialog,
     QPlainTextEdit,
     QMessageBox,
 )
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
-from PySide6.QtGui import QCloseEvent, QShowEvent
 
 import sys
 import logging
@@ -74,14 +72,13 @@ from ui.local_remote_path_dialog import run_local_remote_path_dialog
 from core.av1_settings import AV1Settings
 from core.venv_manager import footer_nvidia_gpu_utilization_text
 from core.debug_logger import (
-    INSTALLER_APP_MASS_AV1_ENCODER,
     debug,
     log_exception,
-    log_installer_popup,
     structured_event,
     UTILITY_MASS_AV1_ENCODER,
 )
 from version import APP_NAME
+from ui.scan_progress_dialog import ScanProgressDialog
 
 # mkstemp prefix so STOP / quit can sweep orphans; must match _sweep_chrono_encoder_tempdir.
 _ENCODER_TMP_PREFIX = "chronoarchiver_av1_"
@@ -132,67 +129,6 @@ class _Signals(QObject):
     scan_progress = Signal(int, object)  # count, total_bytes (thread-safe for scan updates)
     scan_done = Signal(list, str)  # items, src — emitted from worker, handled in main thread
     scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
-
-
-class ScanProgressDialog(QDialog):
-    """Separate window showing file count and total size during source scan."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Scanning Source")
-        self.setModal(False)
-        self.setFixedSize(320, 120)
-        v = QVBoxLayout(self)
-        v.setSpacing(8)
-        v.setContentsMargins(12, 12, 12, 12)
-        self._lbl_files = QLabel("Files: 0")
-        self._lbl_files.setStyleSheet("font-size:12px; font-weight:600; color:#10b981;")
-        v.addWidget(self._lbl_files)
-        self._lbl_size = QLabel("Total size: 0 B")
-        self._lbl_size.setStyleSheet("font-size:11px; color:#aaa;")
-        v.addWidget(self._lbl_size)
-        self._bar = QProgressBar()
-        self._bar.setRange(0, 0)
-        self._bar.setFixedHeight(12)
-        v.addWidget(self._bar)
-        self.setStyleSheet("QDialog { background: #0d0d0d; }")
-        self._last_scan_log_ts = 0.0
-        self._last_scan_count = 0
-
-    def showEvent(self, event: QShowEvent) -> None:
-        super().showEvent(event)
-        log_installer_popup(INSTALLER_APP_MASS_AV1_ENCODER, "ScanProgressDialog", "opened")
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        log_installer_popup(INSTALLER_APP_MASS_AV1_ENCODER, "ScanProgressDialog", "closed")
-        super().closeEvent(event)
-
-    def update_progress(self, count: int, total_bytes: object):
-        self._lbl_files.setText(f"Files: {count}")
-        try:
-            tb = int(total_bytes)
-        except (TypeError, ValueError):
-            tb = 0
-        total_bytes = max(0, tb)
-        if total_bytes >= 1024**3:
-            sz = f"{total_bytes / (1024**3):.2f} GB"
-        elif total_bytes >= 1024**2:
-            sz = f"{total_bytes / (1024**2):.1f} MB"
-        elif total_bytes >= 1024:
-            sz = f"{total_bytes / 1024:.1f} KB"
-        else:
-            sz = f"{total_bytes} B"
-        self._lbl_size.setText(f"Total size: {sz}")
-        now = time.monotonic()
-        if count >= self._last_scan_count + 500 or (now - self._last_scan_log_ts) >= 5.0:
-            self._last_scan_log_ts = now
-            self._last_scan_count = count
-            log_installer_popup(
-                INSTALLER_APP_MASS_AV1_ENCODER,
-                "ScanProgressDialog",
-                "progress",
-                f"files={count} total_bytes={total_bytes}",
-            )
 
 
 class AV1EncoderPanel(QWidget):
@@ -444,15 +380,22 @@ class AV1EncoderPanel(QWidget):
         h_t.addWidget(self._lbl_threads_hint, 1)
         v_cfg.addLayout(h_t)
 
-        # Audio
+        # Audio (+ fix dates on same row: notes left, checkbox right)
         h_a = QHBoxLayout()
-        h_a.setSpacing(4)
+        h_a.setSpacing(8)
+        w_audio_left = QWidget()
+        h_audio_left = QHBoxLayout(w_audio_left)
+        h_audio_left.setContentsMargins(0, 0, 0, 0)
+        h_audio_left.setSpacing(6)
         self._chk_audio = QCheckBox("Optimize Audio")
         self._chk_audio.setStyleSheet("font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
         self._chk_audio.setChecked(self._settings.get("reencode_audio"))
         self._chk_audio.stateChanged.connect(lambda v: self._settings.set("reencode_audio", bool(v)))
-        h_a.addWidget(self._chk_audio)
-        h_a.addWidget(QLabel("Re-encode PCM/unsupported to Opus", styleSheet="font-size:7px; color:#444;"))
+        h_audio_left.addWidget(self._chk_audio, 0, Qt.AlignmentFlag.AlignLeft)
+        self._lbl_pcm_hint = QLabel("Re-encode PCM/unsupported to Opus", styleSheet="font-size:7px; color:#444;")
+        h_audio_left.addWidget(self._lbl_pcm_hint, 0, Qt.AlignmentFlag.AlignLeft)
+        h_a.addWidget(w_audio_left, 0, Qt.AlignmentFlag.AlignLeft)
+        h_a.addStretch(1)
         v_cfg.addLayout(h_a)
 
         v_cfg.addStretch()
@@ -883,11 +826,12 @@ class AV1EncoderPanel(QWidget):
             return
         can = self._can_start()
         self._btn_start.setEnabled(can)
+        _tip = "Start AV1 encoding for the queued files"
         apply_start_button_hint(
             self._btn_start,
             enabled=can,
             reasons_when_disabled=self._encoder_start_reasons(),
-            enabled_tip="Start AV1 encoding for the queued files",
+            enabled_tip=_tip,
         )
         self._guide_glow_phase = 0
         self._guide_pulse_timer.start()
@@ -1503,10 +1447,9 @@ class AV1EncoderPanel(QWidget):
                 tmp_cleanup: list[str] = []
                 if ctx.get("dst_remote"):
                     tmp_cleanup.append(ctx["tpath_local"])
-                fd, tmp_in = tempfile.mkstemp(
-                    suffix=posixpath.splitext(ref.rel_posix)[1] or ".mkv",
-                    prefix=_ENCODER_TMP_PREFIX,
-                )
+
+                _src_bn = posixpath.basename((ref.rel_posix or "").replace("\\", "/")).strip() or "source.mkv"
+                fd, tmp_in = tempfile.mkstemp(suffix="_" + _src_bn, prefix=_ENCODER_TMP_PREFIX)
                 os.close(fd)
                 tmp_cleanup.append(tmp_in)
                 try:
@@ -1631,6 +1574,7 @@ class AV1EncoderPanel(QWidget):
                         },
                     )
                     continue
+
                 try:
                     ctx = task["ctx"]
                     tmp_in = task["tmp_in"]
@@ -1931,10 +1875,8 @@ class AV1EncoderPanel(QWidget):
                     assert tpath_local is not None
 
                     if ref:
-                        fd, tmp_in = tempfile.mkstemp(
-                            suffix=posixpath.splitext(ref.rel_posix)[1] or ".mkv",
-                            prefix=_ENCODER_TMP_PREFIX,
-                        )
+                        _src_bn = posixpath.basename((ref.rel_posix or "").replace("\\", "/")).strip() or "source.mkv"
+                        fd, tmp_in = tempfile.mkstemp(suffix="_" + _src_bn, prefix=_ENCODER_TMP_PREFIX)
                         os.close(fd)
                         tmp_cleanup.append(tmp_in)
                         run_scp_from_remote(ref.target, ref.abs_posix, tmp_in, password_for_sshpass=pw)
