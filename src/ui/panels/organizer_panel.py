@@ -6,6 +6,7 @@ Uses src/core/organizer.py unchanged.
 
 import os
 import threading
+import time
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -32,21 +33,29 @@ from core.organizer import OrganizerEngine, PHOTO_EXTS, VIDEO_EXTS
 from core.remote_ssh import REMOTE_FS_UNSUPPORTED_HINT, is_remote_path
 from core.fs_task_lock import release_fs_heavy, try_acquire_fs_heavy
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
-from core.debug_logger import debug, structured_event, UTILITY_MEDIA_ORGANIZER
+from core.debug_logger import (
+    INSTALLER_APP_MEDIA_ORGANIZER,
+    debug,
+    structured_event,
+    UTILITY_MEDIA_ORGANIZER,
+)
 from ui.panel_start_hint import apply_start_button_hint
 from ui.panel_widgets import (
     GUIDE_PANEL_PRIMARY_START_PULSE_QSS,
     apply_guide_clear_primary_start_button,
 )
 from ui.local_remote_path_dialog import run_local_remote_path_dialog
+from ui.scan_progress_dialog import ScanProgressDialog
 
 
 class _Signals(QObject):
     log_msg = Signal(str)
     progress = Signal(float)
-    status = Signal(str)
+    progress_files = Signal(int, int)  # files_done, total_files (organize phase)
     finished = Signal()
     stats = Signal(int, int, int)  # moved, skipped, duplicates
+    scan_progress = Signal(int, object)  # count, total_bytes (scan phase)
+    scan_phase_done = Signal(int, object)  # total_files, total_bytes — end of walk, before organizing
 
 
 class MediaOrganizerPanel(QWidget):
@@ -57,14 +66,17 @@ class MediaOrganizerPanel(QWidget):
         self._sig = _Signals()
         self._sig.log_msg.connect(self._add_log)
         self._sig.progress.connect(self._on_progress)
-        self._sig.status.connect(self._on_status)
+        self._sig.progress_files.connect(self._on_progress_files)
         self._sig.finished.connect(self._on_finished)
         self._sig.stats.connect(self._on_stats)
+        self._sig.scan_phase_done.connect(self._on_organizer_scan_done, Qt.ConnectionType.QueuedConnection)
 
         self._engine = None  # Initialized in _run_job
         self._is_running = False
         self._last_stats = (0, 0, 0)
         self._fs_holding_org = False
+        self._scan_dialog = None
+        self._org_scan_log_ts = 0.0
 
         _shint = "font-size: 7px; color: #444; margin-top: -1px;"
         _bar_h = 28
@@ -92,7 +104,7 @@ class MediaOrganizerPanel(QWidget):
         # ── COMMAND STRIP ─────────────────────────────────────────────────────
         h_strip = QHBoxLayout()
         h_strip.setSpacing(6)
-        _box_height = 132
+        _box_height = 120
 
         # 1. Paths (Source, Target, Photos/Videos — merged)
         grp_paths = QGroupBox("Paths")
@@ -219,10 +231,10 @@ class MediaOrganizerPanel(QWidget):
         root.addLayout(h_strip)
 
         # ── EXECUTION ─────────────────────────────────────────────────────────
-        grp_exec = QGroupBox("Organization Progress")
+        grp_exec = QGroupBox("Progress")
         v_exec = QVBoxLayout(grp_exec)
-        v_exec.setContentsMargins(8, 4, 8, 8)
-        v_exec.setSpacing(1)
+        v_exec.setContentsMargins(8, 4, 8, 6)
+        v_exec.setSpacing(4)
 
         self._bar = QProgressBar()
         self._bar.setObjectName("masterBar")
@@ -230,14 +242,6 @@ class MediaOrganizerPanel(QWidget):
         self._bar.setTextVisible(True)
         self._bar.setFormat("Ready")
         v_exec.addWidget(self._bar)
-
-        self._lbl_status = QLabel("Ready to organize")
-        self._lbl_status.setAlignment(Qt.AlignCenter)
-        self._lbl_status.setStyleSheet(
-            "color:#10b981; font-size:10px; font-weight:800; margin-top:2px; "
-            "padding:0; margin-left:0; margin-right:0; margin-bottom:0;"
-        )
-        v_exec.addWidget(self._lbl_status)
 
         h_ctrl = QHBoxLayout()
         h_ctrl.setSpacing(8)
@@ -279,7 +283,9 @@ class MediaOrganizerPanel(QWidget):
         self._log_edit.setStyleSheet(PANEL_CONSOLE_TEXTEDIT_STYLE)
         self._log_edit.setReadOnly(True)
         self._log_edit.setAcceptRichText(True)
-        self._log_edit.document().setMaximumBlockCount(1000)
+        self._log_edit.setMinimumHeight(280)
+        # Large batches (100k+ files): allow full console history; user can clear manually if needed.
+        self._log_edit.document().setMaximumBlockCount(0)
         v_log.addWidget(self._log_edit)
         root.addWidget(grp_log, 1)  # Stretch: console takes all remaining vertical space
 
@@ -468,6 +474,21 @@ class MediaOrganizerPanel(QWidget):
         self._btn_stop.setEnabled(True)
         self._reset_guide_pulse_state()
 
+        self._bar.setValue(0)
+        self._bar.setFormat("Building file list…")
+        self._org_scan_log_ts = 0.0
+
+        scan_dialog = ScanProgressDialog(
+            self,
+            title="Scanning source",
+            log_app=INSTALLER_APP_MEDIA_ORGANIZER,
+        )
+        self._scan_dialog = scan_dialog
+        self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
+        self._sig.scan_progress.connect(self._on_scan_progress_console, Qt.ConnectionType.QueuedConnection)
+        scan_dialog.show()
+        self._add_log("Scanning source folder (see progress window)…")
+
         def _log(msg):
             self._sig.log_msg.emit(msg)
 
@@ -476,10 +497,16 @@ class MediaOrganizerPanel(QWidget):
         def _prog(bytes_done, total_bytes, files_done, total_files, filename):
             pct = (bytes_done / total_bytes) if total_bytes > 0 else 0.0
             self._sig.progress.emit(pct)
-            self._sig.status.emit(f"{files_done}/{total_files}  {filename}")
+            self._sig.progress_files.emit(files_done, total_files)
 
         def _stats(moved, skipped, duplicates):
             self._sig.stats.emit(moved, skipped, duplicates)
+
+        def _scan_prog(count: int, total_b: int):
+            self._sig.scan_progress.emit(count, total_b)
+
+        def _scan_done(total_f: int, total_b: int):
+            self._sig.scan_phase_done.emit(total_f, total_b)
 
         def _run():
             try:
@@ -495,6 +522,8 @@ class MediaOrganizerPanel(QWidget):
                     progress_callback=_prog,
                     stats_callback=_stats,
                     exif_auto_rotate=self._chk_exif_rotate.isChecked(),
+                    scan_progress_callback=_scan_prog,
+                    scan_complete_callback=_scan_done,
                 )
             except Exception as e:
                 self._sig.log_msg.emit(f"ERROR: {e}")
@@ -514,8 +543,61 @@ class MediaOrganizerPanel(QWidget):
     def _on_progress(self, val):
         self._bar.setValue(int(val * 100))
 
-    def _on_status(self, msg):
-        self._lbl_status.setText(msg)
+    def _on_progress_files(self, files_done: int, total_files: int):
+        if total_files > 0:
+            self._bar.setFormat(f"Organizing {files_done}/{total_files}")
+
+    def _on_scan_progress_console(self, count: int, total_b: object):
+        """Throttled console lines during walk (100k+ files)."""
+        try:
+            tb = int(total_b)
+        except (TypeError, ValueError):
+            tb = 0
+        now = time.monotonic()
+        if count != 1 and count % 8000 != 0 and (now - self._org_scan_log_ts) < 14.0:
+            return
+        self._org_scan_log_ts = now
+        if tb >= 1024**3:
+            sz = f"{tb / (1024**3):.2f} GB"
+        elif tb >= 1024**2:
+            sz = f"{tb / (1024**2):.1f} MB"
+        elif tb >= 1024:
+            sz = f"{tb / 1024:.1f} KB"
+        else:
+            sz = f"{tb} B"
+        self._add_log(f"Scanning… {count:,} files ({sz} total)")
+
+    def _on_organizer_scan_done(self, total_files: int, total_bytes: object):
+        dlg = getattr(self, "_scan_dialog", None)
+        if dlg:
+            try:
+                self._sig.scan_progress.disconnect(dlg.update_progress)
+            except Exception:
+                pass
+            try:
+                self._sig.scan_progress.disconnect(self._on_scan_progress_console)
+            except Exception:
+                pass
+            try:
+                dlg.close()
+            except Exception:
+                pass
+        self._scan_dialog = None
+        try:
+            tb = int(total_bytes)
+        except (TypeError, ValueError):
+            tb = 0
+        if tb >= 1024**3:
+            sz = f"{tb / (1024**3):.2f} GB"
+        elif tb >= 1024**2:
+            sz = f"{tb / (1024**2):.1f} MB"
+        else:
+            sz = f"{tb / (1024**2):.2f} MB"
+        self._add_log(f"Scan complete: {total_files:,} files (~{sz}). Starting organization…")
+        if total_files > 0:
+            self._bar.setFormat(f"Organizing 0/{total_files}")
+        else:
+            self._bar.setFormat("No media files found")
 
     def _on_stats(self, moved, skipped, duplicates):
         self._last_stats = (moved, skipped, duplicates)
@@ -525,6 +607,21 @@ class MediaOrganizerPanel(QWidget):
 
     def _on_finished(self):
         self._is_running = False
+        dlg = getattr(self, "_scan_dialog", None)
+        if dlg:
+            try:
+                self._sig.scan_progress.disconnect(dlg.update_progress)
+            except Exception:
+                pass
+            try:
+                self._sig.scan_progress.disconnect(self._on_scan_progress_console)
+            except Exception:
+                pass
+            try:
+                dlg.close()
+            except Exception:
+                pass
+            self._scan_dialog = None
         if self._fs_holding_org:
             release_fs_heavy()
             self._fs_holding_org = False
@@ -535,8 +632,9 @@ class MediaOrganizerPanel(QWidget):
         self._bar.setFormat("Complete")
         stats = getattr(self, "_last_stats", (0, 0, 0))
         moved, skipped, duplicates = stats
-        self._lbl_status.setText(f"Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}")
-        self._add_log("Batch organization complete.")
+        self._add_log(
+            f"Batch complete. Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}"
+        )
         debug(
             UTILITY_MEDIA_ORGANIZER, f"Organization complete: moved={moved}, skipped={skipped}, duplicates={duplicates}"
         )

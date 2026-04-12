@@ -110,6 +110,26 @@ def ssh_extra_argv(connect_timeout: int, batch_mode: bool) -> List[str]:
     return opts
 
 
+def ssh_connection_multiplex_argv(remote: RemoteTarget) -> List[str]:
+    """
+    OpenSSH connection sharing (``ControlMaster=auto``) so repeated ``ssh`` / ``scp`` to the same
+    host reuse one TCP session and crypto handshake (large win on LAN batches).
+    """
+    if os.name == "nt":
+        return []
+    h = re.sub(r"[^A-Za-z0-9._-]+", "_", remote.host)[:200] or "host"
+    u = re.sub(r"[^A-Za-z0-9._-]+", "_", (remote.user or "u"))[:80]
+    sock = os.path.join(tempfile.gettempdir(), f"chronoarchiver_mux_{u}@{h}.sock")
+    return [
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        f"ControlPath={sock}",
+        "-o",
+        "ControlPersist=600",
+    ]
+
+
 def _ssh_askpass_py() -> Path:
     return Path(__file__).resolve().parent.parent / "ui" / "ssh_askpass.py"
 

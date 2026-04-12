@@ -62,6 +62,7 @@ INSTALLER_APP_AI_VIDEO_UPSCALER = "AI Video Upscaler"
 INSTALLER_APP_AI_IMAGE_UPSCALER = "AI Image Upscaler"
 INSTALLER_APP_AI_MEDIA_SCANNER = "AI Media Scanner"
 INSTALLER_APP_MASS_AV1_ENCODER = "Mass AV1 Encoder"
+INSTALLER_APP_MEDIA_ORGANIZER = "Media Organizer"
 
 
 def log_installer_popup(app: str, dialog: str, event: str, detail: str = "") -> None:

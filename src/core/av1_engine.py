@@ -19,6 +19,19 @@ try:
 except ImportError:
     from core.debug_logger import debug, UTILITY_MASS_AV1_ENCODER
 
+try:
+    from .media_capture_time import (
+        apply_preserved_times_from_source,
+        ffmpeg_metadata_creation_args,
+        resolve_best_capture_epoch,
+    )
+except ImportError:
+    from core.media_capture_time import (
+        apply_preserved_times_from_source,
+        ffmpeg_metadata_creation_args,
+        resolve_best_capture_epoch,
+    )
+
 
 def _ffmpeg_muxed_size_bytes(line: str) -> int:
     """
@@ -195,6 +208,7 @@ def passthrough_av1_to_output(
     if ext_in == ".mp4" and ext_out == ".mp4":
         try:
             shutil.copy2(input_path, output_path)
+            apply_preserved_times_from_source(input_path, output_path)
             return True
         except OSError as e:
             if log:
@@ -223,8 +237,10 @@ def passthrough_av1_to_output(
             "copy",
             "-movflags",
             "+faststart",
-            output_path,
         ]
+        ep = resolve_best_capture_epoch(input_path)
+        cmd.extend(ffmpeg_metadata_creation_args(ep))
+        cmd.append(output_path)
         r = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -233,6 +249,7 @@ def passthrough_av1_to_output(
             timeout=86400,
         )
         if r.returncode == 0:
+            apply_preserved_times_from_source(input_path, output_path)
             return True
         if log and r.stderr:
             debug(UTILITY_MASS_AV1_ENCODER, f"AV1 remux stderr tail: {r.stderr[-400:]}")
@@ -691,6 +708,7 @@ class AV1EncoderEngine:
         if reencode_audio:
             a_args = ["-c:a", "libopus", "-b:a", "128k", "-af", "aresample=async=1"]
 
+        capture_epoch = resolve_best_capture_epoch(input_path)
         # Map primary video + first audio only. ``-map 0`` muxes every audio/subtitle/data stream;
         # libopus then runs per audio stream and a bad/extra track (e.g. third stream EINVAL) aborts the whole job.
         # ``0:a:0?`` is optional when there is no audio (e.g. silent video).
@@ -710,6 +728,7 @@ class AV1EncoderEngine:
             ]
             + v_args
             + a_args
+            + ffmpeg_metadata_creation_args(capture_epoch)
             + [output_path]
         )
 
@@ -913,6 +932,7 @@ class AV1EncoderEngine:
                     debug(UTILITY_MASS_AV1_ENCODER, fail_hint)
                 return False, input_path, output_path, fail_hint, False
             debug(UTILITY_MASS_AV1_ENCODER, f"Job {self.job_id} encode success: {os.path.basename(input_path)}")
+            apply_preserved_times_from_source(input_path, output_path)
             return True, input_path, output_path, None, False
         except Exception as e:
             self.logger.error(f"Error encoding {input_path}: {e}")

@@ -51,9 +51,8 @@ _QUEUED_SINGLESHOT = Qt.ConnectionType(
 )
 from PySide6.QtGui import QCloseEvent, QPixmap, QShowEvent, QTextCursor
 
-import pathlib
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from core.media_capture_time import apply_preserved_filesystem_times, resolve_best_capture_epoch
 from core.scanner import ScannerEngine, OPENCV_AVAILABLE
 from core.remote_ssh import REMOTE_FS_UNSUPPORTED_HINT, is_remote_path
 from ui.console_style import message_to_html, PANEL_CONSOLE_TEXTEDIT_STYLE
@@ -1451,6 +1450,7 @@ class AIScannerPanel(QWidget):
         for p in self._engine.others_list:
             if os.path.isfile(p):
                 try:
+                    capture_epoch = resolve_best_capture_epoch(p)
                     dest_path = os.path.join(dest_dir, os.path.basename(p))
                     if os.path.exists(dest_path):
                         base, ext = os.path.splitext(os.path.basename(p))
@@ -1460,6 +1460,7 @@ class AIScannerPanel(QWidget):
                                 break
                     if self._copy_or_move_with_exif_correction(p, dest_path, action):
                         count += 1
+                        apply_preserved_filesystem_times(dest_path, capture_epoch)
                     else:
                         # Fallback to plain copy/move if EXIF correction failed
                         if action == "move":
@@ -1467,6 +1468,7 @@ class AIScannerPanel(QWidget):
                         else:
                             shutil.copy2(p, dest_path)
                         count += 1
+                        apply_preserved_filesystem_times(dest_path, capture_epoch)
                 except Exception as e:
                     self._add_log(f"{action.title()} failed: {p} — {e}")
                     debug(UTILITY_AI_MEDIA_SCANNER, f"{action} failed: {p} — {e}")

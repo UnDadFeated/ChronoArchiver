@@ -2,8 +2,8 @@ import os
 import shutil
 import hashlib
 import re
-import subprocess
 import pathlib
+import time
 from datetime import datetime
 from typing import Callable, Optional
 import piexif
@@ -18,6 +18,19 @@ try:
     from .debug_logger import debug, UTILITY_MEDIA_ORGANIZER
 except ImportError:
     from core.debug_logger import debug, UTILITY_MEDIA_ORGANIZER
+
+try:
+    from .media_capture_time import (
+        apply_preserved_filesystem_times,
+        resolve_best_capture_datetime,
+        resolve_best_capture_epoch,
+    )
+except ImportError:
+    from core.media_capture_time import (
+        apply_preserved_filesystem_times,
+        resolve_best_capture_datetime,
+        resolve_best_capture_epoch,
+    )
 
 PHOTO_EXTS = {
     ".jpg",
@@ -75,119 +88,9 @@ class OrganizerEngine:
 
     def get_date_taken(self, file_path: str) -> Optional[datetime]:
         """
-        Extract date taken. Resolution order:
-        - Images: EXIF DateTimeOriginal/Digitized → filename → mtime
-        - Videos: FFprobe creation_time → filename → mtime (container metadata often more accurate than filename)
+        Extract date taken (shared **media_capture_time** resolution: EXIF / ffprobe / filename / mtime …).
         """
-        ext = pathlib.Path(file_path).suffix.lower()
-        is_video = ext in VIDEO_EXTS
-
-        def _valid(dt: datetime) -> bool:
-            return dt is not None and dt.year >= MIN_YEAR
-
-        # 1. Images: EXIF (DateTimeOriginal 36867, DateTimeDigitized 36868)
-        if not is_video:
-            try:
-                exif_dict = piexif.load(file_path)
-                exif_section = exif_dict.get("Exif") or {}
-                for tag_id in (36867, 36868):
-                    if tag_id not in exif_section:
-                        continue
-                    raw = exif_section[tag_id]
-                    date_str = raw.decode("utf-8", errors="replace").strip()
-                    if len(date_str) < 19:
-                        continue
-                    date_str = date_str[:19]
-                    for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-                        try:
-                            dt = datetime.strptime(date_str, fmt)
-                            if _valid(dt):
-                                return dt
-                        except ValueError:
-                            continue
-                    break
-            except (Exception, MemoryError):
-                pass
-
-        # 2. Videos: FFprobe creation_time (format, then stream tags as fallback)
-        if is_video:
-            probes = [
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format_tags=creation_time",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    file_path,
-                ],
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream_tags=creation_time",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    file_path,
-                ],
-            ]
-            for cmd in probes:
-                try:
-                    out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
-                    if out:
-                        line = out.split("=")[-1] if "=" in out else out.split("\n")[0]
-                        if line:
-                            dt = datetime.fromisoformat(line.replace("Z", "+00:00"))
-                            if dt.tzinfo:
-                                dt = dt.replace(tzinfo=None)
-                            if _valid(dt):
-                                return dt
-                except (subprocess.SubprocessError, ValueError, OSError, IndexError):
-                    pass
-
-        # 3. Filename (YYYY, MM, DD with optional separators)
-        filename = os.path.basename(file_path)
-        pattern = r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})"
-        match = re.search(pattern, filename)
-        if match:
-            y, m, d = match.groups()
-            try:
-                dt = datetime.strptime(f"{y}{m}{d}", "%Y%m%d")
-                if _valid(dt):
-                    return dt
-            except ValueError:
-                pass
-
-        # 4. Parent folder date (e.g. 2024-03-15 or 20240315 in dir name)
-        parent = os.path.dirname(file_path)
-        for _ in range(3):  # Check up to 3 levels up
-            if not parent or parent == os.path.dirname(parent):
-                break
-            pname = os.path.basename(parent)
-            m = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", pname)
-            if m:
-                y, mo, d = m.groups()
-                try:
-                    dt = datetime.strptime(f"{y}{mo}{d}", "%Y%m%d")
-                    if _valid(dt):
-                        return dt
-                except ValueError:
-                    pass
-            parent = os.path.dirname(parent)
-
-        # 5. File modification time
-        try:
-            timestamp = pathlib.Path(file_path).stat().st_mtime
-            dt = datetime.fromtimestamp(timestamp)
-            if _valid(dt):
-                return dt
-        except OSError:
-            pass
-        return None
+        return resolve_best_capture_datetime(file_path)
 
     def _quick_hash(self, file_path: str, chunk_size: int = 1024 * 1024) -> str:
         """Read the first 1MB of a file and return its MD5 hash."""
@@ -260,6 +163,8 @@ class OrganizerEngine:
         progress_callback=None,
         stats_callback=None,
         exif_auto_rotate: bool = False,
+        scan_progress_callback=None,
+        scan_complete_callback=None,
     ):
         """action: move|copy|symlink. duplicate_policy: skip|keep_newer|overwrite|overwrite_same|rename"""
         debug(
@@ -308,10 +213,11 @@ class OrganizerEngine:
             self.logger("Note: EXIF auto-rotate is skipped when Action is Symlink (files are linked, not re-encoded).")
 
         self.logger("Building file queue...")
-        if progress_callback:
-            progress_callback(0, 1, 0, 0, "Scanning...")
 
         queue_list = []
+        scan_count = 0
+        scan_bytes = 0
+        last_scan_emit = 0.0
         for root, dirs, files in os.walk(source_dir):
             if self.cancel_flag:
                 break
@@ -328,9 +234,33 @@ class OrganizerEngine:
                 except OSError:
                     size = 0
                 queue_list.append((full_path, size, file))
+                scan_count += 1
+                scan_bytes = max(0, scan_bytes + size)
+                if scan_progress_callback:
+                    now = time.monotonic()
+                    if (
+                        scan_count == 1
+                        or scan_count % 100 == 0
+                        or (now - last_scan_emit) >= 0.2
+                    ):
+                        last_scan_emit = now
+                        try:
+                            scan_progress_callback(scan_count, scan_bytes)
+                        except Exception:
+                            pass
 
         total_files = len(queue_list)
         total_bytes = sum(s for _, s, _ in queue_list)
+        if scan_progress_callback:
+            try:
+                scan_progress_callback(total_files, total_bytes)
+            except Exception:
+                pass
+        if scan_complete_callback:
+            try:
+                scan_complete_callback(total_files, total_bytes)
+            except Exception:
+                pass
         self.logger(f"Found {total_files} media files ({total_bytes / (1024 * 1024):.1f} MB).")
         debug(UTILITY_MEDIA_ORGANIZER, f"Found {total_files} files, {total_bytes} bytes")
 
@@ -356,6 +286,7 @@ class OrganizerEngine:
         duplicates_found = 0
         skipped = 0
         assigned_targets = set()
+        last_org_emit = 0.0
 
         for full_path, size, file in queue_list:
             if self.cancel_flag:
@@ -366,7 +297,15 @@ class OrganizerEngine:
             files_processed += 1
             bytes_done += size
             if progress_callback and total_bytes > 0:
-                progress_callback(bytes_done, total_bytes, files_processed, total_files, file)
+                now = time.monotonic()
+                if (
+                    files_processed == 1
+                    or files_processed == total_files
+                    or files_processed % 100 == 0
+                    or (now - last_org_emit) >= 0.15
+                ):
+                    last_org_emit = now
+                    progress_callback(bytes_done, total_bytes, files_processed, total_files, file)
 
             date_obj = self.get_date_taken(full_path)
             if not date_obj:
@@ -510,6 +449,7 @@ class OrganizerEngine:
             )
 
             if not dry_run:
+                capture_epoch = resolve_best_capture_epoch(full_path)
                 ok = False
                 rotated_ok = False
                 if want_rotate:
@@ -520,6 +460,8 @@ class OrganizerEngine:
                 if not want_rotate or not ok:
                     ok = _do_file(full_path, target_path, file)
                 if ok:
+                    if action != "symlink":
+                        apply_preserved_filesystem_times(target_path, capture_epoch)
                     files_moved += 1
                     tag = action_verb + (" + EXIF ROTATE" if rotated_ok else "")
                     self.logger(f'[{tag}] "{file}" -> "{rel_target_path}"')
