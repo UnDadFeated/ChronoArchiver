@@ -1,0 +1,50 @@
+app-id: io.github.UnDadFeated.ChronoArchiver
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+command: chronoarchiver
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=ssh-auth
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-documents
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: chronoarchiver
+    buildsystem: simple
+    build-commands:
+      - install -d /app/share/chronoarchiver
+      - cp -a src /app/share/chronoarchiver/
+      - install -Dm644 pyproject.toml /app/share/chronoarchiver/pyproject.toml
+      - install -Dm644 requirements.txt /app/share/chronoarchiver/requirements.txt
+      - install -d /app/bin
+      - install -Dm755 chronoarchiver-launcher /app/bin/chronoarchiver
+      - install -Dm644 io.github.UnDadFeated.ChronoArchiver.desktop /app/share/applications/io.github.UnDadFeated.ChronoArchiver.desktop
+      - install -Dm644 io.github.UnDadFeated.ChronoArchiver.metainfo.xml /app/share/metainfo/io.github.UnDadFeated.ChronoArchiver.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/256x256/apps/io.github.UnDadFeated.ChronoArchiver.png
+      - install -Dm644 icon.png /app/share/icons/hicolor/128x128/apps/io.github.UnDadFeated.ChronoArchiver.png
+    sources:
+      - type: dir
+        path: ../src
+      - type: file
+        path: ../pyproject.toml
+      - type: file
+        path: ../requirements.txt
+      - type: file
+        path: chronoarchiver-launcher
+      - type: file
+        path: io.github.UnDadFeated.ChronoArchiver.desktop
+      - type: file
+        path: io.github.UnDadFeated.ChronoArchiver.metainfo.xml
+      - type: file
+        path: ../src/ui/assets/icon.png
+        dest-filename: icon.png

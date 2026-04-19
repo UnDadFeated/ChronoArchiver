@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ChronoArchiver
+Comment=Unified media organizer, AV1 encoder, and optional local AI tools
+Exec=chronoarchiver
+Icon=io.github.UnDadFeated.ChronoArchiver
+Terminal=false
+Categories=Utility;AudioVideo;Video;
+Keywords=media;archive;organizer;av1;ai;
+StartupNotify=true

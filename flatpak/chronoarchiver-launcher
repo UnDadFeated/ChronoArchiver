@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_ROOT="/app/share/chronoarchiver"
+
+export PYTHONPATH="${APP_ROOT}/src:${PYTHONPATH:-}"
+export CHRONOARCHIVER_INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/ChronoArchiver"
+
+mkdir -p "${CHRONOARCHIVER_INSTALL_ROOT}"
+cd "${APP_ROOT}"
+
+exec python3 "${APP_ROOT}/src/bootstrap.py" "$@"

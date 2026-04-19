@@ -7,16 +7,13 @@ import math
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn.functional as F
-
-from core.rrdbnet import RRDBNet
 
 _log = logging.getLogger("ChronoArchiver.realesrgan")
 
 
 def _extract_state_dict(model_path: str | Path) -> dict:
     """Load checkpoint dict (params / params_ema / raw) from a .pth file."""
+    import torch
     p = str(model_path)
     loadnet = torch.load(p, map_location=torch.device("cpu"))
     if isinstance(loadnet, dict):
@@ -102,6 +99,11 @@ def validate_rrdb_rgb_checkpoint_file(model_path: str | Path) -> tuple[bool, str
         return ent[2], ent[3], ent[4]
 
     try:
+        import torch
+    except ImportError:
+        return False, "PyTorch not installed, cannot validate checkpoint.", False
+
+    try:
         state = _extract_state_dict(p)
         _validate_rrdb_rgb_checkpoint(state, p)
         _rrdb_checkpoint_cache[key] = (st.st_mtime, st.st_size, True, "", False)
@@ -146,8 +148,12 @@ class RealESRGANRunner:
         self.mod_scale: int | None = None
         self.mod_pad_h = 0
         self.mod_pad_w = 0
-        self.half = half and torch.cuda.is_available()
+        self.half = half
 
+        import torch
+        from core.rrdbnet import RRDBNet
+
+        self.half = self.half and torch.cuda.is_available()
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         state = _extract_state_dict(model_path)
         _validate_rrdb_rgb_checkpoint(state, model_path)
@@ -179,6 +185,9 @@ class RealESRGANRunner:
         self.output: torch.Tensor | None = None
 
     def _pre_process(self, img_rgb: np.ndarray) -> None:
+        import torch
+        import torch.nn.functional as F
+
         img = torch.from_numpy(np.transpose(img_rgb, (2, 0, 1))).float()
         self.img = img.unsqueeze(0).to(self.device)
         if self.half:
@@ -203,11 +212,13 @@ class RealESRGANRunner:
             self.img = F.pad(self.img, (0, self.mod_pad_w, 0, self.mod_pad_h), "reflect")
 
     def _process(self) -> None:
+        import torch
         assert self.img is not None
         with torch.no_grad():
             self.output = self.model(self.img)
 
     def _tile_process(self) -> None:
+        import torch
         assert self.img is not None
         batch, channel, height, width = self.img.shape
         s = self.net_scale
@@ -274,24 +285,25 @@ class RealESRGANRunner:
             out = out[:, :, 0 : h - self.pre_pad * self.net_scale, 0 : w - self.pre_pad * self.net_scale]
         return out
 
-    @torch.no_grad()
     def enhance(self, img_bgr: np.ndarray, *, user_scale: float | None = None) -> np.ndarray:
         """Upscale BGR image. user_scale: desired multiple vs input (e.g. 3.0 with x4 net resizes down)."""
         import cv2
+        import torch
 
-        h_input, w_input = img_bgr.shape[0:2]
-        img = img_bgr.astype(np.float32) / 255.0
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        with torch.no_grad():
+            h_input, w_input = img_bgr.shape[0:2]
+            img = img_bgr.astype(np.float32) / 255.0
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        self._pre_process(img)
-        if self.tile_size > 0:
-            self._tile_process()
-        else:
-            self._process()
-        output_img = self._post_process()
-        output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
-        output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
-        output = (output_img * 255.0).round().astype(np.uint8)
+            self._pre_process(img)
+            if self.tile_size > 0:
+                self._tile_process()
+            else:
+                self._process()
+            output_img = self._post_process()
+            output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
+            output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
+            output = (output_img * 255.0).round().astype(np.uint8)
 
         if user_scale is not None and abs(float(user_scale) - float(self.net_scale)) > 1e-6:
             output = cv2.resize(
