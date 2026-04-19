@@ -44,6 +44,7 @@ class ScannerEngine:
         # Results
         self.others_list: List[str] = []  # Files to be moved/archived
         self.keep_list: List[str] = []  # Files containing subjects (people/animals)
+        self.duplicate_groups: dict[str, list[str]] = {}  # {representative: [duplicates...]}
 
         # Progress Callbacks (current, total, eta_seconds)
         self.progress_callback: Optional[Callable[[int, int, float], None]] = None
@@ -52,7 +53,7 @@ class ScannerEngine:
         self.stop_event.set()
 
     def run_scan(
-        self, directory: str, include_subfolders: bool = True, keep_animals: bool = False, animal_threshold: float = 0.4
+        self, directory: str, include_subfolders: bool = True, keep_animals: bool = False, animal_threshold: float = 0.4, find_duplicates: bool = False
     ):
         if not OPENCV_AVAILABLE:
             self.logger("Error: OpenCV (python-opencv) is not installed. AI features are disabled.")
@@ -71,10 +72,11 @@ class ScannerEngine:
 
         debug(
             UTILITY_AI_MEDIA_SCANNER,
-            f"Scan start: dir={directory}, recursive={include_subfolders}, keep_animals={keep_animals}, threshold={animal_threshold}",
+            f"Scan start: dir={directory}, recursive={include_subfolders}, keep_animals={keep_animals}, threshold={animal_threshold}, duplicates={find_duplicates}",
         )
         self.others_list.clear()
         self.keep_list.clear()
+        self.duplicate_groups.clear()
         self.stop_event.clear()
 
         # Gather files with sizes (queue: path, size for byte-weighted progress)
@@ -97,25 +99,29 @@ class ScannerEngine:
         total = len(all_files)
         total_bytes = sum(s for _, s in all_files)
         debug(UTILITY_AI_MEDIA_SCANNER, f"Found {total} images ({total_bytes} bytes), initializing models")
-        self.logger(f"Found {total} images ({total_bytes / (1024 * 1024):.1f} MB). Starting Pipeline (GPU/OpenCV)...")
+        self.logger(f"Found {total} images ({total_bytes / (1024 * 1024):.1f} MB). Starting Pipeline...")
+
+        rep_hashes = {}  # Store the dhash of representative images for fast lookup
 
         # Models
         face_engine = None
         subject_engine = None
 
-        try:
-            face_engine = self._init_opencv_face()
-            if keep_animals:
-                subject_engine = self._init_subject_detector()
-                self.logger("Keep Animals Filter Enabled.")
-            else:
-                subject_engine = None
-                self.logger("Keep Animals Filter Unchecked.")
-
-        except Exception as e:
-            self.logger(f"Model Init Failed: {e}")
-            debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Model init failed — {e}")
-            return
+        if not find_duplicates:
+            try:
+                face_engine = self._init_opencv_face()
+                if keep_animals:
+                    subject_engine = self._init_subject_detector()
+                    self.logger("Keep Animals Filter Enabled.")
+                else:
+                    subject_engine = None
+                    self.logger("Keep Animals Filter Unchecked.")
+            except Exception as e:
+                self.logger(f"Model Init Failed: {e}")
+                debug(UTILITY_AI_MEDIA_SCANNER, f"ERROR: Model init failed — {e}")
+                return
+        else:
+            self.logger("Find Duplicates Enabled. Proceeding with dhash comparison (AI disabled).")
 
         # Pipeline
         img_queue = queue.Queue(maxsize=20)
@@ -175,22 +181,51 @@ class ScannerEngine:
             if image is not None and len(image.shape) == 2:
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
-            # 1. Face Detect (OpenCV)
-            has_face = False
-            try:
-                has_face = self._detect_face_opencv(face_engine, image)
-            except Exception:
-                pass
-
-            # 2. Logic
+            # 1. Processing Logic
             is_excluded = False
+            hash_val = None
 
-            if has_face:
-                is_excluded = True
+            if find_duplicates:
+                # Fast perceptual hashing (dhash)
+                try:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    resized = cv2.resize(gray, (9, 8))
+                    diff = resized[:, 1:] > resized[:, :-1]
+                    hash_val = np.packbits(diff)
+                    
+                    matched_rep = None
+                    # Compare with existing groups (Hamming distance threshold = 3/64 bits)
+                    for rep_path, rep_hash in rep_hashes.items():
+                        dist = np.count_nonzero(np.unpackbits(np.bitwise_xor(hash_val, rep_hash)))
+                        if dist <= 3:
+                            matched_rep = rep_path
+                            break
+                    
+                    if matched_rep:
+                        self.duplicate_groups[matched_rep].append(f_path)
+                        is_excluded = False # Not a representative, mark for others_list (move)
+                    else:
+                        rep_hashes[f_path] = hash_val
+                        self.duplicate_groups[f_path] = []
+                        is_excluded = True # Representative, mark for keep_list
+                except Exception as e:
+                    debug(UTILITY_AI_MEDIA_SCANNER, f"Hashing failed for {f_path}: {e}")
+                    is_excluded = True # Default to keep if hashing fails
             else:
-                if keep_animals and subject_engine:
-                    if self._detect_subject_yolov8(subject_engine, image, animal_threshold):
-                        is_excluded = True
+                # Face Detect (OpenCV)
+                has_face = False
+                try:
+                    has_face = self._detect_face_opencv(face_engine, image)
+                except Exception:
+                    pass
+
+                # Subject (YOLO)
+                if has_face:
+                    is_excluded = True
+                else:
+                    if keep_animals and subject_engine:
+                        if self._detect_subject_yolov8(subject_engine, image, animal_threshold):
+                            is_excluded = True
 
             fname_base = os.path.basename(f_path)
 
@@ -249,7 +284,11 @@ class ScannerEngine:
             self.logger("Scan Cancelled.")
             debug(UTILITY_AI_MEDIA_SCANNER, "Scan cancelled by user")
         else:
-            self.logger(f"Done. Subjects Found: {len(self.keep_list)}, Others: {len(self.others_list)}")
+            if find_duplicates:
+                dup_count = sum(1 for g in self.duplicate_groups.values() if g)
+                self.logger(f"Done. Groups with duplicates: {dup_count}, Total duplicates: {len(self.others_list)}")
+            else:
+                self.logger(f"Done. Subjects Found: {len(self.keep_list)}, Others: {len(self.others_list)}")
             debug(UTILITY_AI_MEDIA_SCANNER, f"Scan complete: keep={len(self.keep_list)}, move={len(self.others_list)}")
 
     def _get_dnn_backend_target(self):

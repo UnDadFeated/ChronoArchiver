@@ -15,6 +15,19 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.1": """## [6.0.1] - 2026-04-19
+
+### Added
+- **Flatpak packaging (initial)**: Added `flatpak/io.github.UnDadFeated.ChronoArchiver.yml`, desktop/metainfo files, launcher shim, and `tools/build_flatpak.sh` for local bundle testing on Bazzite/Fedora Atomic.
+- **AI Media Scanner**: Added duplicate-detection mode (dhash similarity grouping) with representative swap controls in the scanner panel.
+
+### Changed
+- **Flatpak sandbox**: Reduced permissions from full home access to scoped XDG media/document paths and tightened app payload installation to required runtime files.
+- **README**: Added Flatpak build/install/run instructions and clarified that Python prerequisites + AI models download in-app after install.
+
+### Fixed
+- **RealESRGAN runtime**: Corrected lazy-import refactor fallout in `realesrgan_runner` by removing duplicate NumPy import and keeping annotation-safe module behavior.
+""",
     "5.9.0": """## [5.9.0] - 2026-04-11
 
 ### Changed

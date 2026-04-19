@@ -361,12 +361,15 @@ class AIScannerPanel(QWidget):
         v_opts = QVBoxLayout(grp_opts)
         v_opts.setContentsMargins(6, 2, 6, 0)
         v_opts.setSpacing(2)
-        self._chk_recursive = QCheckBox("Recursive")
-        self._chk_recursive.setChecked(True)
-        self._chk_recursive.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
+        self._chk_duplicates = QCheckBox("Find Duplicates")
+        self._chk_duplicates.setChecked(False)
+        self._chk_duplicates.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
+        self._chk_duplicates.setToolTip("Find duplicate or 95% similar photos")
         self._chk_animals = QCheckBox("Keep Animals")
         self._chk_animals.setStyleSheet("font-size:9px; font-weight:700; color:#aaa;")
         self._chk_animals.setToolTip("Also keep photos with detected persons and animals")
+        self._chk_duplicates.toggled.connect(self._on_duplicates_toggled)
+        self._chk_animals.toggled.connect(self._on_animals_toggled)
         h_conf = QHBoxLayout()
         h_conf.setSpacing(4)
         h_conf.setAlignment(Qt.AlignmentFlag.AlignVCenter)
@@ -384,7 +387,7 @@ class AIScannerPanel(QWidget):
         h_conf.addWidget(lbl_conf, 0, Qt.AlignmentFlag.AlignVCenter)
         h_conf.addWidget(self._spin_thresh, 0, Qt.AlignmentFlag.AlignVCenter)
         h_conf.addStretch()
-        v_opts.addWidget(self._chk_recursive)
+        v_opts.addWidget(self._chk_duplicates)
         v_opts.addWidget(self._chk_animals)
         v_opts.addLayout(h_conf)
         h_strip.addWidget(grp_opts, 2)
@@ -487,6 +490,16 @@ class AIScannerPanel(QWidget):
         self._list_keep.setMinimumWidth(160)
         self._list_keep.itemSelectionChanged.connect(self._on_keep_selection_changed)
         v_k.addWidget(self._list_keep)
+        
+        # Central swap button (only shown when finding duplicates)
+        v_mid = QVBoxLayout()
+        v_mid.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._btn_swap = QPushButton("⟵ Swap")
+        self._btn_swap.setStyleSheet("font-size:8px; font-weight:700; color:#10b981; border:1px solid #1a1a1a; background:#121212; padding:4px;")
+        self._btn_swap.clicked.connect(self._swap_duplicate)
+        self._btn_swap.hide()
+        v_mid.addWidget(self._btn_swap)
+        
         v_m = QVBoxLayout()
         self._lbl_move_copy = QLabel("Move (others)", styleSheet="font-size:8px; font-weight:700;")
         v_m.addWidget(self._lbl_move_copy)
@@ -494,7 +507,9 @@ class AIScannerPanel(QWidget):
         self._list_move.setMinimumWidth(160)
         self._list_move.itemSelectionChanged.connect(self._on_move_selection_changed)
         v_m.addWidget(self._list_move)
+        
         h_res.addLayout(v_k, 1)
+        h_res.addLayout(v_mid, 0)
         h_res.addLayout(v_m, 1)
         # Image preview
         frm_preview = QFrame()
@@ -1232,7 +1247,7 @@ class AIScannerPanel(QWidget):
 
         debug(
             UTILITY_AI_MEDIA_SCANNER,
-            f"Scan start: path={path}, recursive={self._chk_recursive.isChecked()}, keep_animals={self._chk_animals.isChecked()}",
+            f"Scan start: path={path}, recursive=True, find_duplicates={self._chk_duplicates.isChecked()}, keep_animals={self._chk_animals.isChecked()}",
         )
         self._is_running = True
         self._bar.setFormat("%p%")
@@ -1281,9 +1296,10 @@ class AIScannerPanel(QWidget):
             try:
                 self._engine.run_scan(
                     path,
-                    include_subfolders=self._chk_recursive.isChecked(),
-                    keep_animals=self._chk_animals.isChecked(),
+                    include_subfolders=True,
+                    keep_animals=self._chk_animals.isChecked() if not self._chk_duplicates.isChecked() else False,
                     animal_threshold=self._spin_thresh.value() / 100.0,
+                    find_duplicates=self._chk_duplicates.isChecked(),
                 )
             except Exception as e:
                 self._sig.log_msg.emit(f"ERROR: {e}")
@@ -1342,18 +1358,28 @@ class AIScannerPanel(QWidget):
     def _populate_results(self):
         self._list_keep.clear()
         self._list_move.clear()
+        self._btn_swap.hide()
         self._lbl_preview.clear()
         self._lbl_preview.setText("Select an item to preview")
         if not self._engine:
             return
-        for p in self._engine.keep_list:
-            it = QListWidgetItem(os.path.basename(p))
-            it.setData(Qt.UserRole, p)
-            self._list_keep.addItem(it)
-        for p in self._engine.others_list:
-            it = QListWidgetItem(os.path.basename(p))
-            it.setData(Qt.UserRole, p)
-            self._list_move.addItem(it)
+        if self._chk_duplicates.isChecked():
+            # Only show groups that actually have duplicates
+            for p in self._engine.keep_list:
+                dups = self._engine.duplicate_groups.get(p, [])
+                if dups:
+                    it = QListWidgetItem(os.path.basename(p))
+                    it.setData(Qt.UserRole, p)
+                    self._list_keep.addItem(it)
+        else:
+            for p in self._engine.keep_list:
+                it = QListWidgetItem(os.path.basename(p))
+                it.setData(Qt.UserRole, p)
+                self._list_keep.addItem(it)
+            for p in self._engine.others_list:
+                it = QListWidgetItem(os.path.basename(p))
+                it.setData(Qt.UserRole, p)
+                self._list_move.addItem(it)
 
     def _show_preview(self, path):
         """Show image preview for path, or placeholder."""
@@ -1371,17 +1397,81 @@ class AIScannerPanel(QWidget):
         self._list_move.blockSignals(True)
         self._list_move.clearSelection()
         self._list_move.blockSignals(False)
+        self._btn_swap.hide()
         items = self._list_keep.selectedItems()
         path = items[0].data(Qt.UserRole) if items else None
+        
+        if self._chk_duplicates.isChecked() and self._engine and path:
+            self._list_move.clear()
+            dups = self._engine.duplicate_groups.get(path, [])
+            for dup in dups:
+                it = QListWidgetItem(os.path.basename(dup))
+                it.setData(Qt.UserRole, dup)
+                self._list_move.addItem(it)
+                
         self._show_preview(path)
 
     def _on_move_selection_changed(self):
         self._list_keep.blockSignals(True)
-        self._list_keep.clearSelection()
+        if not self._chk_duplicates.isChecked():
+            self._list_keep.clearSelection()
         self._list_keep.blockSignals(False)
         items = self._list_move.selectedItems()
         path = items[0].data(Qt.UserRole) if items else None
+        
+        if self._chk_duplicates.isChecked() and items and self._list_keep.selectedItems():
+            self._btn_swap.show()
+        else:
+            self._btn_swap.hide()
+            
         self._show_preview(path)
+
+    def _swap_duplicate(self):
+        keep_items = self._list_keep.selectedItems()
+        move_items = self._list_move.selectedItems()
+        if not keep_items or not move_items or not self._engine:
+            return
+            
+        old_rep = keep_items[0].data(Qt.UserRole)
+        new_rep = move_items[0].data(Qt.UserRole)
+        
+        # Update engine lists
+        if old_rep in self._engine.keep_list:
+            idx = self._engine.keep_list.index(old_rep)
+            self._engine.keep_list[idx] = new_rep
+            
+        if new_rep in self._engine.others_list:
+            idx = self._engine.others_list.index(new_rep)
+            self._engine.others_list[idx] = old_rep
+            
+        # Update duplicate groups mapping
+        dups = self._engine.duplicate_groups.pop(old_rep, [])
+        if new_rep in dups:
+            dups.remove(new_rep)
+        dups.append(old_rep)
+        self._engine.duplicate_groups[new_rep] = dups
+        
+        # Update UI: replace item in keep list
+        keep_items[0].setData(Qt.UserRole, new_rep)
+        keep_items[0].setText(os.path.basename(new_rep))
+        
+        # _on_keep_selection_changed will automatically refresh the move list!
+        self._on_keep_selection_changed()
+
+    def _on_duplicates_toggled(self, checked):
+        if checked:
+            self._chk_animals.blockSignals(True)
+            self._chk_animals.setChecked(False)
+            self._chk_animals.setEnabled(False)
+            self._chk_animals.blockSignals(False)
+        else:
+            self._chk_animals.setEnabled(True)
+
+    def _on_animals_toggled(self, checked):
+        if checked:
+            self._chk_duplicates.blockSignals(True)
+            self._chk_duplicates.setChecked(False)
+            self._chk_duplicates.blockSignals(False)
 
     def _update_move_copy_label(self):
         self._lbl_move_copy.setText(f"{self._combo_action.currentText()} (others)")

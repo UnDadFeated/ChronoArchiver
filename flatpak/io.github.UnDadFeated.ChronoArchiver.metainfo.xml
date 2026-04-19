@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.UnDadFeated.ChronoArchiver</id>
+  <name>ChronoArchiver</name>
+  <summary>Unified media organizer, AV1 encoder, and optional local AI tools</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <launchable type="desktop-id">io.github.UnDadFeated.ChronoArchiver.desktop</launchable>
+  <developer id="io.github.UnDadFeated">
+    <name>UnDadFeated</name>
+  </developer>
+  <description>
+    <p>ChronoArchiver organizes media by date, batch-encodes video to AV1, and supports optional local AI workflows.</p>
+    <p>The Flatpak package stays small and downloads Python dependencies plus AI models inside the app at runtime.</p>
+  </description>
+  <url type="homepage">https://github.com/UnDadFeated/ChronoArchiver</url>
+  <url type="bugtracker">https://github.com/UnDadFeated/ChronoArchiver/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="6.0.1" date="2026-04-19"/>
+    <release version="6.0.0" date="2026-04-12"/>
+  </releases>
+</component>
