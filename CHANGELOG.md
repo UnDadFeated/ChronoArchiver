@@ -1,9 +1,14 @@
 # Changelog
 
+## [6.0.8] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder start button crash**: Fixed `TypeError` when computing `structure_root` — queue items are `(path, size)` tuples but were treated as strings directly. Worker threads now start properly.
+- **Mass Video Encoder "Scan suffix" label**: Applied the "Skip Suffix" label rename that was documented in v6.0.6 but never applied to the actual UI code.
+
 ## [6.0.7] - 2026-05-11
 
 ### Fixed
-- **Mass Video Encoder start button unresponsive**: Fixed `NameError` crash in worker threads caused by undefined `structure_root` variable. Encoder threads now start properly when pressing START ENCODING.
 - **Mass Video Encoder output filename suffix duplication**: Old codec suffixes are now stripped from output filenames (e.g. `movie_h265.mp4` → `movie_h264.mp4` instead of `movie_h265_h264.mp4`).
 
 ## [6.0.6] - 2026-05-11

@@ -426,7 +426,7 @@ class VideoEncoderPanel(QWidget):
         h_suffix = QHBoxLayout(w_suffix)
         h_suffix.setContentsMargins(0, 0, 0, 0)
         h_suffix.setSpacing(4)
-        lbl_scan = QLabel("Scan suffix:", styleSheet="font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
+        lbl_scan = QLabel("Skip Suffix:", styleSheet="font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
         h_suffix.addWidget(lbl_scan, 0, Qt.AlignmentFlag.AlignRight)
         self._combo_scan_suffix = QComboBox()
         self._combo_scan_suffix.addItems(["None", "_h264", "_h265", "_av1"])
@@ -1290,11 +1290,11 @@ class VideoEncoderPanel(QWidget):
         structure_root: str | None = None
         try:
             dirs: list[str] = []
-            for item in self._queue:
-                if isinstance(item, RemoteFileRef):
-                    dirs.append(posixpath.dirname(item.abs_posix))
+            for path_item, _ in self._queue:
+                if isinstance(path_item, RemoteFileRef):
+                    dirs.append(posixpath.dirname(path_item.abs_posix))
                 else:
-                    dirs.append(os.path.dirname(item))
+                    dirs.append(os.path.dirname(path_item))
             if dirs:
                 structure_root = os.path.commonpath(dirs)
         except ValueError:
