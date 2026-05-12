@@ -988,7 +988,7 @@ class VideoEncoderPanel(QWidget):
         try:
             rt, root = remote_target_and_root(src)
             remote_verify_python3(rt, pw)
-            exts = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm")
+            exts = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm", ".m4v", ".wmv", ".mpeg")
 
             def _remote_scan_progress(count: int, total_bytes: int) -> None:
                 self._sig.scan_progress.emit(count, max(0, total_bytes))
@@ -1226,6 +1226,7 @@ class VideoEncoderPanel(QWidget):
             self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
             scan_dialog.show()
             self._scan_in_progress = True
+            self._scan_token += 1
             current_scan_tok = self._scan_token
 
             def _scan_then_start():
@@ -1698,7 +1699,7 @@ class VideoEncoderPanel(QWidget):
     def _encoder_worker_exit_finalize(self, engine, *, pipeline_mode: bool) -> None:
         """Decrement ``_active_jobs`` atomically; emit ``batch_complete`` at most once as a finalize backup.
 
-        Lock order: ``_queue_lock`` then ``_active_lock`` (legacy workers already pop under ``_queue_lock``).
+        Lock order: ``_active_lock`` then ``_queue_lock`` (nested; prevents deadlock with legacy workers).
 
         Avoids lost updates from ``_active_jobs -= 1`` vs ``if _active_jobs == 0`` split across threads; suppresses
         spurious "batch complete" after **STOP** when the remote pipeline left ``_queue`` empty.

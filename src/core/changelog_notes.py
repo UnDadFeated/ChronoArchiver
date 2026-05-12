@@ -15,6 +15,14 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.4.0": """## [6.4.0] - 2026-05-12
+
+### Fixed
+- **VAAPI encoding without hardware decode fails**: When `hw_accel_decode` is unchecked, VAAPI branch passed a VAAPI encoder name but no `-vaapi_device` flag, causing FFmpeg to fail with device context errors. Now passes `-vaapi_device /dev/dri/renderD*` when a render node is available even without hardware decode.
+- **Scan token not incremented on inline scan-then-start**: When clicking START with an empty queue, `_start_encoding` sets `_scan_in_progress = True` but never increments `_scan_token`. This allows the scan's result to pass the stale-token check if a prior scan used the same token. Now increments `_scan_token` before capturing it in the closure.
+- **Remote scan misses 3 video extensions**: Remote scan checked only 8 extensions while local `scan_files()` checks 11. Missing `.m4v`, `.wmv`, `.mpeg` caused inconsistent results between local and remote sources. Added the 3 missing extensions to match `scan_files()`.
+- **Lock order comment contradicts actual code**: Comment claimed `_queue_lock` → `_active_lock` ordering but code acquires `_active_lock` → `_queue_lock`. Updated comment to match actual nesting.
+""",
     "6.3.0": """## [6.3.0] - 2026-05-12
 
 ### Fixed

@@ -719,6 +719,8 @@ class VideoEncoderEngine:
                 hw_flags = ["-vaapi_device", vaapi_dev, "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
             elif hw_decode:
                 hw_flags = ["-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
+            elif vaapi_dev:
+                hw_flags = ["-vaapi_device", vaapi_dev]
             else:
                 hw_flags = []
             # VAAPI uses QP scale 1-51 (lower = better); map quality 0-63 → QP 50-10
