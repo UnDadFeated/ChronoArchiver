@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.11": """## [6.0.11] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder pause re-inserted item at queue front**: When paused, the item was re-inserted at index 0 via `queue.insert(0, ...)`, causing a tight busy-loop where the same item was popped again immediately. Other queued items were pushed back and blocked from ever being processed. Changed to `queue.append(...)` so the item is placed at the end of the queue, allowing other items to be processed first and preventing the busy-loop.
+""",
     "6.0.10": """## [6.0.10] - 2026-05-11
 
 ### Fixed

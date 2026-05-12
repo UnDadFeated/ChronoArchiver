@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.0.11] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder pause re-inserted item at queue front**: When paused, the item was re-inserted at index 0 via `queue.insert(0, ...)`, causing a tight busy-loop where the same item was popped again immediately. Other queued items were pushed back and blocked from ever being processed. Changed to `queue.append(...)` so the item is placed at the end of the queue, allowing other items to be processed first and preventing the busy-loop.
+
 ## [6.0.10] - 2026-05-11
 
 ### Fixed
