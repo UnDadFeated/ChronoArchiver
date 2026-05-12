@@ -1901,7 +1901,7 @@ class VideoEncoderPanel(QWidget):
 
                 if self._is_paused:
                     with q_lock:
-                        self._queue.insert(0, (item, size))
+                        self._queue.append((item, size))
                     time.sleep(0.2)
                     continue
 
