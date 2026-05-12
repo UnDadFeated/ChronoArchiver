@@ -1342,7 +1342,19 @@ class VideoEncoderPanel(QWidget):
             num_workers = 1
         num_workers = max(1, min(4, num_workers))
         VideoEncoderEngine.reset_nvenc_cuda_hwaccel_for_new_batch()
-        self._engine_pool = [VideoEncoderEngine(job_id=i) for i in range(num_workers)]
+        self._pipeline_prefetch_stop.clear()
+        if r_src and num_workers >= 2:
+            self._encode_pipeline_q = queue.Queue(maxsize=_remote_pipeline_queue_cap(num_workers))
+            work_list = list(self._queue)
+            self._pipeline_prefetch_thread = threading.Thread(
+                target=self._pipeline_prefetch_loop,
+                args=(work_list, src, dst, structure_root, num_workers),
+                daemon=True,
+            )
+            self._pipeline_prefetch_thread.start()
+        else:
+            self._encode_pipeline_q = None
+            self._pipeline_prefetch_thread = None
         self._is_encoding = True
         for eng in self._engine_pool:
             eng.on_progress = lambda j, p: self._sig.progress.emit(j, p)
@@ -1355,6 +1367,8 @@ class VideoEncoderPanel(QWidget):
     def _stop_encoding(self):
         self._is_encoding = False
         self._pipeline_prefetch_stop.set()
+        self._encode_pipeline_q = None
+        self._pipeline_prefetch_thread = None
         with self._queue_lock:
             remaining = len(self._queue)
             if remaining:
@@ -1379,7 +1393,6 @@ class VideoEncoderPanel(QWidget):
         self._update_start_enabled()
         self._add_log("Encoding stopped.")
         debug(UTILITY_MASS_VIDEO_ENCODER, "Encoding stopped by user.")
-        self._encode_pipeline_q = None
         QTimer.singleShot(2500, self._sweep_chrono_encoder_tempdir)
 
     def _toggle_pause(self):
@@ -1535,6 +1548,9 @@ class VideoEncoderPanel(QWidget):
             for item, size in work_list:
                 if self._pipeline_prefetch_stop.is_set() or not self._is_encoding:
                     break
+                if self._is_paused:
+                    time.sleep(0.5)
+                    continue
                 kind, payload = self._pipeline_plan_remote_item(
                     item,
                     size,
@@ -1657,6 +1673,9 @@ class VideoEncoderPanel(QWidget):
                         UTILITY_MASS_VIDEO_ENCODER,
                         f"Pipeline worker: ignored non-dict queue item: {type(task).__name__}",
                     )
+                    continue
+                if self._is_paused:
+                    time.sleep(0.2)
                     continue
                 if task.get("op") == "fin":
                     pl = task.get("payload") or {}
@@ -1879,6 +1898,12 @@ class VideoEncoderPanel(QWidget):
                 if item is None:
                     debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id}: queue empty, exiting")
                     break
+
+                if self._is_paused:
+                    with q_lock:
+                        self._queue.insert(0, (item, size))
+                    time.sleep(0.2)
+                    continue
 
                 ref = item if isinstance(item, RemoteFileRef) else None
                 logical_key = ref.abs_posix if ref else item
@@ -2420,6 +2445,8 @@ class VideoEncoderPanel(QWidget):
         self._bar_master.setFormat("0/0 Files")
         self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
         self._lbl_io.setText("I/O: 0.0 MB/s")
+        self._job_progress.clear()
+        self._current_files.clear()
         self._btn_start.setStyleSheet("")
         self._btn_start.setText("START ENCODING")
         self._btn_start.setObjectName("btnStart")

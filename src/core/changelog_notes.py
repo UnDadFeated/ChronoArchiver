@@ -15,6 +15,14 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.10": """## [6.0.10] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder pause not respected**: Workers continued pulling items and starting FFmpeg processes while paused. The main loop now checks `self._is_paused` after each queue pop and puts the item back, sleeping 200ms before retrying. The pipeline prefetch loop and pipeline worker also respect pause state.
+- **Mass Video Encoder pipeline prefetch never activated**: `_encode_pipeline_q` was declared but never assigned a `queue.Queue`, always remained `None`. Remote pipeline mode is now activated when source is remote and `concurrent_jobs >= 2`. A prefetch thread downloads remote files ahead of encoding to overlap network I/O with NVENC.
+- **Mass Video Encoder `_pipeline_prefetch_stop` event never reset**: `threading.Event` was set on stop/complete but never cleared. On a restart after stop, `is_set()` returned `True` causing the prefetch loop to exit immediately. The event is now cleared at the start of each batch.
+- **Mass Video Encoder stale `_job_progress` / `_current_files`**: Completed batch state leaked into the next batch. `_job_progress` and `_current_files` are now cleared in `_finalize_batch_complete`. Late-arriving progress signals for finished jobs are discarded by the existing `job_id not in self._current_files` guard.
+""",
     "6.0.9": """## [6.0.9] - 2026-05-11
 
 ### Fixed
