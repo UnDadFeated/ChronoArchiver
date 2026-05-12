@@ -1,26 +1,16 @@
 # Maintainer: UnDadFeated
 pkgname=chronoarchiver
-pkgver=6.0.3
-pkgrel=3
+pkgver=6.0.4
+pkgrel=1
 pkgdesc="Unified Media Archive Organizer and AV1 Encoder - Time to Archive!"
 arch=('any')
 url="https://github.com/UnDadFeated/ChronoArchiver"
 license=('MIT')
 depends=('python')
 makedepends=('git' 'python-setuptools')
-source=("git+https://github.com/UnDadFeated/ChronoArchiver.git#tag=v${pkgver}"
-        "fix-indentation.patch"
-        "fix-ffmpeg-download.patch")
-sha256sums=('SKIP'
-            'SKIP'
-            'SKIP')
+source=("git+https://github.com/UnDadFeated/ChronoArchiver.git#tag=v${pkgver}")
+sha256sums=('SKIP')
 install=chronoarchiver.install
-
-prepare() {
-    cd "ChronoArchiver"
-    patch -p1 < ../fix-indentation.patch
-    patch -p1 < ../fix-ffmpeg-download.patch
-}
 
 package() {
     cd "${srcdir}/ChronoArchiver"
