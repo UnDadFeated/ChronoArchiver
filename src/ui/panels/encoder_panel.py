@@ -1409,6 +1409,7 @@ class VideoEncoderPanel(QWidget):
         else:
             self._encode_pipeline_q = None
             self._pipeline_prefetch_thread = None
+        self._engine_pool = [VideoEncoderEngine(job_id=i) for i in range(num_workers)]
         self._is_encoding = True
         for eng in self._engine_pool:
             eng.on_progress = lambda j, p: self._sig.progress.emit(j, p)
@@ -1463,24 +1464,12 @@ class VideoEncoderPanel(QWidget):
         if self._fs_heavy_held:
             release_fs_heavy()
             self._fs_heavy_held = False
-        self._btn_start.setStyleSheet("")
-        self._btn_start.setText("START ENCODING")
-        self._btn_start.setObjectName("btnStart")
-        self._btn_start.setStyle(self.style())
-        self._btn_pause.setEnabled(False)
-        self._update_start_enabled()
         self._add_log("Encoding stopped.")
         debug(UTILITY_MASS_VIDEO_ENCODER, "Encoding stopped by user.")
         QTimer.singleShot(2500, self._sweep_chrono_encoder_tempdir)
 
     def _toggle_pause(self):
-        new_state = not self._is_paused
-        # Ignore duplicate rapid-clicks: if state hasn't actually changed (e.g. user
-        # clicked PAUSE, it's already paused, then clicked PAUSE again rapidly),
-        # don't flip back and forth.
-        if new_state == self._is_paused:
-            return
-        self._is_paused = new_state
+        self._is_paused = not self._is_paused
         for eng in self._engine_pool:
             if self._is_paused:
                 eng.pause()
@@ -1935,7 +1924,7 @@ class VideoEncoderPanel(QWidget):
                         meta["encode_failure_hint"] = enc_fail_hint
                     if enc_user_stop:
                         meta["encode_user_cancelled"] = True
-                    _fin(ok, logical_key, out_p if ok else out_p, meta)
+                    _fin(ok, logical_key, out_p if ok else "", meta)
                 except Exception as job_e:
                     self._sig.log_msg.emit(f"ERROR: {job_e}")
                     debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder pipeline job: {job_e}")
@@ -2248,7 +2237,7 @@ class VideoEncoderPanel(QWidget):
                         meta["encode_failure_hint"] = enc_fail_hint
                     if enc_user_stop:
                         meta["encode_user_cancelled"] = True
-                    _fin(ok, logical_key, out_p if ok else out_p, meta)
+                    _fin(ok, logical_key, out_p if ok else "", meta)
 
                 except RemoteEncodeError as e:
                     self._sig.log_msg.emit(f"Remote I/O error: {e}")

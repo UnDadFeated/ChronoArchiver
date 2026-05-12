@@ -15,6 +15,17 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.2.0": """## [6.2.0] - 2026-05-12
+
+### Fixed
+- **Mass Video Encoder engine pool never populated**: `_engine_pool` was initialized as `[]` in `__init__` and never populated. Replaced the bare `for eng in self._engine_pool:` loop with `self._engine_pool = [VideoEncoderEngine(job_id=i) for i in range(num_workers)]` in `_continue_start_encoding` so workers are actually created and launched.
+- **Encoder tautological ternary passes deleted path on failure**: Both `_job_worker` and `_job_worker_pipeline` had `_fin(ok, logical_key, out_p if ok else out_p, meta)` — identical branches passing a deleted temp path on failure. Changed to `_fin(ok, logical_key, out_p if ok else "", meta)`.
+- **Duplicated button-reset block in `_stop_encoding`**: The button state was reset twice. Removed the trailing duplicate block.
+- **Dead-code guard in `_toggle_pause`**: `if new_state == self._is_paused: return` is always-false (since `new_state = not self._is_paused`). Simplified to direct toggle.
+- **Duplicate `output_ext` key in encoder settings defaults**: Removed deprecated duplicate entry.
+- **libx265 preset map skipped fastest presets**: P1 mapped to `"fast"` instead of `"ultrafast"`. Now maps full range: `ultrafast → medium` for P1–P7.
+- **Remote scan script path contained shell expression**: `$(echo ${TMPDIR:-/tmp})` was single-quoted as a literal path via `sh_single_quote`. Changed to plain `/tmp/chronoarchiver_scan_{token}.py`. The rm_cmd now uses `*_remote_via_posix_sh()` for consistent argument parsing.
+""",
     "6.1.0": """## [6.1.0] - 2026-05-12
 
 ### Fixed

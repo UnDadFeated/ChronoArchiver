@@ -73,7 +73,7 @@ CODEC_FFMAP_NAME = {
 
 SOFTWARE_PRESET_MAP = {
     "libx264": {"p1": "ultrafast", "p2": "superfast", "p3": "veryfast", "p4": "medium", "p5": "slow", "p6": "slower", "p7": "veryslow"},
-    "libx265": {"p1": "fast", "p2": "medium", "p3": "slow", "p4": "slower", "p5": "veryslow", "p6": "placebo", "p7": "placebo"},
+    "libx265": {"p1": "ultrafast", "p2": "superfast", "p3": "veryfast", "p4": "faster", "p5": "fast", "p6": "medium", "p7": "slow"},
     "libsvtav1": {"p1": "12", "p2": "10", "p3": "8", "p4": "6", "p5": "4", "p6": "2", "p7": "0"},
 }
 

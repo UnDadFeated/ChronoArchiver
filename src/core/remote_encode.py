@@ -278,7 +278,7 @@ def _remote_scan_via_scp_and_ssh(
     Matches the proven pull/push path used for encoding when stdin/argv capture fails under sshpass.
     """
     token = secrets.token_hex(8)
-    remote_py = f"$(echo ${{TMPDIR:-/tmp}})/chronoarchiver_scan_{token}.py"
+    remote_py = f"/tmp/chronoarchiver_scan_{token}.py"
     q = sh_single_quote(remote_py)
     tf = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
     local_path = tf.name
@@ -306,7 +306,7 @@ def _remote_scan_via_scp_and_ssh(
         "-T",
         *ssh_extra_argv(ENCODE_SCAN_CONNECT, batch),
         remote.ssh_spec(),
-        "/bin/sh", "-c", "rm -f \"$1\" _", remote_py,
+        *_remote_via_posix_sh(f"rm -f {q}"),
     ]
     try:
         run_ssh_argv(rm_cmd, password_for_sshpass=password_for_sshpass, timeout=CONNECT_SCP + 30)
