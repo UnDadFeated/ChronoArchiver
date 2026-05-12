@@ -115,23 +115,26 @@ class OrganizerEngine:
             return False
         try:
             with Image.open(src) as im:
+                exif_bytes = im.info.get("exif", b"")
                 im = ImageOps.exif_transpose(im)
                 fmt = (im.format or "").upper()
                 suf = pathlib.Path(dst).suffix.lower()
+                save_kwargs = {}
                 if fmt == "JPEG" or suf in (".jpg", ".jpeg"):
-                    im.save(dst, format="JPEG", quality=95, optimize=True)
+                    save_kwargs = {"format": "JPEG", "quality": 95, "optimize": True}
                 elif fmt == "PNG":
-                    im.save(dst, format="PNG", optimize=True)
+                    save_kwargs = {"format": "PNG", "optimize": True}
                 elif fmt == "WEBP":
-                    im.save(dst, format="WEBP", quality=90, method=6)
+                    save_kwargs = {"format": "WEBP", "quality": 90, "method": 6}
                 elif fmt in ("TIFF", "TIF") or suf in (".tif", ".tiff"):
-                    im.save(dst, format="TIFF")
+                    save_kwargs = {"format": "TIFF"}
                 elif fmt == "BMP":
-                    im.save(dst, format="BMP")
+                    save_kwargs = {"format": "BMP"}
                 elif fmt == "GIF":
-                    im.save(dst, format="GIF")
-                else:
-                    im.save(dst)
+                    save_kwargs = {"format": "GIF"}
+                if exif_bytes:
+                    save_kwargs["exif"] = exif_bytes
+                im.save(dst, **save_kwargs)
             if delete_src_after:
                 try:
                     os.remove(src)
@@ -141,6 +144,11 @@ class OrganizerEngine:
             return True
         except Exception as e:
             self.logger(f"EXIF transpose failed for {os.path.basename(src)}: {e}")
+            try:
+                if os.path.exists(dst):
+                    os.remove(dst)
+            except OSError:
+                pass
             return False
 
     FOLDER_STRUCTURES = {
@@ -203,11 +211,17 @@ class OrganizerEngine:
                 self.logger("ERROR: Target cannot be inside source or vice versa.")
                 debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: overlap src={src_real} tgt={tgt_real}")
                 return
-            if not dry_run:
-                if not os.access(target_dir, os.W_OK):
-                    self.logger("ERROR: Target directory is not writable.")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
-                    return
+if not dry_run:
+                    if not os.access(target_dir, os.W_OK):
+                        self.logger("ERROR: Target directory is not writable.")
+                        debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
+                        return
+        # In-place operations need write access on source directory
+        if not target_dir and not dry_run:
+            if not os.access(source_dir, os.W_OK):
+                self.logger("ERROR: Source directory is not writable (in-place mode).")
+                debug(UTILITY_MEDIA_ORGANIZER, "ERROR: source not writable for in-place operation")
+                return
 
         if exif_auto_rotate and action == "symlink":
             self.logger("Note: EXIF auto-rotate is skipped when Action is Symlink (files are linked, not re-encoded).")
@@ -264,10 +278,11 @@ class OrganizerEngine:
         self.logger(f"Found {total_files} media files ({total_bytes / (1024 * 1024):.1f} MB).")
         debug(UTILITY_MEDIA_ORGANIZER, f"Found {total_files} files, {total_bytes} bytes")
 
-        # Disk space check (when moving to different target)
-        if target_dir and not dry_run and total_bytes > 0:
+        # Disk space check (when moving to different target or in-place copy)
+        if not dry_run and total_bytes > 0:
+            base_dir_for_space = target_dir if target_dir else source_dir
             try:
-                usage = shutil.disk_usage(base_dir)
+                usage = shutil.disk_usage(base_dir_for_space)
                 free_mb = usage.free / (1024 * 1024)
                 need_mb = total_bytes / (1024 * 1024)
                 if usage.free < total_bytes * 1.1:  # 10% headroom
@@ -416,8 +431,11 @@ class OrganizerEngine:
                             self.logger(f"[SKIP] {file} — target newer.")
                             duplicates_found += 1
                             continue
+                        # Source is newer → overwrite; skip rename block
+                        pass  # fall through to action below
                     except OSError:
                         pass
+                    continue  # keep_newer handled; skip rename block
                 if duplicate_policy != "overwrite" and (duplicate_policy != "overwrite_same" or not same_size):
                     p_new = pathlib.Path(new_filename)
                     base, extension = p_new.stem, p_new.suffix

@@ -15,6 +15,16 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.3": """## [6.0.3] - 2026-05-11
+
+### Fixed
+- **Media Organizer `keep_newer`**: Source newer than target now overwrites instead of renaming to `file_1.jpg`.
+- **Mass Video Encoder VAAPI/AMF/QSV**: Hardware encoders no longer silently fall back to software when hardware decode is unchecked.
+- **Mass Video Encoder `-fps_mode` passthrough**: Removed duplicate/unconditional placement; now applied only after audio args for MP4/MKV.
+- **Mass Video Encoder `passthrough_to_output`**: `-movflags +faststart` applied only for MP4 (not MKV).
+- **Mass Video Encoder `scan_files`**: Added `.m4v`, `.wmv`, `.mpeg` extensions.
+- **Media Organizer EXIF**: Rotated photos preserve original EXIF bytes; failure cleans up partial files; in-place mode checks writability and disk space.
+""",
     "6.0.2": """## [6.0.2] - 2026-05-11
 
 ### Fixed

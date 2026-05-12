@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [6.0.3] - 2026-05-11
+
+### Fixed
+- **Media Organizer `keep_newer` duplicate policy**: Source newer than target no longer incorrectly renames to `file_1.jpg` — now overwrites the older target as intended.
+- **Mass Video Encoder VAAPI/AMF/QSV silent software fallback**: Hardware encoders no longer silently fall back to software when hardware decode is unchecked. VAAPI, AMF, and QSV branches now respect the encoder regardless of decode setting; decode path is handled conditionally within each branch.
+- **Mass Video Encoder duplicate `-fps_mode` passthrough**: Removed unconditional `-fps_mode passthrough` from map block (output option placed before codec args). Now applied only after audio args, and extended to MKV alongside MP4.
+- **Mass Video Encoder `passthrough_to_output` `-movflags +faststart` on MKV**: Remux now checks output extension — `-movflags +faststart` applied only for MP4, eliminating FFmpeg warnings on MKV output.
+- **Mass Video Encoder `scan_files` missing extensions**: Added `.m4v`, `.wmv`, `.mpeg` to scanner extensions, matching `VIDEO_EXTS` in the organizer.
+- **Media Organizer EXIF metadata preservation**: EXIF-rotated photos now preserve original EXIF bytes (DateTimeOriginal, GPS, camera model) instead of stripping all metadata on save.
+- **Media Organizer EXIF failure cleanup**: Partially written destination files are removed when EXIF transpose fails, preventing corrupt orphan files.
+- **Media Organizer in-place write check**: In-place operations now verify source directory writability upfront with a clear error message instead of per-file raw `OSError`.
+- **Media Organizer in-place disk space check**: Disk space warning now fires for in-place copy operations (which double disk usage) in addition to cross-target moves.
+
 ## [6.0.2] - 2026-05-11
 
 ### Fixed

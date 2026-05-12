@@ -281,7 +281,7 @@ def passthrough_to_output(
             if log:
                 log.warning("Passthrough: copy failed: %s", e)
             return False
-    try:
+  try:
         cmd = [
             "ffmpeg",
             "-y",
@@ -300,9 +300,9 @@ def passthrough_to_output(
             "0",
             "-c",
             "copy",
-            "-movflags",
-            "+faststart",
         ]
+        if output_path.lower().endswith(".mp4"):
+            cmd.extend(["-movflags", "+faststart"])
         ep = resolve_best_capture_epoch(input_path)
         cmd.extend(ffmpeg_metadata_creation_args(ep))
         cmd.append(output_path)
@@ -467,7 +467,7 @@ class VideoEncoderEngine:
 
     def scan_files(self, directory: str, stop_event: Optional[threading.Event] = None) -> Generator[tuple, None, None]:
         """Scans a directory for supported video files, yielding results for real-time feedback."""
-        extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm")
+       extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm", ".m4v", ".wmv", ".mpeg")
         self.logger.info(f"scan_files: start dir={directory}")
         debug(UTILITY_MASS_VIDEO_ENCODER, f"scan_files: start dir={directory}")
 
@@ -704,22 +704,27 @@ class VideoEncoderEngine:
             metadata = hdr_info if hdr_info else None
             return hw_flags, v_args, metadata
 
-        elif hw == "vaapi" and hw_decode:
+        elif hw == "vaapi":
             dri = sorted(glob.glob("/dev/dri/renderD*"), key=lambda x: int(x.rsplit("D", 1)[1]) if x.rsplit("D", 1)[1].isdigit() else float("inf"))
             vaapi_dev = dri[0] if dri else None
             ff_vcodec = CODEC_FFMAP[codec].get("hw_vaapi", f"{codec}_vaapi" if codec != "h265" else "hevc_vaapi")
-            if vaapi_dev:
+            if hw_decode and vaapi_dev:
                 hw_flags = ["-vaapi_device", vaapi_dev, "-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
-            else:
+            elif hw_decode:
                 hw_flags = ["-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"]
+            else:
+                hw_flags = []
             # VAAPI uses QP scale 1-51 (lower = better); map quality 0-63 → QP 50-10
             qp = max(5, min(50, 50 - round(quality * 45 / 63)))
             v_args = ["-c:v", ff_vcodec, "-qp", str(qp)]
             # VAAPI doesn't need explicit color metadata; HW handles it
             return hw_flags, v_args, None
 
-        elif hw == "amf" and hw_decode:
-            hw_flags = []
+       elif hw == "amf":
+            if hw_decode:
+                hw_flags = ["-hwaccel", "dxva2"]
+            else:
+                hw_flags = []
             ff_vcodec = CODEC_FFMAP[codec].get("hw_amf", f"{codec}_amf" if codec != "h265" else "hevc_amf")
             pix_fmt = "p010le" if hdr_info else "yuv420p"
             # AMF uses quality scale 0-100 (higher = better); map quality 0-63 → QP 52-8 (inverted)
@@ -727,9 +732,12 @@ class VideoEncoderEngine:
             v_args = ["-c:v", ff_vcodec, "-pix_fmt", pix_fmt, "-qp_i", str(qp), "-qp_p", str(qp)]
             return hw_flags, v_args, hdr_info if hdr_info else None
 
-        elif hw == "qsv" and hw_decode:
+      elif hw == "qsv":
             ff_vcodec = CODEC_FFMAP[codec].get("hw_qsv", f"{codec}_qsv" if codec != "h265" else "hevc_qsv")
-            hw_flags = ["-hwaccel", "qsv", "-hwaccel_output_format", "qsv"]
+            if hw_decode:
+                hw_flags = ["-hwaccel", "qsv", "-hwaccel_output_format", "qsv"]
+            else:
+                hw_flags = []
             v_args = ["-c:v", ff_vcodec, "-global_quality", str(quality)]
             return hw_flags, v_args, hdr_info if hdr_info else None
 
@@ -882,7 +890,7 @@ class VideoEncoderEngine:
         # Map primary video + first audio only. ``-map 0`` muxes every audio/subtitle/data stream;
         # libopus/aac then runs per audio stream and a bad/extra track aborts the whole job.
         # ``0:a:0?`` is optional when there is no audio (e.g. silent video).
-        cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
+      cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
         cmd += (
             [
                 "-map",
@@ -893,14 +901,12 @@ class VideoEncoderEngine:
                 "0",
                 "-map_chapters",
                 "0",
-                "-fps_mode",
-                "passthrough",
             ]
             + (["-movflags", "+faststart"] if container == "mp4" else [])
             + v_args
             + a_args
             + ffmpeg_metadata_creation_args(capture_epoch)
-            + (["-fps_mode", "passthrough"] if container == "mp4" else [])
+            + (["-fps_mode", "passthrough"] if container in ("mp4", "mkv") else [])
             + [output_path]
         )
 
