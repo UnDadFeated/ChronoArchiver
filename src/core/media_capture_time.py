@@ -31,9 +31,9 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 try:
-    import piexif
+    import piexif  # type: ignore[import-untyped]
 except ImportError:
-    piexif = None  # type: ignore[misc, assignment]
+    piexif = None
 
 MIN_YEAR = 1957
 
@@ -81,12 +81,7 @@ def _valid(dt: datetime) -> bool:
 
 def _is_local_midnight(dt: datetime) -> bool:
     """True if the clock reads 00:00:00 (date-only / midnight metadata)."""
-    return (
-        dt.hour == 0
-        and dt.minute == 0
-        and dt.second == 0
-        and getattr(dt, "microsecond", 0) == 0
-    )
+    return dt.hour == 0 and dt.minute == 0 and dt.second == 0 and getattr(dt, "microsecond", 0) == 0
 
 
 def _local_wall_naive(dt: datetime) -> datetime:
@@ -307,7 +302,7 @@ def _datetime_from_stat_birth(file_path: str) -> Optional[datetime]:
     try:
         st = os.stat(file_path)
         if hasattr(st, "st_birthtime"):
-            dt = datetime.fromtimestamp(st.st_birthtime)
+            dt = datetime.fromtimestamp(st.st_birthtime)  # type: ignore[attr-defined]
             return dt if _valid(dt) else None
         if os.name == "nt":
             dt = datetime.fromtimestamp(getattr(st, "st_ctime", st.st_mtime))
@@ -436,7 +431,7 @@ def _win32_createfile_failed(handle: object) -> bool:
     if handle is None:
         return True
     try:
-        v = int(handle)
+        v = int(handle)  # type: ignore[call-overload]
     except (TypeError, ValueError):
         return True
     # Typical: -1 signed, or all-bits-one as unsigned 32/64-bit.
@@ -462,7 +457,7 @@ def _apply_fs_times_windows(path: str, epoch: float) -> bool:
     if t is None:
         return _apply_fs_times_posix(path, epoch)
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
 
     class FILETIME(ctypes.Structure):
         _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]

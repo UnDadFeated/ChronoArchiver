@@ -79,6 +79,7 @@ class RealESRGANModelManager:
         if p.stat().st_size <= _MIN_VALID_BYTES:
             return False
         from core.realesrgan_runner import invalidate_rrdb_checkpoint_cache, validate_rrdb_rgb_checkpoint_file
+
         ok, err, quarantine = validate_rrdb_rgb_checkpoint_file(p)
         if ok:
             return True

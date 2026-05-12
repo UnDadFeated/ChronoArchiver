@@ -38,6 +38,7 @@ class LamaInpaintModelManager:
         if p.stat().st_size <= _MIN_VALID_BYTES:
             return False
         from core.lama_inpaint_runner import invalidate_lama_checkpoint_cache, validate_lama_torchscript_file
+
         ok, err, quarantine = validate_lama_torchscript_file(p)
         if ok:
             return True

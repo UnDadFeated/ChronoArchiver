@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 def _haar_frontalface_xml() -> str:
     import os
 
-    import cv2  # type: ignore
+    import cv2
 
     if hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
         return cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -33,7 +33,7 @@ def detect_faces_bgr(
 
     Downscales internally for speed; boxes are mapped back to full resolution.
     """
-    import cv2  # type: ignore
+    import cv2
 
     if bgr is None or bgr.size == 0:
         return []
@@ -78,7 +78,7 @@ def estimate_freckle_heavy_face(bgr: "np.ndarray", face: tuple[int, int, int, in
 
     Used to strengthen "reduce freckles" prompts — best-effort, may false-positive on grainy skin.
     """
-    import cv2  # type: ignore
+    import cv2
     import numpy as np
 
     x, y, w, h = face
@@ -121,7 +121,7 @@ def portrait_signals_from_path_detailed(
 
     Bounding box is ``(x, y, w, h)`` in full-resolution pixel coordinates (first detected face).
     """
-    import cv2  # type: ignore
+    import cv2
 
     path = Path(image_path)
     if not path.is_file():

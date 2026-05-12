@@ -175,7 +175,7 @@ def prepare_source_for_realesrgan(
     inp = None
     if lama is not None:
         try:
-            inp = lama.inpaint_bgr(bgr, mask_full_u8)
+            inp = lama.inpaint_bgr(bgr, mask_full_u8)  # type: ignore[attr-defined]
         except Exception:
             inp = None
         if inp is not None and inp.shape == bgr.shape:

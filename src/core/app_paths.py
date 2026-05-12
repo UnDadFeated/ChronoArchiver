@@ -14,7 +14,7 @@ from pathlib import Path
 try:
     import platformdirs
 except ImportError:
-    platformdirs = None
+    platformdirs = None  # type: ignore[assignment]
 
 APP_NAME = "ChronoArchiver"
 APP_AUTHOR = "UnDadFeated"

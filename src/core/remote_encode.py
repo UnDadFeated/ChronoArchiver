@@ -41,8 +41,14 @@ ENCODE_SCAN_CONNECT = 30
 CODEC_TAGS = {"h264": "h264", "h265": "hevc", "av1": "av1"}
 
 # Container extension map — single source of truth for file extensions.
-CONTAINER_EXT_MAP = {("h264", "mp4"): ".mp4", ("h264", "mkv"): ".mkv", ("h265", "mp4"): ".mp4", ("h265", "mkv"): ".mkv", ("av1", "mp4"): ".mp4", ("av1", "mkv"): ".mkv"}
-
+CONTAINER_EXT_MAP = {
+    ("h264", "mp4"): ".mp4",
+    ("h264", "mkv"): ".mkv",
+    ("h265", "mp4"): ".mp4",
+    ("h265", "mkv"): ".mkv",
+    ("av1", "mp4"): ".mp4",
+    ("av1", "mkv"): ".mkv",
+}
 
 
 class RemoteEncodeError(Exception):
@@ -384,12 +390,12 @@ def _run_ssh_stdin_scan_streaming(
     if os.name != "nt":
         popen_kw["start_new_session"] = True
     proc = subprocess.Popen(cmd, **popen_kw)
-    proc.stdin.write(stdin_text)
-    proc.stdin.close()
+    proc.stdin.write(stdin_text)  # type: ignore[union-attr]
+    proc.stdin.close()  # type: ignore[union-attr]
     stderr_chunks: list[str] = []
 
     def _read_stderr() -> None:
-        stderr_chunks.append(proc.stderr.read())
+        stderr_chunks.append(proc.stderr.read())  # type: ignore[union-attr]
 
     err_thread = threading.Thread(target=_read_stderr, daemon=True)
     err_thread.start()
@@ -402,7 +408,7 @@ def _run_ssh_stdin_scan_streaming(
     rc = 0
     try:
         try:
-            for line in proc.stdout:
+            for line in proc.stdout:  # type: ignore[union-attr]
                 if len(stdout_parts) < MAX_STDOUT_PARTS:
                     stdout_parts.append(line)
                 if not on_progress:
@@ -555,9 +561,7 @@ def _remote_scan_console_hint(
     ext_line = ".mp4, .mkv, .mov, .webm, .ts, .avi, .3gp, .mpg"
     if files_n is not None and root_s is not None:
         if files_n == 0:
-            return (
-                f"Remote: 0 videos under {root_s} on the server (extensions {ext_line})."
-            )
+            return f"Remote: 0 videos under {root_s} on the server (extensions {ext_line})."
         if parsed_queue_len != files_n:
             return (
                 f"Remote: server counted {files_n} file(s) under {root_s}; "

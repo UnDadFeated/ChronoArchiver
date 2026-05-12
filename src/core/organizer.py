@@ -6,13 +6,13 @@ import pathlib
 import time
 from datetime import datetime
 from typing import Callable, Optional
-import piexif
+import piexif  # type: ignore[import-untyped]
 
 try:
     from PIL import Image, ImageOps
 except ImportError:
-    Image = None  # type: ignore[misc, assignment]
-    ImageOps = None  # type: ignore[misc, assignment]
+    Image = None  # type: ignore[assignment]
+    ImageOps = None  # type: ignore[assignment]
 
 try:
     from .debug_logger import debug, UTILITY_MEDIA_ORGANIZER
@@ -116,7 +116,7 @@ class OrganizerEngine:
         try:
             with Image.open(src) as im:
                 exif_bytes = im.info.get("exif", b"")
-                im = ImageOps.exif_transpose(im)
+                im = ImageOps.exif_transpose(im)  # type: ignore[assignment]
                 fmt = (im.format or "").upper()
                 suf = pathlib.Path(dst).suffix.lower()
                 save_kwargs = {}
@@ -134,7 +134,7 @@ class OrganizerEngine:
                     save_kwargs = {"format": "GIF"}
                 if exif_bytes:
                     save_kwargs["exif"] = exif_bytes
-                im.save(dst, **save_kwargs)
+                im.save(dst, **save_kwargs)  # type: ignore[arg-type]
             if delete_src_after:
                 try:
                     os.remove(src)
@@ -212,7 +212,7 @@ class OrganizerEngine:
                 debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: overlap src={src_real} tgt={tgt_real}")
                 return
         if not dry_run:
-            if not os.access(target_dir, os.W_OK):
+            if not os.access(target_dir, os.W_OK):  # type: ignore[arg-type]
                 self.logger("ERROR: Target directory is not writable.")
                 debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
                 return
@@ -252,11 +252,7 @@ class OrganizerEngine:
                 scan_bytes = max(0, scan_bytes + size)
                 if scan_progress_callback:
                     now = time.monotonic()
-                    if (
-                        scan_count == 1
-                        or scan_count % 100 == 0
-                        or (now - last_scan_emit) >= 0.2
-                    ):
+                    if scan_count == 1 or scan_count % 100 == 0 or (now - last_scan_emit) >= 0.2:
                         last_scan_emit = now
                         try:
                             scan_progress_callback(scan_count, scan_bytes)

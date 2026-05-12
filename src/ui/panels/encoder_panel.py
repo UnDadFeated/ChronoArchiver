@@ -41,7 +41,7 @@ import sys
 import logging
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from core.video_encoder_engine import VideoEncoderEngine, EncodingProgress, verify_local_media_file_ready, CODEC_SUFFIX_MAP
+from core.video_encoder_engine import VideoEncoderEngine, EncodingProgress, verify_local_media_file_ready
 from core.remote_encode import (
     RemoteEncodeError,
     RemoteFileRef,
@@ -339,11 +339,13 @@ class VideoEncoderPanel(QWidget):
         self._combo_codec.setFixedHeight(16)
         self._combo_codec.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._combo_codec.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        self._combo_codec.addItems([
-            "H.264 (Most Compatible)",
-            "H.265 (Better Compression)",
-            "AV1 (Best Compression)",
-        ])
+        self._combo_codec.addItems(
+            [
+                "H.264 (Most Compatible)",
+                "H.265 (Better Compression)",
+                "AV1 (Best Compression)",
+            ]
+        )
         codec_val = self._settings.get("codec")
         codec_idx = {"h264": 0, "h265": 1, "av1": 2}.get(codec_val, 2)
         self._combo_codec.setCurrentIndex(codec_idx)
@@ -440,7 +442,9 @@ class VideoEncoderPanel(QWidget):
         self._combo_scan_suffix.setStyleSheet(COMBO_BOX_PANEL_QSS + "QComboBox { color: #aaa; }")
         self._combo_scan_suffix.setFixedHeight(18)
         self._combo_scan_suffix.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self._combo_scan_suffix.currentTextChanged.connect(lambda v: self._settings.set("scan_suffix", v if v != "None" else ""))
+        self._combo_scan_suffix.currentTextChanged.connect(
+            lambda v: self._settings.set("scan_suffix", v if v != "None" else "")
+        )
         self._combo_scan_suffix.setToolTip("Files with this suffix before the extension are skipped during scan")
         h_suffix.addWidget(self._combo_scan_suffix, 0, Qt.AlignmentFlag.AlignRight)
         h_a.addWidget(w_suffix, 0, Qt.AlignmentFlag.AlignRight)
@@ -993,7 +997,9 @@ class VideoEncoderPanel(QWidget):
             def _remote_scan_progress(count: int, total_bytes: int) -> None:
                 self._sig.scan_progress.emit(count, max(0, total_bytes))
 
-            refs, scan_hint = remote_scan_videos(rt, root, exts, pw, on_progress=_remote_scan_progress, skip_suffixes=suffixes)
+            refs, scan_hint = remote_scan_videos(
+                rt, root, exts, pw, on_progress=_remote_scan_progress, skip_suffixes=suffixes
+            )
             if scan_hint:
                 self._sig.log_msg.emit(scan_hint)
             return [(r, r.size) for r in refs]
@@ -1127,7 +1133,10 @@ class VideoEncoderPanel(QWidget):
                 pass
         self._scan_dialog = None
         if scan_tok is not None and scan_tok != self._scan_token:
-            debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan result rejected: stale token {scan_tok} vs current {self._scan_token}")
+            debug(
+                UTILITY_MASS_VIDEO_ENCODER,
+                f"Scan result rejected: stale token {scan_tok} vs current {self._scan_token}",
+            )
             self._scan_in_progress = False
             return
         self._scan_in_progress = False
@@ -1136,7 +1145,9 @@ class VideoEncoderPanel(QWidget):
     def _on_scan_done_then_start(self, items, src, dst, scan_tok=None):
         """Called in main thread when scan completes (Start+empty queue path)."""
         if scan_tok is not None and scan_tok != self._scan_token:
-            debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan+start rejected: stale token {scan_tok} vs current {self._scan_token}")
+            debug(
+                UTILITY_MASS_VIDEO_ENCODER, f"Scan+start rejected: stale token {scan_tok} vs current {self._scan_token}"
+            )
             self._scan_in_progress = False
             return
         self._scan_in_progress = False
@@ -1262,9 +1273,13 @@ class VideoEncoderPanel(QWidget):
 
     def _continue_start_encoding(self, src, dst):
         if self._is_encoding:
-            debug(UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: already encoding, ignoring src={src}, dst={dst}")
+            debug(
+                UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: already encoding, ignoring src={src}, dst={dst}"
+            )
             return
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: queue_len={len(self._queue)}, src={src}, dst={dst}")
+        debug(
+            UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: queue_len={len(self._queue)}, src={src}, dst={dst}"
+        )
         if not self._queue:
             self._add_log("No compatible files found.")
             debug(UTILITY_MASS_VIDEO_ENCODER, f"No compatible files in {src}")
@@ -1524,10 +1539,14 @@ class VideoEncoderPanel(QWidget):
             if ".." in rel_stem.split("/"):
                 return ("fin", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
             if dst_remote:
-                remote_out_posix = posix_join_under(dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container"))
+                remote_out_posix = posix_join_under(
+                    dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container")
+                )
             else:
                 try:
-                    tpath_local = join_dst_local(dst, rel_stem, self._settings.get("codec"), self._settings.get("container"))
+                    tpath_local = join_dst_local(
+                        dst, rel_stem, self._settings.get("codec"), self._settings.get("container")
+                    )
                 except ValueError:
                     return ("fin", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                 try:
@@ -1546,7 +1565,9 @@ class VideoEncoderPanel(QWidget):
         else:
             flat_stem = posixpath.splitext(posixpath.basename(ref.rel_posix))[0]
             if dst_remote:
-                remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
+                remote_out_posix = posix_join_under(
+                    dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container")
+                )
             else:
                 tpath_local = os.path.join(dst, self._strip_old_codec_suffix(flat_stem) + self._output_suffix())
 
@@ -1652,7 +1673,18 @@ class VideoEncoderPanel(QWidget):
                 tmp_cleanup.append(tmp_in)
                 if not self._is_encoding:
                     _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in=tmp_in, local_out="")
-                    pq.put({"op": "fin", "payload": {"logical_key": ctx["logical_key"], "ok": False, "remote_src_ref": ref, "tmp_cleanup": []}}, timeout=600)
+                    pq.put(
+                        {
+                            "op": "fin",
+                            "payload": {
+                                "logical_key": ctx["logical_key"],
+                                "ok": False,
+                                "remote_src_ref": ref,
+                                "tmp_cleanup": [],
+                            },
+                        },
+                        timeout=600,
+                    )
                     continue
                 try:
                     run_scp_from_remote(ref.target, ref.abs_posix, tmp_in, password_for_sshpass=pw)
@@ -2018,7 +2050,12 @@ class VideoEncoderPanel(QWidget):
                                 )
                             except ValueError:
                                 self._sig.log_msg.emit(f"SKIP (invalid path): {posixpath.basename(ref.rel_posix)}")
-                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
+                                _fin(
+                                    False,
+                                    logical_key,
+                                    "",
+                                    {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []},
+                                )
                                 continue
                         elif ref:
                             rel_stem = posixpath.splitext(ref.rel_posix.replace("\\", "/"))[0]
@@ -2030,18 +2067,32 @@ class VideoEncoderPanel(QWidget):
                             self._sig.log_msg.emit(
                                 f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                             )
-                            _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
+                            _fin(
+                                False,
+                                logical_key,
+                                "",
+                                {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []},
+                            )
                             continue
                         if dst_remote:
-                            remote_out_posix = posix_join_under(dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container"))
+                            remote_out_posix = posix_join_under(
+                                dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container")
+                            )
                         else:
                             try:
-                                tpath_local = join_dst_local(dst, rel_stem, self._settings.get("codec"), self._settings.get("container"))
+                                tpath_local = join_dst_local(
+                                    dst, rel_stem, self._settings.get("codec"), self._settings.get("container")
+                                )
                             except ValueError:
                                 self._sig.log_msg.emit(
                                     f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                 )
-                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
+                                _fin(
+                                    False,
+                                    logical_key,
+                                    "",
+                                    {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []},
+                                )
                                 continue
                             try:
                                 real_tpath = os.path.realpath(tpath_local)
@@ -2050,10 +2101,25 @@ class VideoEncoderPanel(QWidget):
                                     self._sig.log_msg.emit(
                                         f"SKIP (path outside target): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                     )
-                                    _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
+                                    _fin(
+                                        False,
+                                        logical_key,
+                                        "",
+                                        {
+                                            "logical_key": logical_key,
+                                            "ok": False,
+                                            "remote_src_ref": ref,
+                                            "tmp_cleanup": [],
+                                        },
+                                    )
                                     continue
                             except OSError:
-                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
+                                _fin(
+                                    False,
+                                    logical_key,
+                                    "",
+                                    {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []},
+                                )
                                 continue
                             out_dir = os.path.dirname(tpath_local)
                             if out_dir:
@@ -2064,9 +2130,13 @@ class VideoEncoderPanel(QWidget):
                         else:
                             flat_stem = os.path.splitext(os.path.basename(item))[0]
                         if dst_remote:
-                            remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
+                            remote_out_posix = posix_join_under(
+                                dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container")
+                            )
                         else:
-                            tpath_local = os.path.join(dst, self._strip_old_codec_suffix(flat_stem) + self._output_suffix())
+                            tpath_local = os.path.join(
+                                dst, self._strip_old_codec_suffix(flat_stem) + self._output_suffix()
+                            )
 
                     policy = self._settings.get("existing_output")
                     if dst_remote and remote_out_posix:
@@ -2083,7 +2153,12 @@ class VideoEncoderPanel(QWidget):
                             )
                             self._sig.log_msg.emit(f"SKIP (exists): {disp}")
                             debug(UTILITY_MASS_VIDEO_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
-                            _fin(True, logical_key, "", {"logical_key": logical_key, "ok": True, "remote_src_ref": ref, "tmp_cleanup": []})
+                            _fin(
+                                True,
+                                logical_key,
+                                "",
+                                {"logical_key": logical_key, "ok": True, "remote_src_ref": ref, "tmp_cleanup": []},
+                            )
                             continue
                         if policy == "rename":
                             if dst_remote and remote_out_posix:
@@ -2553,7 +2628,9 @@ class VideoEncoderPanel(QWidget):
         self._btn_start.setStyle(self.style())
         self._btn_pause.setEnabled(False)
         self._update_start_enabled()
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
+        debug(
+            UTILITY_MASS_VIDEO_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}"
+        )
         structured_event(
             "encode_batch_complete",
             done=self._done_count,

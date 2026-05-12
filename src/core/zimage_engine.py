@@ -55,7 +55,7 @@ class ZImageUpscaleEngine:
         artifact_cleanup: bool = True,
     ):
         import torch
-        from diffusers import ZImageImg2ImgPipeline
+        from diffusers import ZImageImg2ImgPipeline  # type: ignore[import-not-found]
         from PIL import Image, ImageOps
 
         if torch.cuda.is_available():
@@ -73,10 +73,10 @@ class ZImageUpscaleEngine:
                 torch_dtype=dtype,
                 local_files_only=True,
             )
-            self._pipe.to(device)
+            self._pipe.to(device)  # type: ignore[attr-defined]
             if hasattr(self._pipe, "enable_vae_slicing"):
                 try:
-                    self._pipe.enable_vae_slicing()
+                    self._pipe.enable_vae_slicing()  # type: ignore[attr-defined]
                 except Exception:
                     pass
             log("Pipeline ready.")
@@ -159,7 +159,7 @@ class ZImageUpscaleEngine:
         try:
             if apply_beautify:
                 try:
-                    result = self._pipe(
+                    result = self._pipe(  # type: ignore[misc]
                         run_prompt,
                         negative_prompt=BEAUTIFY_NEGATIVE,
                         image=init,
@@ -169,7 +169,7 @@ class ZImageUpscaleEngine:
                     ).images[0]
                 except TypeError:
                     log("Beautify: negative_prompt not supported by this pipeline; using positive prompt only.")
-                    result = self._pipe(
+                    result = self._pipe(  # type: ignore[misc]
                         run_prompt,
                         image=init,
                         strength=effective_strength,
@@ -177,7 +177,7 @@ class ZImageUpscaleEngine:
                         guidance_scale=cfg_value,
                     ).images[0]
             else:
-                result = self._pipe(
+                result = self._pipe(  # type: ignore[misc]
                     run_prompt,
                     image=init,
                     strength=effective_strength,

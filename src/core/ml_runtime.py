@@ -107,7 +107,7 @@ def check_ml_runtime() -> tuple[bool, str]:
     except ImportError:
         return False, "missing_torch"
     try:
-        import diffusers  # noqa: F401
+        import diffusers  # type: ignore[import-not-found] # noqa: F401
     except ImportError:
         return False, "missing_diffusers"
     try:

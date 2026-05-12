@@ -20,7 +20,7 @@ import sys
 import threading
 import traceback
 from datetime import datetime
-from typing import Any
+from typing import IO, Any
 
 try:
     from .app_paths import logs_dir
@@ -30,11 +30,11 @@ LOG_PREFIX = "chronoarchiver"
 LOG_SUFFIX = ".log"
 MAX_LOG_FILES = 5
 
-_log_dir = None
-_log_path = None
-_file = None
-_jsonl_path = None
-_jsonl_file = None
+_log_dir: str | None = None
+_log_path: str | None = None
+_file: IO[str] | None = None
+_jsonl_path: str | None = None
+_jsonl_file: IO[str] | None = None
 _init_lock = threading.RLock()
 
 _hooks_installed = False
@@ -129,8 +129,8 @@ def debug(utility: str, message: str):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         line = f"{ts} | {utility} | {message}\n"
         with _init_lock:
-            _file.write(line)
-            _file.flush()
+            _file.write(line)  # type: ignore[union-attr]
+            _file.flush()  # type: ignore[union-attr]
             if _jsonl_file is not None:
                 rec = {"ts": ts, "utility": utility, "message": message, "kind": "debug"}
                 _jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -174,6 +174,7 @@ def init_log():
 def get_log_path() -> str:
     """Return the current debug log file path."""
     _ensure_init()
+    assert _log_path is not None
     return _log_path
 
 
@@ -199,8 +200,8 @@ def append_multiline(utility: str, title: str, body: str, *, max_chars: int = 32
         if len(b) > max_chars:
             b = b[: max_chars - 40] + "\n… [truncated] …\n"
         block = f"{ts} | {utility} | {title}\n{b}\n"
-        _file.write(block)
-        _file.flush()
+        _file.write(block)  # type: ignore[union-attr]
+        _file.flush()  # type: ignore[union-attr]
     except Exception:
         pass
 
@@ -221,10 +222,10 @@ def log_exception(
         head = f"{ts} | {utility} | EXCEPTION"
         if context:
             head += f" [{context}]"
-        _file.write(f"{head}\n{tb_str}")
+        _file.write(f"{head}\n{tb_str}")  # type: ignore[union-attr]
         if extra:
-            _file.write(f"Detail: {extra}\n")
-        _file.flush()
+            _file.write(f"Detail: {extra}\n")  # type: ignore[union-attr]
+        _file.flush()  # type: ignore[union-attr]
     except Exception:
         pass
     try:
@@ -245,20 +246,20 @@ def _log_uncaught_tb(exc_type, exc_value, exc_tb, context: str) -> None:
         _ensure_init()
         tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        _file.write(f"{ts} | {UTILITY_APP} | UNCAUGHT [{context}]\n{tb_str}")
+        _file.write(f"{ts} | {UTILITY_APP} | UNCAUGHT [{context}]\n{tb_str}")  # type: ignore[union-attr]
         ctx = get_activity_context()
         if ctx:
-            _file.write(f"{ts} | {UTILITY_APP} | CRASH CONTEXT | {ctx}\n")
+            _file.write(f"{ts} | {UTILITY_APP} | CRASH CONTEXT | {ctx}\n")  # type: ignore[union-attr]
         try:
             from version import __version__
 
-            _file.write(
+            _file.write(  # type: ignore[union-attr]
                 f"{ts} | {UTILITY_APP} | CRASH VERSION | ChronoArchiver {__version__} | "
                 f"Python {sys.version.splitlines()[0]}\n"
             )
         except Exception:
             pass
-        _file.flush()
+        _file.flush()  # type: ignore[union-attr]
         _uncaught.error("UNCAUGHT [%s]\n%s", context, tb_str.strip())
     except Exception:
         pass

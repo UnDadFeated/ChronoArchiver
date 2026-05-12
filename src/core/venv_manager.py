@@ -18,7 +18,7 @@ from urllib.parse import urlparse, unquote
 try:
     import requests
 except ImportError:
-    requests = None
+    requests = None  # type: ignore[assignment]
 
 import urllib.request
 from typing import Optional

@@ -632,9 +632,7 @@ class MediaOrganizerPanel(QWidget):
         self._bar.setFormat("Complete")
         stats = getattr(self, "_last_stats", (0, 0, 0))
         moved, skipped, duplicates = stats
-        self._add_log(
-            f"Batch complete. Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}"
-        )
+        self._add_log(f"Batch complete. Moved: {moved} | Skipped: {skipped} | Duplicates: {duplicates}")
         debug(
             UTILITY_MEDIA_ORGANIZER, f"Organization complete: moved={moved}, skipped={skipped}, duplicates={duplicates}"
         )

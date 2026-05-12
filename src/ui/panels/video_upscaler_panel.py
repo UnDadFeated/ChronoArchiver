@@ -2069,25 +2069,29 @@ class VideoUpscalerPanel(QWidget):
 
                 # Optional audio copy
                 self._sig.progress_frames.emit(0, _VUP_PROG_MUX_PHASE)
-                mux_cmd = [
-                    ff,
-                    "-y",
-                    "-i",
-                    tmp_vid,
-                    "-i",
-                    path,
-                    "-map",
-                    "0:v:0",
-                    "-map",
-                    "1:a:0?",
-                    "-c:v",
-                    "copy",
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "192k",
-                    "-shortest",
-                ] + vup_meta + [dest]
+                mux_cmd = (
+                    [
+                        ff,
+                        "-y",
+                        "-i",
+                        tmp_vid,
+                        "-i",
+                        path,
+                        "-map",
+                        "0:v:0",
+                        "-map",
+                        "1:a:0?",
+                        "-c:v",
+                        "copy",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
+                        "-shortest",
+                    ]
+                    + vup_meta
+                    + [dest]
+                )
                 try:
                     mx = subprocess.run(
                         mux_cmd,

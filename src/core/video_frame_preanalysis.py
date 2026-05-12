@@ -12,15 +12,16 @@ the second pass; callers must delete that directory after encode.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
-from typing import Any, TypedDict
+from typing import TypedDict
 
 import numpy as np
 
 try:
     import cv2
 except ImportError:
-    cv2 = None  # type: ignore[assignment]
+    cv2 = None
 
 from core.video_artifact_detection import detect_artifact_mask_u8
 from core.video_subject_detect import analyze_subjects_bgr
@@ -412,7 +413,7 @@ def pre_scan_video_upscale(
 
     sf = np.asarray(sub_face, dtype=np.uint8)
     sb = np.asarray(sub_body, dtype=np.uint8)
-    sh = np.asarray(sub_hair, dtype=np.uint8)
+    sh = np.asarray(sub_hair, dtype=np.uint8)  # type: ignore[assignment]
 
     out: VideoPreanalysis = {
         "luma_nr": luma,
@@ -425,6 +426,6 @@ def pre_scan_video_upscale(
         "skin_tone": skin_ar,
         "subject_face": sf,
         "subject_full_body": sb,
-        "subject_hair": sh,
+        "subject_hair": sh,  # type: ignore[typeddict-item]
     }
     return out

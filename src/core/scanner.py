@@ -53,7 +53,12 @@ class ScannerEngine:
         self.stop_event.set()
 
     def run_scan(
-        self, directory: str, include_subfolders: bool = True, keep_animals: bool = False, animal_threshold: float = 0.4, find_duplicates: bool = False
+        self,
+        directory: str,
+        include_subfolders: bool = True,
+        keep_animals: bool = False,
+        animal_threshold: float = 0.4,
+        find_duplicates: bool = False,
     ):
         if not OPENCV_AVAILABLE:
             self.logger("Error: OpenCV (python-opencv) is not installed. AI features are disabled.")
@@ -101,7 +106,7 @@ class ScannerEngine:
         debug(UTILITY_AI_MEDIA_SCANNER, f"Found {total} images ({total_bytes} bytes), initializing models")
         self.logger(f"Found {total} images ({total_bytes / (1024 * 1024):.1f} MB). Starting Pipeline...")
 
-        rep_hashes = {}  # Store the dhash of representative images for fast lookup
+        rep_hashes: dict[str, bytes] = {}  # Store the dhash of representative images for fast lookup
 
         # Models
         face_engine = None
@@ -124,7 +129,7 @@ class ScannerEngine:
             self.logger("Find Duplicates Enabled. Proceeding with dhash comparison (AI disabled).")
 
         # Pipeline
-        img_queue = queue.Queue(maxsize=20)
+        img_queue: queue.Queue[tuple[str, int, object]] = queue.Queue(maxsize=20)
 
         MAX_IMAGE_BYTES = 100 * 1024 * 1024  # Skip very large images to avoid OOM
 
@@ -182,7 +187,7 @@ class ScannerEngine:
                 break
 
             f_path, size, image = item
-            if image is not None and len(image.shape) == 2:
+            if image is not None and len(image.shape) == 2:  # type: ignore[attr-defined]
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
             # 1. Processing Logic
@@ -195,8 +200,8 @@ class ScannerEngine:
                     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                     resized = cv2.resize(gray, (9, 8))
                     diff = resized[:, 1:] > resized[:, :-1]
-                    hash_val = np.packbits(diff)
-                    
+                    hash_val = np.packbits(diff).tobytes()
+
                     matched_rep = None
                     # Compare with existing groups (Hamming distance threshold = 3/64 bits)
                     for rep_path, rep_hash in rep_hashes.items():
@@ -204,17 +209,17 @@ class ScannerEngine:
                         if dist <= 3:
                             matched_rep = rep_path
                             break
-                    
+
                     if matched_rep:
                         self.duplicate_groups[matched_rep].append(f_path)
-                        is_excluded = False # Not a representative, mark for others_list (move)
+                        is_excluded = False  # Not a representative, mark for others_list (move)
                     else:
                         rep_hashes[f_path] = hash_val
                         self.duplicate_groups[f_path] = []
-                        is_excluded = True # Representative, mark for keep_list
+                        is_excluded = True  # Representative, mark for keep_list
                 except Exception as e:
                     debug(UTILITY_AI_MEDIA_SCANNER, f"Hashing failed for {f_path}: {e}")
-                    is_excluded = True # Default to keep if hashing fails
+                    is_excluded = True  # Default to keep if hashing fails
             else:
                 # Face Detect (OpenCV)
                 has_face = False

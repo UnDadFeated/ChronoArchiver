@@ -534,7 +534,6 @@ class UpdateDownloadDialog(QDialog):
         except OSError:
             pass
         self._dest_path = dest
-        downloaded_ok = False
 
         def _on_progress(downloaded, total, pct, mbps):
             log_installer_popup(
@@ -577,9 +576,7 @@ class UpdateDownloadDialog(QDialog):
         self._download_stopped = threading.Event()
 
         def _worker():
-            ok = updater.download_installer_with_progress(
-                url, dest, size_bytes, _on_progress
-            )
+            ok = updater.download_installer_with_progress(url, dest, size_bytes, _on_progress)
             if not self._download_stopped.is_set():
                 try:
                     self._progress_queue.put_nowait(("done", ok, None, None))

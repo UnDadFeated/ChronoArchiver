@@ -72,8 +72,24 @@ CODEC_FFMAP_NAME = {
 }
 
 SOFTWARE_PRESET_MAP = {
-    "libx264": {"p1": "ultrafast", "p2": "superfast", "p3": "veryfast", "p4": "medium", "p5": "slow", "p6": "slower", "p7": "veryslow"},
-    "libx265": {"p1": "ultrafast", "p2": "superfast", "p3": "veryfast", "p4": "faster", "p5": "fast", "p6": "medium", "p7": "slow"},
+    "libx264": {
+        "p1": "ultrafast",
+        "p2": "superfast",
+        "p3": "veryfast",
+        "p4": "medium",
+        "p5": "slow",
+        "p6": "slower",
+        "p7": "veryslow",
+    },
+    "libx265": {
+        "p1": "ultrafast",
+        "p2": "superfast",
+        "p3": "veryfast",
+        "p4": "faster",
+        "p5": "fast",
+        "p6": "medium",
+        "p7": "slow",
+    },
     "libsvtav1": {"p1": "12", "p2": "10", "p3": "8", "p4": "6", "p5": "4", "p6": "2", "p7": "0"},
 }
 
@@ -229,6 +245,7 @@ def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
             return False, f"duration probe failed: {e}"
         return True, None
 
+    err = None
     for attempt in range(3):
         ok, err = _check_once()
         if ok:
@@ -687,7 +704,9 @@ class VideoEncoderEngine:
             pix_fmt = "yuv420p"
             return ["-c:v", vcodec, "-pix_fmt", pix_fmt, "-preset", modern_preset, "-crf", str(crf_val)]
 
-    def _build_hw_cmd(self, codec: str, quality: int, preset: str, hw_decode: bool, hdr_info: dict | None) -> tuple[list[str], list[str], dict | None]:
+    def _build_hw_cmd(
+        self, codec: str, quality: int, preset: str, hw_decode: bool, hdr_info: dict | None
+    ) -> tuple[list[str], list[str], dict | None]:
         """Build hwaccel flags and video codec args for hardware encoding.
         Returns (hw_flags, v_args, metadata_override)."""
         hw = self._hw_encoder
@@ -698,11 +717,16 @@ class VideoEncoderEngine:
             # Map preset to FFmpeg NVENC preset names
             nvenc_preset = SOFTWARE_PRESET_MAP["libx264"].get(preset, "medium")
             v_args = [
-                "-c:v", ff_vcodec,
-                "-pix_fmt", pix_fmt,
-                "-rc", "vbr",
-                "-cq", str(quality),
-                "-preset", nvenc_preset,
+                "-c:v",
+                ff_vcodec,
+                "-pix_fmt",
+                pix_fmt,
+                "-rc",
+                "vbr",
+                "-cq",
+                str(quality),
+                "-preset",
+                nvenc_preset,
             ]
             gpu_raw = (os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "").strip()
             if gpu_raw:
@@ -714,7 +738,10 @@ class VideoEncoderEngine:
             return hw_flags, v_args, metadata
 
         elif hw == "vaapi":
-            dri = sorted(glob.glob("/dev/dri/renderD*"), key=lambda x: int(x.rsplit("D", 1)[1]) if x.rsplit("D", 1)[1].isdigit() else float("inf"))
+            dri = sorted(
+                glob.glob("/dev/dri/renderD*"),
+                key=lambda x: int(x.rsplit("D", 1)[1]) if x.rsplit("D", 1)[1].isdigit() else float("inf"),
+            )
             vaapi_dev = dri[0] if dri else None
             ff_vcodec = CODEC_FFMAP[codec].get("hw_vaapi", f"{codec}_vaapi" if codec != "h265" else "hevc_vaapi")
             if hw_decode and vaapi_dev:
@@ -843,8 +870,8 @@ class VideoEncoderEngine:
             )
             emitted_probe_details = True
 
-        hw_flags = []
-        v_args = []
+        hw_flags: list[str] = []
+        v_args: list[str] = []
         hw_decode = hw_accel_decode and not _retry_software_decode
 
         if self._hw_encoder == "nvenc" and hw_decode:
@@ -864,11 +891,16 @@ class VideoEncoderEngine:
             ff_vcodec = CODEC_FFMAP[codec]["hw_nvenc"]
             pix_fmt = "p010le" if hdr_info else "yuv420p"
             v_args = [
-                "-c:v", ff_vcodec,
-                "-pix_fmt", pix_fmt,
-                "-rc", "vbr",
-                "-cq", str(quality),
-                "-preset", preset,
+                "-c:v",
+                ff_vcodec,
+                "-pix_fmt",
+                pix_fmt,
+                "-rc",
+                "vbr",
+                "-cq",
+                str(quality),
+                "-preset",
+                preset,
             ]
             gpu_raw = (os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "").strip()
             if gpu_raw:
@@ -921,10 +953,14 @@ class VideoEncoderEngine:
             + [output_path]
         )
 
-        self.logger.info(f"Engine State [Job {self.job_id}]: Starting encode for {os.path.basename(input_path)} ({codec_ff_name})")
+        self.logger.info(
+            f"Engine State [Job {self.job_id}]: Starting encode for {os.path.basename(input_path)} ({codec_ff_name})"
+        )
         _hw_info = f" hw={self._hw_encoder}" if self._hw_encoder else " sw"
         _nv = f" cuda={hw_decode}" if self._hw_encoder == "nvenc" else ""
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"Job {self.job_id} encode start: {input_path} -> {output_path}{_hw_info}{_nv}")
+        debug(
+            UTILITY_MASS_VIDEO_ENCODER, f"Job {self.job_id} encode start: {input_path} -> {output_path}{_hw_info}{_nv}"
+        )
 
         STALL_TIMEOUT = 300
         _last_output = [time.time()]
@@ -955,7 +991,7 @@ class VideoEncoderEngine:
 
             details_detected = emitted_probe_details
             video_info, audio_info = "Unknown", "Unknown"
-            error_log = deque(maxlen=50)
+            error_log: deque[str] = deque(maxlen=50)
             last_pct = 0.0
             # FFmpeg can emit many stderr lines per second; each called on_progress → Qt queued slots.
             # Unbounded updates caused multi-hour encode crashes (event-queue / repaint pressure). Cap ~6.7 Hz per worker.
@@ -971,7 +1007,7 @@ class VideoEncoderEngine:
                 _next_prog_emit_at[0] = now + _prog_emit_min_interval_s
                 self.on_progress(self.job_id, ep)
 
-            for raw in proc.stderr:
+            for raw in proc.stderr:  # type: ignore[union-attr]
                 _last_output[0] = time.time()
                 for line in raw.replace("\r", "\n").split("\n"):
                     if not line.strip():

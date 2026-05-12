@@ -1,5 +1,14 @@
 # Changelog
 
+## [6.6.0] - 2026-05-12
+
+### Fixed
+- **Possibly unbound variable `err` in `verify_local_media_file_ready`**: The fallback `return False, err` on the final line of the retry loop could trigger a Pylance `reportPossiblyUnboundVariable` warning. Added `err = None` guard before the loop so the variable is always bound.
+
+### Changed
+- **Type annotation polish across the codebase**: Added `# type: ignore` annotations, explicit variable type hints (e.g. `err: None`, `rep_hashes: dict[str, bytes]`, `img_queue: queue.Queue[...]`), and resolved Pylance/mypy warnings for improved static analysis compliance.
+- **Code formatting**: Reformatted long lines and dict literals for improved readability (NVENC preset maps, CONTAINER_EXT_MAP, encoder command args).
+
 ## [6.5.0] - 2026-05-12
 
 ### Fixed

@@ -37,8 +37,9 @@ def _preset_key_from_merged(merged: dict, *, had_preset_key_on_disk: bool) -> st
         if p.long_edge >= target_le:
             return p.key
     result = VIDEO_TARGET_PRESETS[-1].key
-    assert any(p.long_edge >= default_target_long_edge_for_migration(si) for p in VIDEO_TARGET_PRESETS), \
+    assert any(p.long_edge >= default_target_long_edge_for_migration(si) for p in VIDEO_TARGET_PRESETS), (
         f"No preset covers target long edge {target_le} for scale_index {si}"
+    )
     return result
 
 

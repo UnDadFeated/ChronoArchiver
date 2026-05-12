@@ -299,9 +299,9 @@ try:
     # Optional: only needed when using the upscaler UI.
     from huggingface_hub import HfApi, hf_hub_download, list_repo_files
 except ImportError:  # pragma: no cover
-    HfApi = None  # type: ignore[misc, assignment]
-    hf_hub_download = None  # type: ignore[misc, assignment]
-    list_repo_files = None  # type: ignore[misc, assignment]
+    HfApi = None
+    hf_hub_download = None
+    list_repo_files = None
 
 REPO_ID = "Tongyi-MAI/Z-Image-Turbo"
 HF_MODEL_URL = f"https://huggingface.co/{REPO_ID}"

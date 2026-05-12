@@ -8,12 +8,18 @@ from pathlib import Path
 
 import numpy as np
 
+try:
+    import torch
+except ImportError:
+    torch = None  # type: ignore[assignment, unused-ignore]
+
 _log = logging.getLogger("ChronoArchiver.realesrgan")
 
 
 def _extract_state_dict(model_path: str | Path) -> dict:
     """Load checkpoint dict (params / params_ema / raw) from a .pth file."""
     import torch
+
     p = str(model_path)
     loadnet = torch.load(p, map_location=torch.device("cpu"), weights_only=True)
     if isinstance(loadnet, dict):
@@ -98,9 +104,7 @@ def validate_rrdb_rgb_checkpoint_file(model_path: str | Path) -> tuple[bool, str
     if ent and ent[0] == st.st_mtime and ent[1] == st.st_size:
         return ent[2], ent[3], ent[4]
 
-    try:
-        import torch
-    except ImportError:
+    if torch is None:
         return False, "PyTorch not installed, cannot validate checkpoint.", False
 
     try:
@@ -213,12 +217,14 @@ class RealESRGANRunner:
 
     def _process(self) -> None:
         import torch
+
         assert self.img is not None
         with torch.no_grad():
             self.output = self.model(self.img)
 
     def _tile_process(self) -> None:
         import torch
+
         assert self.img is not None
         batch, channel, height, width = self.img.shape
         s = self.net_scale

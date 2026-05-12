@@ -78,7 +78,7 @@ def subject_tracks_log_line(
 
 
 def _hog_person_present(gray_small, *, max_side: int = 800) -> bool:
-    import cv2  # type: ignore
+    import cv2
 
     h, w = gray_small.shape[:2]
     if h < 2 or w < 2:
@@ -108,7 +108,7 @@ def _hair_likely_above_face(bgr, x: int, y: int, w: int, h: int) -> bool:
     """
     Heuristic: band above the face often contains hair (higher Laplacian variance than cheek skin).
     """
-    import cv2  # type: ignore
+    import cv2
 
     H, W = bgr.shape[:2]
     fh, fw = h, w
@@ -147,7 +147,7 @@ def analyze_subjects_bgr(bgr, *, face_max_side: int = 960, hog_max_side: int = 8
 
     Best-effort; safe to call on any resolution.
     """
-    import cv2  # type: ignore
+    import cv2
 
     if bgr is None or bgr.size == 0:
         return VideoSubjectHints(face=False, person_full_body=False, hair_likely=False)

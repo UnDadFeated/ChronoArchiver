@@ -73,7 +73,7 @@ class RRDBNet(nn.Module):
         # x2 checkpoints use pixel_unshuffle(2) so conv_first expects 4× RGB channels (12); x4 uses 3.
         eff_in_ch = num_in_ch * 4 if scale == 2 else num_in_ch
         self.conv_first = nn.Conv2d(eff_in_ch, num_feat, 3, 1, 1)
-        self.body = _make_layer(lambda: RRDB(num_feat, num_grow_ch), num_block)
+        self.body = _make_layer(lambda: RRDB(num_feat, num_grow_ch), num_block)  # type: ignore[arg-type]
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
         self.conv_up1 = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
         self.conv_up2 = nn.Conv2d(num_feat, num_feat, 3, 1, 1)

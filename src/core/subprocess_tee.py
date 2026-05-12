@@ -46,5 +46,5 @@ def tee_line(line: str) -> None:
 def win_hide_kw() -> dict:
     """Merge into subprocess.run / Popen on Windows to avoid console window flash."""
     if platform.system() == "Windows":
-        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}  # type: ignore[attr-defined]
     return {}

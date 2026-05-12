@@ -41,7 +41,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.5.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.6.0")
 
 
 VERSION = _read_version()
@@ -172,7 +172,7 @@ def _install_log_footer(ok: bool, detail: str = "") -> None:
 
 def _win_sp_kw() -> dict:
     if platform.system() == "Windows":
-        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}  # type: ignore[attr-defined]
     return {}
 
 
@@ -578,7 +578,7 @@ def _run_setup_bootstrap(
         subprocess.run(py_cmd + ["-m", "venv", str(venv)], capture_output=True, timeout=120, check=True, **_win_sp_kw())
     except subprocess.CalledProcessError as e:
         msg = (
-            (e.stderr or e.stdout or "venv failed").decode("utf-8", errors="ignore")
+            (e.stderr or e.stdout or "venv failed").decode("utf-8", errors="ignore")  # type: ignore[union-attr]
             if isinstance((e.stderr or e.stdout), bytes)
             else (e.stderr or e.stdout or "venv failed")
         )
@@ -850,7 +850,7 @@ def _windows_delete_uninstall_registry() -> None:
         return
     sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
     try:
-        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, sub)
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, sub)  # type: ignore[attr-defined]
     except OSError:
         pass
 
@@ -865,19 +865,19 @@ def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, displ
     uninstall_cmd = _windows_uninstall_registry_command(uninstall_bat)
     sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
     try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub)
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub)  # type: ignore[attr-defined]
         try:
-            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "ChronoArchiver")
-            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, VERSION)
-            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "ChronoArchiver")
-            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(app_root))
-            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, display_icon)
-            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)
-            winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
-            winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
-            winreg.SetValueEx(key, "InstallDate", 0, winreg.REG_SZ, datetime.now().strftime("%Y%m%d"))
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "ChronoArchiver")  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, VERSION)  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "ChronoArchiver")  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(app_root))  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, display_icon)  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "InstallDate", 0, winreg.REG_SZ, datetime.now().strftime("%Y%m%d"))  # type: ignore[attr-defined]
         finally:
-            winreg.CloseKey(key)
+            winreg.CloseKey(key)  # type: ignore[attr-defined]
     except OSError:
         pass
 
@@ -1467,7 +1467,7 @@ def _show_welcome_and_log_choice() -> tuple[bool, bool]:
 
     logo = _welcome_logo_photo(root)
     if logo is not None:
-        lbl_logo = tk.Label(body, image=logo, bg="#0d0d0d")
+        lbl_logo = tk.Label(body, image=logo, bg="#0d0d0d")  # type: ignore[arg-type]
         lbl_logo.pack(pady=(18, 4))
         setattr(root, "_welcome_logo_ref", logo)
 
@@ -1688,7 +1688,7 @@ def _do_setup_gui(download_url: str) -> bool:
         except tk.TclError:
             _sb_style_ok = False
     if not _sb_style_ok:
-        sb = tk.Scrollbar(
+        sb = tk.Scrollbar(  # type: ignore[assignment]
             tf,
             bg="#2d2d2d",
             troughcolor="#0d0d0d",

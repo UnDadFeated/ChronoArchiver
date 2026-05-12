@@ -24,9 +24,7 @@ import re
 import shutil
 import sys
 
-_MOVE_RE = re.compile(
-    r'\[(?:MOVE|COPY)(?: \+ EXIF ROTATE)?\] "([^"]*)" -> "([^"]*)"'
-)
+_MOVE_RE = re.compile(r'\[(?:MOVE|COPY)(?: \+ EXIF ROTATE)?\] "([^"]*)" -> "([^"]*)"')
 
 
 def parse_moves(log_path: str) -> list[tuple[str, str]]:
@@ -44,9 +42,7 @@ def parse_moves(log_path: str) -> list[tuple[str, str]]:
     return out
 
 
-def unique_dest_path(
-    root: str, basename: str, reserved: set[str] | None = None
-) -> str:
+def unique_dest_path(root: str, basename: str, reserved: set[str] | None = None) -> str:
     """Pick a free name under root: existing files OR names reserved by this run."""
     reserved = reserved or set()
 
