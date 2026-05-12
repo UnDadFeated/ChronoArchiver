@@ -7,6 +7,7 @@ Use :data:`NO_NETWORK_MESSAGE` and label styles everywhere the UI shows this sta
 
 from __future__ import annotations
 
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -25,18 +26,20 @@ _CONNECTIVITY_CHECK_URL = "https://api.github.com/repos/UnDadFeated/ChronoArchiv
 _cache_ok: bool | None = None
 _cache_ts: float = 0.0
 _CACHE_TTL_SEC = 45.0
+_cache_lock = threading.Lock()
 
 
 def is_network_reachable(*, timeout: float = 3.0, force_refresh: bool = False) -> bool:
     """Return True if HTTPS to GitHub API succeeds (short probe). Cached ~45s."""
     global _cache_ok, _cache_ts
     now = time.monotonic()
-    if not force_refresh and _cache_ok is not None and (now - _cache_ts) < _CACHE_TTL_SEC:
-        return _cache_ok
-    ok = _probe_network(timeout=timeout)
-    _cache_ok = ok
-    _cache_ts = now
-    return ok
+    with _cache_lock:
+        if not force_refresh and _cache_ok is not None and (now - _cache_ts) < _CACHE_TTL_SEC:
+            return _cache_ok
+        ok = _probe_network(timeout=timeout)
+        _cache_ok = ok
+        _cache_ts = now
+        return ok
 
 
 def _probe_network(timeout: float) -> bool:

@@ -54,6 +54,11 @@ def requests_get_stream_with_retries(
                 time.sleep(base_delay_s * (2**attempt))
                 last_exc = e
                 continue
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
             raise
     if last_exc:
         raise last_exc

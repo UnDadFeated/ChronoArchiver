@@ -1791,7 +1791,7 @@ class VideoUpscalerPanel(QWidget):
             QMessageBox.warning(
                 self,
                 "Busy",
-                "Another file-heavy task is running (Mass AV1 Encoder, Media Organizer, AI Media Scanner, "
+                "Another file-heavy task is running (Mass Video Encoder, Media Organizer, AI Media Scanner, "
                 "or AI Image Upscaler). Wait for it to finish.",
             )
             return

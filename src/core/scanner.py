@@ -139,7 +139,11 @@ class ScannerEngine:
                 try:
                     img = cv2.imread(f_path)
                     if img is not None:
-                        img_queue.put((f_path, size, img))
+                        try:
+                            img_queue.put((f_path, size, img), timeout=5)
+                        except queue.Full:
+                            self.logger(f"[SKIP] Queue full, skipping: {os.path.basename(f_path)}")
+                            debug(UTILITY_AI_MEDIA_SCANNER, f"Queue full, skipped: {f_path}")
                     else:
                         self.logger(f"[SKIP] Corrupt/unreadable: {os.path.basename(f_path)}")
                         debug(UTILITY_AI_MEDIA_SCANNER, f"Corrupt image: {f_path}")

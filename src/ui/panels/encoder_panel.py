@@ -1,7 +1,7 @@
 """
-encoder_panel.py — Mass AV1 Encoder panel for ChronoArchiver.
-Visual style exactly matches Mass AV1 Encoder v12.
-Uses src/core/av1_engine.py and src/core/av1_settings.py unchanged.
+encoder_panel.py — Mass Video Encoder panel for ChronoArchiver.
+Supports H.264, H.265, and AV1 codecs with MP4/MKV containers.
+Uses src/core/video_encoder_engine.py and src/core/encoder_settings.py.
 """
 
 import gc
@@ -41,7 +41,7 @@ import sys
 import logging
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from core.av1_engine import AV1EncoderEngine, EncodingProgress, verify_local_media_file_ready
+from core.video_encoder_engine import VideoEncoderEngine, EncodingProgress, verify_local_media_file_ready, CODEC_SUFFIX_MAP
 from core.remote_encode import (
     RemoteEncodeError,
     RemoteFileRef,
@@ -69,19 +69,19 @@ from ui.panel_widgets import (
     path_browse_btn_qss,
 )
 from ui.local_remote_path_dialog import run_local_remote_path_dialog
-from core.av1_settings import AV1Settings
+from core.encoder_settings import EncoderSettings
 from core.venv_manager import footer_nvidia_gpu_utilization_text
 from core.debug_logger import (
     debug,
     log_exception,
     structured_event,
-    UTILITY_MASS_AV1_ENCODER,
+    UTILITY_MASS_VIDEO_ENCODER,
 )
 from version import APP_NAME
 from ui.scan_progress_dialog import ScanProgressDialog
 
 # mkstemp prefix so STOP / quit can sweep orphans; must match _sweep_chrono_encoder_tempdir.
-_ENCODER_TMP_PREFIX = "chronoarchiver_av1_"
+_ENCODER_TMP_PREFIX = "chronoarchiver_encode_"
 # Plain console lines only (no rich HTML): long runs used to crash Qt in QTextEdit::paintEvent.
 _ENCODER_LOG_LINE_MAX = 4000
 
@@ -131,7 +131,7 @@ class _Signals(QObject):
     scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
 
 
-class AV1EncoderPanel(QWidget):
+class VideoEncoderPanel(QWidget):
     def __init__(self, log_callback=None, metrics_callback=None, status_callback=None, parent=None):
         super().__init__(parent)
         self._log_cb = log_callback
@@ -148,7 +148,7 @@ class AV1EncoderPanel(QWidget):
         self._sig.scan_done.connect(self._on_scan_done, Qt.ConnectionType.QueuedConnection)
         self._sig.scan_done_then_start.connect(self._on_scan_done_then_start, Qt.ConnectionType.QueuedConnection)
 
-        self._settings = AV1Settings()
+        self._settings = EncoderSettings()
 
         self._is_encoding = False
         self._is_paused = False
@@ -260,7 +260,7 @@ class AV1EncoderPanel(QWidget):
         grid_paths.addWidget(self._edit_dst, 2, 0)
         grid_paths.addWidget(self._btn_browse_dst, 2, 1, alignment=_browse_align)
         grid_paths.addWidget(
-            QLabel("Target — AV1 encoded output destination", styleSheet=_shint),
+            QLabel("Target — Video encoded output destination", styleSheet=_shint),
             3,
             0,
             1,
@@ -323,6 +323,32 @@ class AV1EncoderPanel(QWidget):
         self._lbl_cq_hint = QLabel("CQ — lower = better quality", styleSheet="font-size:7px; color:#444;")
         h_q.addWidget(self._lbl_cq_hint)
         v_cfg.addLayout(h_q)
+
+        # Codec selector
+        h_c = QHBoxLayout()
+        h_c.setSpacing(4)
+        lbl_c = QLabel("Codec")
+        lbl_c.setStyleSheet(_slbl)
+        lbl_c.setFixedWidth(42)
+        self._combo_codec = QComboBox()
+        self._combo_codec.setStyleSheet(_combo_style)
+        self._combo_codec.setFixedHeight(16)
+        self._combo_codec.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._combo_codec.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self._combo_codec.addItems([
+            "H.264 (Most Compatible)",
+            "H.265 (Better Compression)",
+            "AV1 (Best Compression)",
+        ])
+        codec_val = self._settings.get("codec")
+        codec_idx = {"h264": 0, "h265": 1, "av1": 2}.get(codec_val, 2)
+        self._combo_codec.setCurrentIndex(codec_idx)
+        self._combo_codec.currentIndexChanged.connect(self._on_codec_changed)
+        h_c.addWidget(lbl_c)
+        h_c.addWidget(self._combo_codec, 0)
+        self._lbl_codec_hint = QLabel("H.264 = widest playback support", styleSheet="font-size:7px; color:#444;")
+        h_c.addWidget(self._lbl_codec_hint, 1)
+        v_cfg.addLayout(h_c)
 
         # Preset
         h_p = QHBoxLayout()
@@ -392,7 +418,7 @@ class AV1EncoderPanel(QWidget):
         self._chk_audio.setChecked(self._settings.get("reencode_audio"))
         self._chk_audio.stateChanged.connect(lambda v: self._settings.set("reencode_audio", bool(v)))
         h_audio_left.addWidget(self._chk_audio, 0, Qt.AlignmentFlag.AlignLeft)
-        self._lbl_pcm_hint = QLabel("Re-encode PCM/unsupported to Opus", styleSheet="font-size:7px; color:#444;")
+        self._lbl_pcm_hint = QLabel("Re-encode PCM/unsupported (AAC or Opus)", styleSheet="font-size:7px; color:#444;")
         h_audio_left.addWidget(self._lbl_pcm_hint, 0, Qt.AlignmentFlag.AlignLeft)
         h_a.addWidget(w_audio_left, 0, Qt.AlignmentFlag.AlignLeft)
         h_a.addStretch(1)
@@ -448,6 +474,26 @@ class AV1EncoderPanel(QWidget):
         v_exist.addWidget(self._combo_exist, alignment=Qt.AlignmentFlag.AlignLeft)
         v_opts.addWidget(w_exist)
 
+        # Container selector
+        w_cont = QWidget()
+        v_cont = QVBoxLayout(w_cont)
+        v_cont.setContentsMargins(0, 0, 0, 0)
+        v_cont.setSpacing(0)
+        lbl_cont = QLabel("Container:", styleSheet=_check_s)
+        v_cont.addWidget(lbl_cont)
+        self._combo_container = QComboBox()
+        self._combo_container.addItems([".mp4 (Universal)", ".mkv (Modern)"])
+        container_val = self._settings.get("container")
+        container_idx = {"mp4": 0, "mkv": 1}.get(container_val, 0)
+        self._combo_container.setCurrentIndex(container_idx)
+        self._combo_container.setStyleSheet(COMBO_BOX_PANEL_QSS + "QComboBox { color: #aaa; }")
+        self._combo_container.setFixedHeight(16)
+        self._combo_container.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._combo_container.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self._combo_container.currentTextChanged.connect(self._on_container_changed)
+        v_cont.addWidget(self._combo_container, alignment=Qt.AlignmentFlag.AlignLeft)
+        v_opts.addWidget(w_cont)
+
         self._chk_shutdown = QCheckBox("Shutdown When Done")
         self._chk_shutdown.setChecked(self._settings.get("shutdown_on_finish"))
         self._chk_shutdown.stateChanged.connect(lambda v: self._settings.set("shutdown_on_finish", bool(v)))
@@ -457,14 +503,14 @@ class AV1EncoderPanel(QWidget):
         self._chk_hw.setChecked(self._settings.get("hw_accel_decode"))
         self._chk_hw.stateChanged.connect(lambda v: self._settings.set("hw_accel_decode", bool(v)))
         v_opts.addWidget(_mk_opt(self._chk_hw, "Use GPU for demux / decode stage"))
-        _probe_enc = AV1EncoderEngine()
-        if not _probe_enc.has_hardware_av1_encoder:
+        _probe_enc = VideoEncoderEngine()
+        if not _probe_enc.has_hardware_encoder:
             self._chk_hw.setChecked(False)
             self._settings.set("hw_accel_decode", False)
             self._chk_hw.setEnabled(False)
             self._chk_hw.setToolTip(
-                "No AV1 hardware encoder in this FFmpeg build (av1_nvenc / av1_vaapi / av1_amf). "
-                "Using software libsvtav1."
+                "No hardware encoder (NVENC/VAAPI/QSV/AMF) found in this FFmpeg build. "
+                "Using software encoders (libx264, libx265, libsvtav1)."
             )
 
         # Rejects
@@ -677,10 +723,16 @@ class AV1EncoderPanel(QWidget):
             self._settings.set("preset", p_list[idx])
 
     def _update_cq_hint(self):
-        hints = ["18-28", "22-32", "25-35", "28-38", "30-40", "32-42", "35-45"]
+        codec = self._settings.get("codec", "av1")
+        codec_ranges = {
+            "h264": ["18-28", "19-29", "20-30", "21-31", "22-32", "23-33", "24-34"],
+            "h265": ["22-32", "23-33", "24-34", "25-35", "26-36", "27-37", "28-38"],
+            "av1": ["18-28", "22-32", "25-35", "28-38", "30-40", "32-42", "35-45"],
+        }
+        hints = codec_ranges.get(codec, ["18-28", "22-32", "25-35", "28-38", "30-40", "32-42", "35-45"])
         idx = self._combo_preset.currentIndex()
         h = hints[min(idx, len(hints) - 1)]
-        self._lbl_cq_hint.setText(f"CQ suggested {h}")
+        self._lbl_cq_hint.setText(f"CRF suggested {h}")
 
     def _on_jobs_changed(self, idx):
         idx = max(0, min(int(idx), 2))
@@ -689,15 +741,50 @@ class AV1EncoderPanel(QWidget):
         for i, w in enumerate(self._job_widgets):
             w.setVisible(i < jobs)
 
+    def _on_codec_changed(self, idx):
+        codec_list = ["h264", "h265", "av1"]
+        codec = codec_list[idx]
+        self._settings.set("codec", codec)
+        hint_map = {
+            "h264": "Widest playback compatibility",
+            "h265": "Better compression than H.264",
+            "av1": "Best compression, royalty-free",
+        }
+        self._lbl_codec_hint.setText(hint_map.get(codec, ""))
+        self._update_cq_hint()
+
+    def _on_container_changed(self, text):
+        ext = text.split("(")[0].strip().lower()
+        container = "mp4" if ".mp4" in ext else "mkv"
+        self._settings.set("container", container)
+        self._update_cq_hint()
+
     def _save_rej_time(self, t):
         parts = t.split(":")
         if len(parts) == 3:
             try:
-                self._settings.set("rejects_h", int(parts[0]))
-                self._settings.set("rejects_m", int(parts[1]))
-                self._settings.set("rejects_s", int(parts[2]))
+                h = max(0, min(23, int(parts[0])))
+                m = max(0, min(59, int(parts[1])))
+                s = max(0, min(59, int(parts[2])))
+                self._settings.set("rejects_h", h)
+                self._settings.set("rejects_m", m)
+                self._settings.set("rejects_s", s)
             except ValueError:
                 pass
+
+    def _codec_tag(self) -> str:
+        """Return the codec suffix tag (e.g. 'h264', 'hevc', 'av1') for output filenames."""
+        codec = self._settings.get("codec")
+        return {"h264": "h264", "h265": "hevc", "av1": "av1"}.get(codec, "av1")
+
+    def _container_ext(self) -> str:
+        """Return the container extension (e.g. '.mp4', '.mkv')."""
+        container = self._settings.get("container")
+        return {"mp4": ".mp4", "mkv": ".mkv"}.get(container, ".mp4")
+
+    def _output_suffix(self) -> str:
+        """Return the full output suffix: '_<codec>.<ext>' (e.g. '_h264.mp4', '_hevc.mkv')."""
+        return f"_{self._codec_tag()}{self._container_ext()}"
 
     def _browse_src(self):
         picked, dialog_pw = run_local_remote_path_dialog(self, self._edit_src.text().strip(), purpose="source")
@@ -730,10 +817,9 @@ class AV1EncoderPanel(QWidget):
                 password_for_remote_encode(self._edit_ssh_pw.text())
             except RemoteEncodeError:
                 return False
-        if r_src:
-            if not self._source_scanned or len(self._queue) == 0:
-                return False
-        elif not os.path.isdir(src):
+        if r_src and (not self._source_scanned or len(self._queue) == 0):
+            return False
+        if not r_src and not os.path.isdir(src):
             return False
         if r_dst:
             return True
@@ -826,7 +912,7 @@ class AV1EncoderPanel(QWidget):
             return
         can = self._can_start()
         self._btn_start.setEnabled(can)
-        _tip = "Start AV1 encoding for the queued files"
+        _tip = "Start encoding for the queued files"
         apply_start_button_hint(
             self._btn_start,
             enabled=can,
@@ -863,7 +949,7 @@ class AV1EncoderPanel(QWidget):
             pw = password_for_remote_encode(self._edit_ssh_pw.text())
         except RemoteEncodeError as e:
             self._sig.log_msg.emit(str(e))
-            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan error (credentials): {e}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Remote video scan error (credentials): {e}")
             _lg.warning("Remote video scan (credentials): %s", e)
             return []
         try:
@@ -880,14 +966,14 @@ class AV1EncoderPanel(QWidget):
             return [(r, r.size) for r in refs]
         except RemoteEncodeError as e:
             self._sig.log_msg.emit(f"Remote scan error: {e}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan error: {e}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Remote video scan error: {e}")
             _lg.warning("Remote video scan: %s", e)
             return []
         except Exception as e:
             self._sig.log_msg.emit(f"Remote scan error: {e}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Remote video scan unexpected error: {e}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Remote video scan unexpected error: {e}")
             _lg.warning("Remote video scan (unexpected): %s", e)
-            log_exception(e, context="remote video scan", utility=UTILITY_MASS_AV1_ENCODER)
+            log_exception(e, context="remote video scan", utility=UTILITY_MASS_VIDEO_ENCODER)
             return []
 
     def _auto_scan(self):
@@ -903,8 +989,18 @@ class AV1EncoderPanel(QWidget):
             self._source_scanned = False
             self._add_log("Scanning remote source (SSH)...")
             self._update_start_enabled()
-            debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan remote: {src[:200]}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan remote: {src[:200]}")
 
+            old_dlg = getattr(self, "_scan_dialog", None)
+            if old_dlg:
+                try:
+                    self._sig.scan_progress.disconnect(old_dlg.update_progress)
+                except Exception:
+                    pass
+                try:
+                    old_dlg.close()
+                except Exception:
+                    pass
             scan_dialog = ScanProgressDialog(self)
             self._scan_dialog = scan_dialog
             self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
@@ -915,7 +1011,7 @@ class AV1EncoderPanel(QWidget):
                 total_b = sum(s for _, s in items)
                 self._sig.scan_progress.emit(len(items), total_b)
                 debug(
-                    UTILITY_MASS_AV1_ENCODER,
+                    UTILITY_MASS_VIDEO_ENCODER,
                     f"Auto-scan remote complete: count={len(items)}, total_bytes={total_b}",
                 )
                 self._sig.scan_done.emit(items, src)
@@ -929,8 +1025,18 @@ class AV1EncoderPanel(QWidget):
         self._source_scanned = False
         self._add_log("Scanning source folder...")
         self._update_start_enabled()
-        debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan start: src={src}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan start: src={src}")
 
+        old_dlg = getattr(self, "_scan_dialog", None)
+        if old_dlg:
+            try:
+                self._sig.scan_progress.disconnect(old_dlg.update_progress)
+            except Exception:
+                pass
+            try:
+                old_dlg.close()
+            except Exception:
+                pass
         scan_dialog = ScanProgressDialog(self)
         self._scan_dialog = scan_dialog
         self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
@@ -942,7 +1048,7 @@ class AV1EncoderPanel(QWidget):
             items = []
             last_emit = [0]
             try:
-                for path, size in AV1EncoderEngine().scan_files(src):
+                for path, size in VideoEncoderEngine().scan_files(src):
                     items.append((path, max(0, size)))
                     count += 1
                     total_bytes = max(0, total_bytes + size)
@@ -953,8 +1059,8 @@ class AV1EncoderPanel(QWidget):
                 self._sig.scan_progress.emit(count, total_bytes)
             except Exception as e:
                 self._sig.log_msg.emit(f"Scan error: {e}")
-                debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Auto-scan complete: count={count}, total_bytes={total_bytes}")
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan error: {e}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan complete: count={count}, total_bytes={total_bytes}")
             self._sig.scan_done.emit(items, src)
 
         threading.Thread(target=_scan, daemon=True).start()
@@ -1000,9 +1106,9 @@ class AV1EncoderPanel(QWidget):
         src = self._edit_src.text().strip()
         self._add_log(f"Scanned: {n} file{'s' if n != 1 else ''} ready.")
         total_b = sum(s for _, s in items)
-        debug(UTILITY_MASS_AV1_ENCODER, f"Apply scan result: n={n}, total_bytes={total_b}, src={src}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Apply scan result: n={n}, total_bytes={total_b}, src={src}")
         if self._log_cb and n > 0:
-            self._log_cb(f"AV1 Encoder: {n} files in queue.")
+            self._log_cb(f"Video Encoder: {n} files in queue.")
         self._update_start_enabled()
 
     def _browse_dst(self):
@@ -1032,18 +1138,28 @@ class AV1EncoderPanel(QWidget):
         if is_remote_path(src) or is_remote_path(dst):
             if not shutil.which("ssh") or not shutil.which("scp"):
                 self._add_log("ERROR: Remote encoding requires ssh and scp in PATH.")
-                debug(UTILITY_MASS_AV1_ENCODER, "Start aborted: missing ssh/scp")
+                debug(UTILITY_MASS_VIDEO_ENCODER, "Start aborted: missing ssh/scp")
                 return
 
         # FFmpeg check at startup
         if not shutil.which("ffmpeg"):
             self._add_log("ERROR: FFmpeg not found. Install ffmpeg and ensure it is in PATH.")
-            debug(UTILITY_MASS_AV1_ENCODER, "Start aborted: FFmpeg not found")
+            debug(UTILITY_MASS_VIDEO_ENCODER, "Start aborted: FFmpeg not found")
             return
 
         if not self._queue:
             self._add_log("Scanning source...")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Start encoding: queue empty, scanning src={src}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Start encoding: queue empty, scanning src={src}")
+            old_dlg = getattr(self, "_scan_dialog", None)
+            if old_dlg:
+                try:
+                    self._sig.scan_progress.disconnect(old_dlg.update_progress)
+                except Exception:
+                    pass
+                try:
+                    old_dlg.close()
+                except Exception:
+                    pass
             scan_dialog = ScanProgressDialog(self)
             self._scan_dialog = scan_dialog
             self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
@@ -1060,14 +1176,14 @@ class AV1EncoderPanel(QWidget):
                 total_bytes = 0
                 items = []
                 try:
-                    for path, size in AV1EncoderEngine().scan_files(src):
+                    for path, size in VideoEncoderEngine().scan_files(src):
                         items.append((path, size))
                         count += 1
                         total_bytes += size
                         self._sig.scan_progress.emit(count, total_bytes)
                 except Exception as e:
                     self._sig.log_msg.emit(f"Scan error: {e}")
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Scan error: {e}")
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan error: {e}")
                 self._sig.scan_done_then_start.emit(items, src, dst)
 
             threading.Thread(target=_scan_then_start, daemon=True).start()
@@ -1076,25 +1192,30 @@ class AV1EncoderPanel(QWidget):
         self._continue_start_encoding(src, dst)
 
     def _continue_start_encoding(self, src, dst):
-        debug(UTILITY_MASS_AV1_ENCODER, f"_continue_start_encoding: queue_len={len(self._queue)}, src={src}, dst={dst}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: queue_len={len(self._queue)}, src={src}, dst={dst}")
         if not self._queue:
             self._add_log("No compatible files found.")
-            debug(UTILITY_MASS_AV1_ENCODER, f"No compatible files in {src}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"No compatible files in {src}")
             return
 
         self._encode_pw = None
         self._remote_dst_remote = None
         self._remote_dst_root_posix = None
         self._remote_src_structure_root_posix = None
+        r_src = is_remote_path(src)
         r_dst = is_remote_path(dst)
         if r_dst:
             self._remote_dst_remote, self._remote_dst_root_posix = remote_target_and_root(dst)
-        if is_remote_path(src) or r_dst:
+        if r_src or r_dst:
             try:
                 self._encode_pw = password_for_remote_encode(self._edit_ssh_pw.text())
             except RemoteEncodeError as e:
                 self._add_log(f"ERROR: {e}")
                 return
+        if r_src and (not self._source_scanned or len(self._queue) == 0):
+            self._add_log("ERROR: Remote source scan has not completed or found no files.")
+            debug(UTILITY_MASS_VIDEO_ENCODER, "Start blocked: remote source not scanned")
+            return
 
         # Long path warning (Windows MAX_PATH ~260)
         if platform.system() == "Windows":
@@ -1103,7 +1224,7 @@ class AV1EncoderPanel(QWidget):
                 ds = dst if r_dst else os.path.abspath(dst)
                 if len(ps) > 200 or len(ds) > 200:
                     self._add_log("WARNING: Paths exceed 200 chars; Windows may fail. Enable long paths in Registry.")
-                    debug(UTILITY_MASS_AV1_ENCODER, "Long path detected")
+                    debug(UTILITY_MASS_VIDEO_ENCODER, "Long path detected")
                     break
 
         # Disk space check before starting (local target or temp space for remote target)
@@ -1117,18 +1238,18 @@ class AV1EncoderPanel(QWidget):
                     f"WARNING: Low disk space ({disk_check_path}). Free: {usage.free / (1024**3):.1f} GB, "
                     f"need ~{required / (1024**3):.1f} GB. Proceeding anyway."
                 )
-                debug(UTILITY_MASS_AV1_ENCODER, f"Low disk: free={usage.free}, need~{required}")
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Low disk: free={usage.free}, need~{required}")
         except OSError as e:
             self._add_log(f"WARNING: Could not check disk space: {e}. Proceeding anyway.")
 
-        if not try_acquire_fs_heavy("Mass AV1 Encoder"):
+        if not try_acquire_fs_heavy("Mass Video Encoder"):
             _busy = (
                 "Another file-heavy task is running (Media Organizer, AI Media Scanner, AI Image Upscaler, "
                 "or AI Video Upscaler). Wait for it to finish."
             )
             QMessageBox.warning(self, "Busy", _busy)
             self._add_log(f"ERROR: {_busy}")
-            debug(UTILITY_MASS_AV1_ENCODER, "Start blocked: fs_task_lock busy")
+            debug(UTILITY_MASS_VIDEO_ENCODER, "Start blocked: fs_task_lock busy")
             return
         self._fs_heavy_held = True
 
@@ -1148,7 +1269,6 @@ class AV1EncoderPanel(QWidget):
         self._job_progress = {}
         self._current_files = {}
         self._total_saved = 0
-        self._is_encoding = True
         self._is_paused = False
         self._batch_start = time.time()
         self._last_encoder_agg_ui_at = 0.0
@@ -1168,84 +1288,11 @@ class AV1EncoderPanel(QWidget):
         self._btn_pause.setEnabled(True)
         self._update_start_enabled()
 
-        self._add_log(f"Starting encode — {self._total_count} files.")
-        # Hint when both paths appear to be on network (NAS) — can cause failures; retry with software decode helps
-        if any(x in src.lower() for x in ("/mnt/", "smb://", "//", "\\\\")) and any(
-            x in dst.lower() for x in ("/mnt/", "smb://", "//", "\\\\")
-        ):
-            self._add_log(
-                "TIP: Source and target on network — if some files fail, try fewer concurrent jobs or use local copy."
-            )
-        debug(UTILITY_MASS_AV1_ENCODER, f"Encode start: {self._total_count} files, src={src}, dst={dst}")
-        structured_event(
-            "encode_batch_start",
-            file_count=self._total_count,
-            src=src[:300],
-            dst=dst[:300],
-        )
-        if self._log_cb:
-            self._log_cb(f"AV1 Encoder: {self._total_count} files queued.")
-
-        # Structure root: common parent of all queued files so we mirror only meaningful subdirs
-        # (avoids recreating a top-level "Source" or similar wrapper folder in target)
-        structure_root = None
-        # Pipeline mode only when *every* item is remote; a mixed queue must use the legacy worker.
-        use_remote_pipeline = len(self._queue) > 0 and all(isinstance(x[0], RemoteFileRef) for x in self._queue)
-        if self._settings.get("maintain_structure") and self._queue:
-            if use_remote_pipeline:
-                self._remote_src_structure_root_posix = common_structure_root_posix([x[0] for x in self._queue])
-                debug(
-                    UTILITY_MASS_AV1_ENCODER,
-                    f"Remote structure root (mirror): {self._remote_src_structure_root_posix}",
-                )
-            else:
-                all_dirs = [os.path.dirname(p) for p, _ in self._queue if not isinstance(p, RemoteFileRef)]
-                if all_dirs:
-                    try:
-                        structure_root = os.path.commonpath(all_dirs)
-                    except ValueError:
-                        structure_root = src  # fallback if mixed drives (Windows) or inconsistent paths
-                else:
-                    structure_root = src
-                debug(UTILITY_MASS_AV1_ENCODER, f"Structure root (mirror): {structure_root}")
-
-        num_workers = self._settings.get("concurrent_jobs")
-        try:
-            num_workers = int(num_workers)
-        except (TypeError, ValueError):
-            num_workers = 2
-        num_workers = max(1, min(8, num_workers))
-        AV1EncoderEngine.reset_nvenc_cuda_hwaccel_for_new_batch()
-        self._engine_pool = [AV1EncoderEngine(job_id=i) for i in range(num_workers)]
-        if use_remote_pipeline:
-            cap = _remote_pipeline_queue_cap(num_workers)
-            self._encode_pipeline_q = queue.Queue(maxsize=cap)
-            self._pipeline_prefetch_stop.clear()
-            pl_work = list(self._queue)
-            self._queue.clear()
-            self._pipeline_prefetch_thread = threading.Thread(
-                target=self._pipeline_prefetch_loop,
-                args=(pl_work, src, dst, structure_root, num_workers),
-                daemon=True,
-                name="chronoarchiver-remote-prefetch",
-            )
-            self._pipeline_prefetch_thread.start()
-            self._add_log(
-                "Network pipeline: prefetching upcoming source file(s) while encoding runs "
-                f"(buffer ≤ {cap} on local disk) — keeps the GPU busy."
-            )
-            debug(
-                UTILITY_MASS_AV1_ENCODER,
-                f"Remote prefetch pipeline: cap={cap} jobs={len(pl_work)} (all-remote queue)",
-            )
-        else:
-            self._encode_pipeline_q = None
-            self._pipeline_prefetch_thread = None
-
         for eng in self._engine_pool:
             eng.on_progress = lambda j, p: self._sig.progress.emit(j, p)
             eng.on_details = lambda j, v, a: self._sig.details.emit(j, v, a)
             threading.Thread(target=self._job_worker, args=(eng, src, dst, structure_root), daemon=True).start()
+        self._is_encoding = True
 
     def get_activity(self):
         return "encoding" if self._is_encoding else "idle"
@@ -1253,6 +1300,11 @@ class AV1EncoderPanel(QWidget):
     def _stop_encoding(self):
         self._is_encoding = False
         self._pipeline_prefetch_stop.set()
+        with self._queue_lock:
+            remaining = len(self._queue)
+            if remaining:
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Draining {remaining} remaining queue item(s) on stop.")
+                self._queue.clear()
         self._encode_pw = None
         self._remote_dst_remote = None
         self._remote_dst_root_posix = None
@@ -1271,18 +1323,18 @@ class AV1EncoderPanel(QWidget):
         self._btn_pause.setEnabled(False)
         self._update_start_enabled()
         self._add_log("Encoding stopped.")
-        debug(UTILITY_MASS_AV1_ENCODER, "Encoding stopped by user.")
+        debug(UTILITY_MASS_VIDEO_ENCODER, "Encoding stopped by user.")
         self._encode_pipeline_q = None
         QTimer.singleShot(2500, self._sweep_chrono_encoder_tempdir)
 
     def _toggle_pause(self):
-        paused = any(e._is_paused for e in self._engine_pool)
+        self._is_paused = not self._is_paused
         for eng in self._engine_pool:
-            if paused:
-                eng.resume()
-            else:
+            if self._is_paused:
                 eng.pause()
-        self._btn_pause.setText("PAUSE" if paused else "RESUME")
+            else:
+                eng.resume()
+        self._btn_pause.setText("RESUME" if self._is_paused else "PAUSE")
 
     def _pipeline_plan_remote_item(
         self,
@@ -1350,9 +1402,9 @@ class AV1EncoderPanel(QWidget):
         else:
             flat_stem = posixpath.splitext(posixpath.basename(ref.rel_posix))[0]
             if dst_remote:
-                remote_out_posix = posix_join_under(dst_root_px, flat_stem)
+                remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
             else:
-                tpath_local = os.path.join(dst, flat_stem + "_av1.mp4")
+                tpath_local = os.path.join(dst, flat_stem + self._output_suffix())
 
         policy = self._settings.get("existing_output")
         pw = self._encode_pw
@@ -1482,11 +1534,11 @@ class AV1EncoderPanel(QWidget):
         except Exception as e:
             if isinstance(e, queue.Full):
                 debug(
-                    UTILITY_MASS_AV1_ENCODER,
+                    UTILITY_MASS_VIDEO_ENCODER,
                     "Pipeline prefetch: bounded queue full (timeout on put); workers may be stalled",
                 )
-            debug(UTILITY_MASS_AV1_ENCODER, f"Pipeline prefetch fatal: {e}")
-            log_exception(e, context="pipeline_prefetch", utility=UTILITY_MASS_AV1_ENCODER)
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Pipeline prefetch fatal: {e}")
+            log_exception(e, context="pipeline_prefetch", utility=UTILITY_MASS_VIDEO_ENCODER)
         finally:
             try:
                 for _ in range(num_workers):
@@ -1503,8 +1555,8 @@ class AV1EncoderPanel(QWidget):
         spurious "batch complete" after **STOP** when the remote pipeline left ``_queue`` empty.
         """
         should_emit = False
-        with self._queue_lock:
-            with self._active_lock:
+        with self._active_lock:
+            with self._queue_lock:
                 self._active_jobs -= 1
                 if self._active_jobs != 0:
                     return
@@ -1520,7 +1572,7 @@ class AV1EncoderPanel(QWidget):
         if should_emit:
             self._sig.log_msg.emit("Encoding batch complete.")
             self._sig.batch_complete.emit()
-            debug(UTILITY_MASS_AV1_ENCODER, "Encoding batch complete (worker drain).")
+            debug(UTILITY_MASS_VIDEO_ENCODER, "Encoding batch complete (worker drain).")
 
     def _job_worker_pipeline(self, engine, src, dst, structure_root=None):
         """Consumer for prefetched remote files (overlap download + NVENC)."""
@@ -1547,7 +1599,7 @@ class AV1EncoderPanel(QWidget):
                     break
                 if not isinstance(task, dict):
                     debug(
-                        UTILITY_MASS_AV1_ENCODER,
+                        UTILITY_MASS_VIDEO_ENCODER,
                         f"Pipeline worker: ignored non-dict queue item: {type(task).__name__}",
                     )
                     continue
@@ -1558,7 +1610,7 @@ class AV1EncoderPanel(QWidget):
                     if pl.get("skip_msg"):
                         disp = posixpath.basename(ref.rel_posix) if ref else lk
                         self._sig.log_msg.emit(f"SKIP (exists): {disp}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing (pipeline): {lk}")
+                        debug(UTILITY_MASS_VIDEO_ENCODER, f"Skipped existing (pipeline): {lk}")
                     if pl.get("err"):
                         self._sig.log_msg.emit(f"Remote I/O error: {pl['err']}")
                     _fin(
@@ -1584,7 +1636,7 @@ class AV1EncoderPanel(QWidget):
                     tpath_local = ctx["tpath_local"]
                     remote_out_posix = ctx["remote_out_posix"]
                 except (KeyError, TypeError) as e:
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Pipeline worker: bad encode task payload: {e}")
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Pipeline worker: bad encode task payload: {e}")
                     continue
 
                 self._current_files[engine.job_id] = ref.abs_posix if ref else logical_key
@@ -1618,7 +1670,7 @@ class AV1EncoderPanel(QWidget):
                         if dur <= thr:
                             bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(tmp_in)
                             self._sig.log_msg.emit(f"REJECTED: {bn} ({dur:.1f}s)")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
+                            debug(UTILITY_MASS_VIDEO_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
                             _finalize_encoder_temp_files(tmp_cleanup, success=True, local_in=tmp_in, local_out="")
                             _fin(
                                 True,
@@ -1638,7 +1690,7 @@ class AV1EncoderPanel(QWidget):
                     if not ok_ready:
                         self._sig.log_msg.emit(f"Source not ready: {ready_err}")
                         debug(
-                            UTILITY_MASS_AV1_ENCODER,
+                            UTILITY_MASS_VIDEO_ENCODER,
                             f"Pipeline worker: source not ready {tmp_in!r}: {ready_err}",
                         )
                         _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in=tmp_in, local_out="")
@@ -1658,9 +1710,11 @@ class AV1EncoderPanel(QWidget):
 
                     enc_fail_hint: str | None = None
                     enc_user_stop = False
-                    if engine.try_passthrough_existing_av1(tmp_in, tpath_local):
+                    codec = self._settings.get("codec")
+                    container = self._settings.get("container")
+                    if engine.try_passthrough(tmp_in, tpath_local, codec):
                         disp = posixpath.basename(ref.rel_posix)
-                        self._sig.log_msg.emit(f"Already AV1 (passthrough): {disp}")
+                        self._sig.log_msg.emit(f"Already {codec.upper()} (passthrough): {disp}")
                         ok, in_p, out_p = True, tmp_in, tpath_local
                     else:
                         ok, in_p, out_p, enc_fail_hint, enc_user_stop = engine.encode_file(
@@ -1669,6 +1723,8 @@ class AV1EncoderPanel(QWidget):
                             self._settings.get("quality"),
                             self._settings.get("preset"),
                             self._settings.get("reencode_audio"),
+                            codec=codec,
+                            container=container,
                             hw_accel_decode=self._settings.get("hw_accel_decode"),
                         )
 
@@ -1680,7 +1736,7 @@ class AV1EncoderPanel(QWidget):
                             run_scp_to_remote(out_p, dst_remote, remote_out_posix, password_for_sshpass=pw)
                         except RemoteEncodeError as e:
                             self._sig.log_msg.emit(f"Remote upload error: {e}")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"scp push failed: {e}")
+                            debug(UTILITY_MASS_VIDEO_ENCODER, f"scp push failed: {e}")
                             ok = False
                             if out_p and os.path.isfile(out_p):
                                 tmp_cleanup.append(out_p)
@@ -1710,8 +1766,8 @@ class AV1EncoderPanel(QWidget):
                     _fin(ok, logical_key, out_p if ok else out_p, meta)
                 except Exception as job_e:
                     self._sig.log_msg.emit(f"ERROR: {job_e}")
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Encoder pipeline job: {job_e}")
-                    log_exception(job_e, context="encoder_pipeline_job", utility=UTILITY_MASS_AV1_ENCODER)
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder pipeline job: {job_e}")
+                    log_exception(job_e, context="encoder_pipeline_job", utility=UTILITY_MASS_VIDEO_ENCODER)
                     try:
                         _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in=tmp_in, local_out=out_p or "")
                     except Exception:
@@ -1731,8 +1787,8 @@ class AV1EncoderPanel(QWidget):
 
         except Exception as e:
             self._sig.log_msg.emit(f"ERROR: {e}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Encoder pipeline worker: {e}")
-            log_exception(e, context="encoder_pipeline_worker", utility=UTILITY_MASS_AV1_ENCODER)
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder pipeline worker: {e}")
+            log_exception(e, context="encoder_pipeline_worker", utility=UTILITY_MASS_VIDEO_ENCODER)
         finally:
             self._encoder_worker_exit_finalize(pipeline_mode=True)
 
@@ -1797,10 +1853,10 @@ class AV1EncoderPanel(QWidget):
                             _fin(False, logical_key, "", None)
                             continue
                         if dst_remote:
-                            remote_out_posix = posix_join_under(dst_root_px, rel_stem)
+                            remote_out_posix = posix_join_under(dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container"))
                         else:
                             try:
-                                tpath_local = join_dst_local(dst, rel_stem)
+                                tpath_local = join_dst_local(dst, rel_stem, self._settings.get("codec"), self._settings.get("container"))
                             except ValueError:
                                 self._sig.log_msg.emit(
                                     f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
@@ -1828,9 +1884,9 @@ class AV1EncoderPanel(QWidget):
                         else:
                             flat_stem = os.path.splitext(os.path.basename(item))[0]
                         if dst_remote:
-                            remote_out_posix = posix_join_under(dst_root_px, flat_stem)
+                            remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
                         else:
-                            tpath_local = os.path.join(dst, flat_stem + "_av1.mp4")
+                            tpath_local = os.path.join(dst, flat_stem + self._output_suffix())
 
                     policy = self._settings.get("existing_output")
                     if dst_remote and remote_out_posix:
@@ -1846,7 +1902,7 @@ class AV1EncoderPanel(QWidget):
                                 else os.path.basename(tpath_local or "")
                             )
                             self._sig.log_msg.emit(f"SKIP (exists): {disp}")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
+                            debug(UTILITY_MASS_VIDEO_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
                             _fin(True, logical_key, "", None)
                             continue
                         if policy == "rename":
@@ -1910,7 +1966,7 @@ class AV1EncoderPanel(QWidget):
                         if dur <= thr:
                             bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(input_path)
                             self._sig.log_msg.emit(f"REJECTED: {bn} ({dur:.1f}s)")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
+                            debug(UTILITY_MASS_VIDEO_ENCODER, f"Rejected (short): {logical_key} ({dur:.1f}s)")
                             _finalize_encoder_temp_files(tmp_cleanup, success=True, local_in=input_path, local_out="")
                             _fin(
                                 True,
@@ -1930,7 +1986,7 @@ class AV1EncoderPanel(QWidget):
                     if not ok_ready:
                         self._sig.log_msg.emit(f"Source not ready: {ready_err}")
                         debug(
-                            UTILITY_MASS_AV1_ENCODER,
+                            UTILITY_MASS_VIDEO_ENCODER,
                             f"Legacy worker: source not ready {input_path!r}: {ready_err}",
                         )
                         _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in=input_path, local_out="")
@@ -1951,8 +2007,10 @@ class AV1EncoderPanel(QWidget):
                     disp_bn = posixpath.basename(ref.rel_posix) if ref else os.path.basename(input_path)
                     enc_fail_hint: str | None = None
                     enc_user_stop = False
-                    if engine.try_passthrough_existing_av1(input_path, tpath_local):
-                        self._sig.log_msg.emit(f"Already AV1 (passthrough): {disp_bn}")
+                    codec = self._settings.get("codec")
+                    container = self._settings.get("container")
+                    if engine.try_passthrough(input_path, tpath_local, codec):
+                        self._sig.log_msg.emit(f"Already {codec.upper()} (passthrough): {disp_bn}")
                         ok, in_p, out_p = True, input_path, tpath_local
                     else:
                         ok, in_p, out_p, enc_fail_hint, enc_user_stop = engine.encode_file(
@@ -1961,6 +2019,8 @@ class AV1EncoderPanel(QWidget):
                             self._settings.get("quality"),
                             self._settings.get("preset"),
                             self._settings.get("reencode_audio"),
+                            codec=codec,
+                            container=container,
                             hw_accel_decode=self._settings.get("hw_accel_decode"),
                         )
 
@@ -1972,7 +2032,7 @@ class AV1EncoderPanel(QWidget):
                             run_scp_to_remote(out_p, dst_remote, remote_out_posix, password_for_sshpass=pw)
                         except RemoteEncodeError as e:
                             self._sig.log_msg.emit(f"Remote upload error: {e}")
-                            debug(UTILITY_MASS_AV1_ENCODER, f"scp push failed: {e}")
+                            debug(UTILITY_MASS_VIDEO_ENCODER, f"scp push failed: {e}")
                             ok = False
                             if out_p and os.path.isfile(out_p):
                                 tmp_cleanup.append(out_p)
@@ -2003,7 +2063,7 @@ class AV1EncoderPanel(QWidget):
 
                 except RemoteEncodeError as e:
                     self._sig.log_msg.emit(f"Remote I/O error: {e}")
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Remote encode error: {e}")
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Remote encode error: {e}")
                     _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in="", local_out="")
                     _fin(
                         False,
@@ -2019,7 +2079,7 @@ class AV1EncoderPanel(QWidget):
                     )
                 except Exception as e:
                     self._sig.log_msg.emit(f"ERROR: {e}")
-                    debug(UTILITY_MASS_AV1_ENCODER, f"Encoder job error: {e}")
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder job error: {e}")
                     _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in="", local_out="")
                     _fin(
                         False,
@@ -2036,7 +2096,7 @@ class AV1EncoderPanel(QWidget):
 
         except Exception as e:
             self._sig.log_msg.emit(f"ERROR: {e}")
-            debug(UTILITY_MASS_AV1_ENCODER, f"Encoder worker exception: {e}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder worker exception: {e}")
         finally:
             self._encoder_worker_exit_finalize(pipeline_mode=False)
 
@@ -2055,18 +2115,31 @@ class AV1EncoderPanel(QWidget):
         # inconsistent Qt state and native crashes (SIGSEGV) under parallel workers.
         if job_id not in self._current_files:
             return
+
+        now = time.monotonic()
+        # Throttle aggregate UI updates (I/O, master bar, ETA) to ~10 Hz
+        if (now - self._last_encoder_agg_ui_at) >= 0.1:
+            self._last_encoder_agg_ui_at = now
+            self._job_progress[job_id] = p.percent
+            self._update_agg_ui(job_id, p)
+        else:
+            self._job_progress[job_id] = p.percent
+            # Still update per-job UI (label, bar, speed) for responsiveness
+            fname = p.file_name
+            if len(fname) > 28:
+                fname = fname[:12] + "..." + fname[-13:]
+            self._job_labels[job_id].setText(f"{job_id + 1}: {fname}")
+            self._job_bars[job_id].setValue(int(p.percent))
+            self._job_speeds[job_id].setText(f"{p.fps:.1f} fps / {p.speed:.2f}x")
+
+    def _update_agg_ui(self, job_id: int, p: EncodingProgress) -> None:
+        """Update I/O throughput, master bar, and ETA (throttled to ~10 Hz)."""
         fname = p.file_name
         if len(fname) > 28:
             fname = fname[:12] + "..." + fname[-13:]
         self._job_labels[job_id].setText(f"{job_id + 1}: {fname}")
         self._job_bars[job_id].setValue(int(p.percent))
         self._job_speeds[job_id].setText(f"{p.fps:.1f} fps / {p.speed:.2f}x")
-        self._job_progress[job_id] = p.percent
-
-        now = time.monotonic()
-        if (now - self._last_encoder_agg_ui_at) < 0.1:
-            return
-        self._last_encoder_agg_ui_at = now
 
         # I/O throughput
         active_bytes = 0.0
@@ -2110,21 +2183,19 @@ class AV1EncoderPanel(QWidget):
         self._encode_finish_queue.append((job_id, success, logical_key, local_out_disp, meta))
         if not self._encode_finish_drain_scheduled:
             self._encode_finish_drain_scheduled = True
-            QTimer.singleShot(0, self._drain_one_encode_finish)
+            QTimer.singleShot(0, self._drain_encode_finish)
 
-    def _drain_one_encode_finish(self) -> None:
+    def _drain_encode_finish(self) -> None:
         if not self._encode_finish_queue:
             self._encode_finish_drain_scheduled = False
             return
-        job_id, success, logical_key, local_out_disp, meta = self._encode_finish_queue.popleft()
-        try:
-            self._apply_encode_finished(job_id, success, logical_key, local_out_disp, meta)
-        except Exception as e:
-            log_exception(e, context="encode_finish_apply", utility=UTILITY_MASS_AV1_ENCODER)
-        if self._encode_finish_queue:
-            QTimer.singleShot(0, self._drain_one_encode_finish)
-        else:
-            self._encode_finish_drain_scheduled = False
+        while self._encode_finish_queue:
+            job_id, success, logical_key, local_out_disp, meta = self._encode_finish_queue.popleft()
+            try:
+                self._apply_encode_finished(job_id, success, logical_key, local_out_disp, meta)
+            except Exception as e:
+                log_exception(e, context="encode_finish_apply", utility=UTILITY_MASS_VIDEO_ENCODER)
+        self._encode_finish_drain_scheduled = False
 
     def _apply_encode_finished(self, job_id, success, logical_key, local_out_disp, meta=None):
         meta = meta if isinstance(meta, dict) else None
@@ -2168,7 +2239,7 @@ class AV1EncoderPanel(QWidget):
                     )
                     self._add_log(f"DONE: {disp_src} | Saved {max(0, saved) // (1024 * 1024)} MB")
                     debug(
-                        UTILITY_MASS_AV1_ENCODER,
+                        UTILITY_MASS_VIDEO_ENCODER,
                         f"Done: {disp_src} -> {os.path.basename(local_out or '?')}, saved {max(0, saved) // (1024 * 1024)} MB",
                     )
                 except (TypeError, ValueError, OSError):
@@ -2185,7 +2256,7 @@ class AV1EncoderPanel(QWidget):
                     )
                     self._add_log(f"DONE: {disp_src} | Saved {saved // (1024 * 1024)} MB")
                     debug(
-                        UTILITY_MASS_AV1_ENCODER,
+                        UTILITY_MASS_VIDEO_ENCODER,
                         f"Done: {disp_src} -> {os.path.basename(local_out)}, saved {saved // (1024 * 1024)} MB",
                     )
                 except Exception:
@@ -2196,30 +2267,30 @@ class AV1EncoderPanel(QWidget):
                         remote_unlink(remote_ref.target, remote_ref.abs_posix, self._encode_pw)
                         self._add_log(f"Deleted remote: {posixpath.basename(remote_ref.rel_posix)}")
                         debug(
-                            UTILITY_MASS_AV1_ENCODER,
+                            UTILITY_MASS_VIDEO_ENCODER,
                             f"Deleted remote source: {remote_ref.abs_posix}",
                         )
                     except Exception as e:
                         self._add_log(f"Remote delete error: {e}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Remote delete error: {e}")
+                        debug(UTILITY_MASS_VIDEO_ENCODER, f"Remote delete error: {e}")
                 elif local_in and os.path.isfile(local_in):
                     try:
                         os.remove(local_in)
                         self._add_log(f"Deleted: {os.path.basename(local_in)}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Deleted source: {local_in}")
+                        debug(UTILITY_MASS_VIDEO_ENCODER, f"Deleted source: {local_in}")
                     except Exception as e:
                         self._add_log(f"Delete error: {e}")
-                        debug(UTILITY_MASS_AV1_ENCODER, f"Delete error: {local_in} — {e}")
+                        debug(UTILITY_MASS_VIDEO_ENCODER, f"Delete error: {local_in} — {e}")
         elif not success:
             if not (meta and meta.get("encode_user_cancelled")):
                 self._add_log(f"FAILED: {disp_src}")
                 hint = meta.get("encode_failure_hint") if meta else None
                 if hint:
                     self._add_log(hint)
-                debug(UTILITY_MASS_AV1_ENCODER, f"Encode FAILED: {lk or local_in or '?'}")
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Encode FAILED: {lk or local_in or '?'}")
             else:
                 debug(
-                    UTILITY_MASS_AV1_ENCODER,
+                    UTILITY_MASS_VIDEO_ENCODER,
                     f"Encode interrupted by STOP (no FAILED line): {lk or local_in or '?'}",
                 )
 
@@ -2296,7 +2367,7 @@ class AV1EncoderPanel(QWidget):
         self._btn_start.setStyle(self.style())
         self._btn_pause.setEnabled(False)
         self._update_start_enabled()
-        debug(UTILITY_MASS_AV1_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoding batch complete: done={self._done_count}, total={self._total_count}")
         structured_event(
             "encode_batch_complete",
             done=self._done_count,
@@ -2309,12 +2380,12 @@ class AV1EncoderPanel(QWidget):
                 else:
                     subprocess.run(["shutdown", "-h", "now"], check=False, timeout=5)
             except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-                debug(UTILITY_MASS_AV1_ENCODER, f"Shutdown failed: {e}")
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Shutdown failed: {e}")
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 
     def _sweep_chrono_encoder_tempdir(self) -> None:
-        """Remove leftover ``chronoarchiver_av1_*`` files under the system temp dir (STOP / safety net)."""
+        """Remove leftover ``chronoarchiver_encode_*`` files under the system temp dir (STOP / safety net)."""
         td = tempfile.gettempdir()
         n = 0
         try:
@@ -2331,12 +2402,13 @@ class AV1EncoderPanel(QWidget):
         except OSError:
             pass
         if n:
-            debug(UTILITY_MASS_AV1_ENCODER, f"Swept {n} chronoarchiver_av1_* temp file(s) under {td!r}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Swept {n} chronoarchiver_encode_* temp file(s) under {td!r}")
 
     def shutdown_ffmpeg_on_quit(self):
         """Terminate encoder subprocess trees on application exit (avoid orphan FFmpeg)."""
         try:
             self._is_encoding = False
+            self._pipeline_prefetch_stop.set()
             for eng in getattr(self, "_engine_pool", None) or []:
                 eng.cancel()
             self._sweep_chrono_encoder_tempdir()

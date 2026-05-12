@@ -9,8 +9,6 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from core.lama_inpaint_runner import invalidate_lama_checkpoint_cache, validate_lama_torchscript_file
-
 # TorchScript export used by simple-lama-inpainting (MIT); compatible with LaMa big-lama.
 LAMA_FILENAME = "big-lama.pt"
 LAMA_URL = "https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt"
@@ -39,6 +37,7 @@ class LamaInpaintModelManager:
             return False
         if p.stat().st_size <= _MIN_VALID_BYTES:
             return False
+        from core.lama_inpaint_runner import invalidate_lama_checkpoint_cache, validate_lama_torchscript_file
         ok, err, quarantine = validate_lama_torchscript_file(p)
         if ok:
             return True

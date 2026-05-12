@@ -7,9 +7,12 @@ to frame; symmetric smoothing needs a full pre-scan of the source video.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import numpy as np
+
+_log = logging.getLogger("ChronoArchiver.video_frame_noise")
 
 # Align with video_upscaler_panel heuristics (same analysis sizes / Gauss params).
 LUMA_ANALYSIS_MAX_EDGE = 640
@@ -110,7 +113,11 @@ def temporal_smooth_scores_1d(scores: np.ndarray, *, radius: int = 2) -> np.ndar
     """
     Same as :func:`temporal_smooth_1d` but clips to ``[0, 1]`` (luma/chroma noise strengths).
     """
-    return np.clip(temporal_smooth_1d(scores, radius=radius), 0.0, 1.0)
+    result = temporal_smooth_1d(scores, radius=radius)
+    clipped = np.clip(result, 0.0, 1.0)
+    if not np.allclose(result, clipped):
+        _log.warning("Noise scores exceeded [0,1] range, clipping applied (radius=%d)", radius)
+    return clipped
 
 
 def pre_scan_noise_scores(

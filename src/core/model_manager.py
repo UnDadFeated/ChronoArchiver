@@ -40,8 +40,8 @@ class ModelManager:
         },
     }
 
-    def __init__(self, model_dir: str):
-        self.model_dir = pathlib.Path(model_dir)
+    def __init__(self, model_dir: str | None = None):
+        self.model_dir = pathlib.Path(model_dir) if model_dir else pathlib.Path()
         self.logger = logging.getLogger("ChronoArchiver.Scanner")
         self.stop_event = threading.Event()
 
@@ -96,14 +96,24 @@ class ModelManager:
         except Exception:
             return False
 
+    def _compute_missing_and_size(self):
+        """Compute missing model keys and total download size in a single pass."""
+        missing = []
+        total = 0
+        for key, info in self.MODELS.items():
+            path = self.model_dir / info["filename"]
+            if not path.exists() or not self.verify_hash(path, info["sha256"]):
+                missing.append(key)
+                total += info.get("approx_size", 0)
+        return missing, total
+
     def download_models(self, progress_callback=None):
         """Downloads all missing/corrupt models. progress_callback(downloaded, total, filename, overall_0_to_1, label, url)"""
-        missing = self.get_missing_models()
+        missing, total_bytes = self._compute_missing_and_size()
         if not missing:
             debug(UTILITY_MODEL_SETUP, "Model download: all models present")
             return True
 
-        total_bytes = self.get_total_download_size()
         debug(UTILITY_MODEL_SETUP, f"Model download start: missing={missing}, total~{total_bytes} bytes")
         self.model_dir.mkdir(parents=True, exist_ok=True)
         self.stop_event.clear()
@@ -435,8 +445,10 @@ class ZImageModelManager:
         return self.is_up_to_date()
 
     def remove_snapshot(self) -> None:
-        if self.snapshot_dir.is_dir():
+        # Capture path before deletion to avoid TOCTOU race
+        snap = self.snapshot_dir
+        if snap.is_dir():
             try:
-                shutil.rmtree(self.snapshot_dir, ignore_errors=False)
+                shutil.rmtree(snap, ignore_errors=False)
             except OSError:
                 pass

@@ -288,6 +288,24 @@ class OrganizerEngine:
         assigned_targets = set()
         last_org_emit = 0.0
 
+        def _do_file(src: str, dst: str, label: str) -> bool:
+            try:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+            except OSError as e:
+                self.logger(f"Error creating directory for {label}: {e}")
+                return False
+            try:
+                if action == "move":
+                    shutil.move(src, dst)
+                elif action == "copy":
+                    shutil.copy2(src, dst)
+                else:
+                    os.symlink(src, dst)
+                return True
+            except OSError as e:
+                self.logger(f"Error {action} {label}: {e}")
+                return False
+
         for full_path, size, file in queue_list:
             if self.cancel_flag:
                 self.logger("Operation Cancelled.")
@@ -418,27 +436,8 @@ class OrganizerEngine:
                         new_filename = new_name_collision
                         assigned_targets.add(os.path.normcase(target_path))
 
-            rel_target_path = os.path.join(rel_base, new_filename)
             action_verb = {"move": "MOVE", "copy": "COPY", "symlink": "LINK"}.get(action, "MOVE")
-
-            def _do_file(src: str, dst: str, label: str) -> bool:
-                try:
-                    os.makedirs(os.path.dirname(dst), exist_ok=True)
-                except OSError as e:
-                    self.logger(f"Error creating directory for {label}: {e}")
-                    return False
-                try:
-                    if action == "move":
-                        shutil.move(src, dst)
-                    elif action == "copy":
-                        shutil.copy2(src, dst)
-                    else:
-                        os.symlink(src, dst)
-                    return True
-                except OSError as e:
-                    self.logger(f"Error {action} {label}: {e}")
-                    return False
-
+            rel_target_path = os.path.join(rel_base, new_filename)
             ext_l = pathlib.Path(full_path).suffix.lower()
             want_rotate = (
                 exif_auto_rotate

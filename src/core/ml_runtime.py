@@ -218,6 +218,7 @@ def install_ml_runtime(progress: Optional[ProgressCB] = None) -> tuple[bool, Opt
         except subprocess.TimeoutExpired:
             try:
                 p.kill()
+                p.wait(timeout=10)
             except Exception:
                 pass
             return False, "pip timed out"

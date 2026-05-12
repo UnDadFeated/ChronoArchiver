@@ -6,31 +6,39 @@ from __future__ import annotations
 
 import platform
 import subprocess
+import threading
+from collections.abc import Callable
 
 _channel: str = "organizer"
-_tee = None  # Optional[Callable[[str, str], None]]  (channel, line)
+_tee: Callable[[str, str], None] | None = None  # (channel, line)
+_tee_lock = threading.Lock()
 
 
 def set_subprocess_channel(ch: str) -> None:
     """'organizer' | 'scanner' — lines go to Media Organizer vs AI Scanner console."""
     global _channel
-    _channel = (ch or "organizer").strip() or "organizer"
+    with _tee_lock:
+        _channel = (ch or "organizer").strip() or "organizer"
 
 
-def set_subprocess_tee_callback(fn) -> None:
+def set_subprocess_tee_callback(fn: Callable[[str, str], None] | None) -> None:
     """fn(channel: str, line: str). App should schedule UI updates on the main thread."""
     global _tee
-    _tee = fn
+    with _tee_lock:
+        _tee = fn
 
 
 def tee_line(line: str) -> None:
-    if not line or not _tee:
+    with _tee_lock:
+        fn = _tee
+        ch = _channel
+    if not line or not fn:
         return
     s = line.rstrip("\n\r")
     if not s:
         return
     try:
-        _tee(_channel, s)
+        fn(ch, s)
     except Exception:
         pass
 

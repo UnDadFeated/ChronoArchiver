@@ -30,6 +30,9 @@ def restart_application() -> bool:
         src_dir = os.getcwd()
     cmd = [sys.executable, str(app_py)]
 
+    # Sanitize src_dir for shell usage (prevent injection via crafted path)
+    safe_src_dir = src_dir.replace("$", "").replace(";", "").replace("`", "").replace("|", "").replace("&", "")
+
     if platform.system() == "Windows":
         script = f"""@echo off
 ping -n 3 127.0.0.1 > nul
@@ -56,11 +59,19 @@ start "" {" ".join('"%s"' % c for c in cmd)}
     cmd_str = " ".join(repr(c) for c in cmd)
     script = f"""#!/bin/sh
 sleep 2
-cd "{src_dir}" && exec {cmd_str}
+cd "{safe_src_dir}" && exec {cmd_str}
 """
+    data = script.encode("utf-8")
     fd, path = tempfile.mkstemp(suffix=".sh")
     try:
-        os.write(fd, script.encode("utf-8"))
+        os.write(fd, data)
+    except OSError:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        os.close(fd)
+        return False
     finally:
         os.close(fd)
     os.chmod(path, 0o755)

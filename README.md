@@ -4,13 +4,13 @@
 
 Desktop app for organizing media by date, batch-encoding video to AV1, and optional local AI tools (scanner, upscalers). Cross-platform (Windows, Linux, macOS). Uses PySide6 and a private app environment—no need to install Python packages system-wide.
 
-[![Version](https://img.shields.io/badge/version-6.0.1-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
+[![Version](https://img.shields.io/badge/version-6.0.2-blue.svg)](https://github.com/UnDadFeated/ChronoArchiver/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](https://github.com/UnDadFeated/ChronoArchiver#overview)
 
 ## Get started
 
-**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (Release **6.0.1**).
+**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (Release **6.0.2**).
 
 **From source** (Python 3.10+):
 
@@ -34,12 +34,21 @@ flatpak run io.github.UnDadFeated.ChronoArchiver
 
 The Flatpak package is intentionally small. Python prerequisites and AI models are downloaded inside the app after install.
 
+For Flathub publication automation:
+
+```bash
+./tools/prepare_flathub_submission.sh --version 6.0.1
+./tools/bootstrap_flathub_repo.sh
+```
+
+This generates a release-pinned Flathub manifest and prepares a local `flathub/` clone with the app manifest copied into `applications/`.
+
 ## Overview
 
 | Area | Role |
 |------|------|
 | Media Organizer | Sort files into date folders (EXIF, metadata, filename, or modified time). |
-| Mass AV1 Encoder | Batch transcode; software or hardware encoders when available. |
+| Mass Video Encoder | Batch transcode with H.264, H.265, or AV1; software or hardware encoders when available. |
 | AI Media Scanner | Local OpenCV / ONNX classification (no cloud upload for analysis). |
 | AI Image / Video Upscaler | Optional AI upscaling workflows. |
 

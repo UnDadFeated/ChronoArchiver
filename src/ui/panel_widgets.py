@@ -9,7 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton
 
-# Primary START (#btnStart) — inline styles for guide pulse on Organizer, Scanner, Mass AV1 Encoder.
+# Primary START (#btnStart) — inline styles for guide pulse on Organizer, Scanner, Mass Video Encoder.
 # Must not override QPushButton#btnStart:disabled or #btnStop when clearing after pulse.
 GUIDE_PANEL_PRIMARY_START_IDLE_QSS = (
     "background-color:#10b981; color:#064e3b; border:2px solid #064e3b; font-size:10px; font-weight:900;"
@@ -27,7 +27,7 @@ def apply_guide_clear_primary_start_button(btn: QPushButton) -> None:
         btn.setStyleSheet(GUIDE_PANEL_PRIMARY_START_IDLE_QSS)
 
 
-# Tight combo used by Mass AV1 Encoder, AI Image Upscaler, AI Video Upscaler (identical QSS).
+# Tight combo used by Mass Video Encoder, AI Image Upscaler, AI Video Upscaler (identical QSS).
 COMBO_BOX_PANEL_QSS = (
     "QComboBox { font-size: 9px; padding: 0 4px; min-height: 12px; max-height: 16px; }"
     "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: right; width: 16px; }"

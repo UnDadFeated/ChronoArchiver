@@ -81,7 +81,8 @@ class ZImageUpscaleEngine:
                     pass
             log("Pipeline ready.")
 
-        img = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
+        with Image.open(image_path) as raw:
+            img = ImageOps.exif_transpose(raw).convert("RGB")
         if artifact_cleanup:
             import cv2
             import numpy as np

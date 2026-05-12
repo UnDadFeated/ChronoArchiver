@@ -13,9 +13,14 @@ the second pass; callers must delete that directory after encode.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore[assignment]
 
 from core.video_artifact_detection import detect_artifact_mask_u8
 from core.video_subject_detect import analyze_subjects_bgr
@@ -52,8 +57,8 @@ _SKIN_RATIO_MIN = 0.012
 
 
 def _resize_bgr_for_analysis(bgr, max_edge: int):
-    import cv2
-
+    if cv2 is None:
+        raise RuntimeError("opencv-python is required for video frame analysis")
     if bgr is None or bgr.size == 0:
         return bgr
     h, w = bgr.shape[:2]
@@ -72,8 +77,8 @@ def aesthetic_tuple_from_source(bgr) -> tuple[float, float, float, float]:
     Unsharp strength is the sharpness vs softness dial (lower = softer, higher = crisper), derived from
     Laplacian variance on luma — same rules as the former first-frame-only pass.
     """
-    import cv2
-
+    if cv2 is None:
+        raise RuntimeError("opencv-python is required for video frame analysis")
     if bgr is None or bgr.size == 0:
         return (
             float(VUP_POST_BRIGHTNESS),
@@ -138,9 +143,8 @@ def aesthetic_tuple_from_source(bgr) -> tuple[float, float, float, float]:
 
 def cast_strength_from_source(bgr) -> float:
     """Mild YUV chroma centering for global WB drift; 0 = none."""
-    import cv2
-    import numpy as np
-
+    if cv2 is None:
+        raise RuntimeError("opencv-python is required for video frame analysis")
     if bgr is None or bgr.size == 0:
         return 0.0
     sm = _resize_bgr_for_analysis(bgr, VUP_AESTHETIC_ANALYSIS_MAX_EDGE)
@@ -161,8 +165,8 @@ def skin_tone_strength_from_source(bgr) -> float:
     Uses classic HSV skin ranges on a downscaled frame; stronger when more skin coverage and
     duller skin saturation (typical under heavy WB or flat lighting).
     """
-    import cv2
-
+    if cv2 is None:
+        raise RuntimeError("opencv-python is required for video frame analysis")
     if bgr is None or bgr.size == 0:
         return 0.0
     sm = _resize_bgr_for_analysis(bgr, _SKIN_ANALYSIS_MAX_EDGE)
@@ -187,8 +191,8 @@ def apply_skin_tone_warmth_bgr(bgr, strength: float):
     Local YUV nudge toward natural warmth on HSV skin-colored pixels; ``strength`` in [0, 1].
     Applied after global grade and WB cast so it only refines skin regions.
     """
-    import cv2
-
+    if cv2 is None:
+        raise RuntimeError("opencv-python is required for video frame analysis")
     if bgr is None or bgr.size == 0 or strength <= 1e-6:
         return bgr
     h, w = bgr.shape[:2]
@@ -247,7 +251,7 @@ def _median_smooth_3(a: np.ndarray) -> np.ndarray:
     """3-tap temporal median (edge-padded); reduces one-off flicker in per-frame tracks."""
     x = np.asarray(a, dtype=np.float64).ravel()
     n = x.size
-    if n <= 2:
+    if n < 3:
         return x.astype(np.float64)
     pad = np.pad(x, (1, 1), mode="edge")
     out = np.empty(n, dtype=np.float64)
@@ -293,6 +297,7 @@ def pre_scan_video_upscale(
     on_progress: Callable[[int, int], None] | None = None,
     smooth_radius: int = 3,
     artifact_dir: str | None = None,
+    _cancel: "threading.Event | None" = None,
 ) -> VideoPreanalysis | None:
     """
     One full decode: per-frame noise, grade (b/c/s/sharpness), cast, skin tone, and subject hints
@@ -311,6 +316,8 @@ def pre_scan_video_upscale(
     if not cap.isOpened():
         return None
     nf = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if artifact_dir is not None:
+        os.makedirs(artifact_dir, exist_ok=True)
 
     ls: list[float] = []
     cs: list[float] = []
@@ -327,6 +334,8 @@ def pre_scan_video_upscale(
     fi = 0
     try:
         while True:
+            if _cancel is not None and _cancel.is_set():
+                return None
             ok, fr = cap.read()
             if not ok or fr is None:
                 break
@@ -356,9 +365,12 @@ def pre_scan_video_upscale(
                 )
             fi += 1
             if on_progress is not None:
-                n_done = len(ls)
-                tot = nf if nf > 0 else 0
-                on_progress(n_done, tot)
+                try:
+                    n_done = len(ls)
+                    tot = nf if nf > 0 else 0
+                    on_progress(n_done, tot)
+                except Exception:
+                    pass
     finally:
         cap.release()
 

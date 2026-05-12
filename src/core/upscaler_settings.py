@@ -18,6 +18,8 @@ DEFAULTS: dict = {
 
 
 def _sanitize(data: dict, defaults: dict) -> dict:
+    if not isinstance(data, dict):
+        return dict(defaults)
     out = {**defaults, **{k: v for k, v in data.items() if k in defaults}}
     p = str(out.get("source_image", "")).strip()
     out["source_image"] = p

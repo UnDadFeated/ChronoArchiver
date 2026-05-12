@@ -127,6 +127,8 @@ def portrait_signals_from_path_detailed(
     if not path.is_file():
         return False, False, None
 
+    # cv2.imread used for speed; returns None for unsupported formats (e.g., CMYK JPEG).
+    # Always returns BGR regardless of actual file color space — exotic formats may produce garbage.
     bgr = cv2.imread(str(path))
     if bgr is None or bgr.size == 0:
         return False, False, None

@@ -1,5 +1,5 @@
 """
-SSH/SCP helpers for AV1 batch encoding against remote source and/or destination paths.
+SSH/SCP helpers for Mass Video Encoder (H.264, H.265, AV1) against remote source/destination.
 
 Each file is copied to a local temp path, encoded with FFmpeg, then copied to the final
 location (local or remote). Requires OpenSSH ``ssh`` and ``scp`` on the client, and
@@ -36,6 +36,13 @@ from core.remote_ssh import (
 CONNECT_SCP = 60
 ENCODE_SCAN_CONNECT = 30
 
+# Codec-to-tag mapping — single source of truth for output filename suffixes.
+CODEC_TAGS = {"h264": "h264", "h265": "hevc", "av1": "av1"}
+
+# Container extension map — single source of truth for file extensions.
+CONTAINER_EXT_MAP = {("h264", "mp4"): ".mp4", ("h264", "mkv"): ".mkv", ("h265", "mp4"): ".mp4", ("h265", "mkv"): ".mkv", ("av1", "mp4"): ".mp4", ("av1", "mkv"): ".mkv"}
+
+
 
 class RemoteEncodeError(Exception):
     pass
@@ -44,14 +51,14 @@ class RemoteEncodeError(Exception):
 def _debug_remote_scan(message: str, *, warn: bool = False) -> None:
     """Log to the session pipe file; optional mirror to standard log at WARNING for scan failures."""
     try:
-        from core.debug_logger import UTILITY_MASS_AV1_ENCODER, debug
+        from core.debug_logger import UTILITY_MASS_VIDEO_ENCODER, debug
 
-        debug(UTILITY_MASS_AV1_ENCODER, message)
+        debug(UTILITY_MASS_VIDEO_ENCODER, message)
     except Exception:
         pass
     if warn:
         try:
-            logging.getLogger("ChronoArchiver").warning("Mass AV1 Encoder | %s", message)
+            logging.getLogger("ChronoArchiver").warning("Mass Video Encoder | %s", message)
         except Exception:
             pass
 
@@ -262,7 +269,7 @@ def _remote_scan_via_scp_and_ssh(
     Matches the proven pull/push path used for encoding when stdin/argv capture fails under sshpass.
     """
     token = secrets.token_hex(8)
-    remote_py = f"/tmp/chronoarchiver_scan_{token}.py"
+    remote_py = f"$(echo ${{TMPDIR:-/tmp}})/chronoarchiver_scan_{token}.py"
     q = sh_single_quote(remote_py)
     tf = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8")
     local_path = tf.name
@@ -290,7 +297,7 @@ def _remote_scan_via_scp_and_ssh(
         "-T",
         *ssh_extra_argv(ENCODE_SCAN_CONNECT, batch),
         remote.ssh_spec(),
-        *_remote_via_posix_sh(f"rm -f {q}"),
+        "/bin/sh", "-c", "rm -f \"$1\" _", remote_py,
     ]
     try:
         run_ssh_argv(rm_cmd, password_for_sshpass=password_for_sshpass, timeout=CONNECT_SCP + 30)
@@ -377,7 +384,9 @@ def _run_ssh_stdin_scan_streaming(
 
     err_thread = threading.Thread(target=_read_stderr, daemon=True)
     err_thread.start()
+    stderr_reader_timeout = 3
     stdout_parts: list[str] = []
+    MAX_STDOUT_PARTS = 4096
     count = 0
     total_b = 0
     last_emit_at = 0.0
@@ -385,7 +394,8 @@ def _run_ssh_stdin_scan_streaming(
     try:
         try:
             for line in proc.stdout:
-                stdout_parts.append(line)
+                if len(stdout_parts) < MAX_STDOUT_PARTS:
+                    stdout_parts.append(line)
                 if not on_progress:
                     continue
                 line_stripped = line.strip().lstrip("\ufeff")
@@ -415,10 +425,10 @@ def _run_ssh_stdin_scan_streaming(
                 proc.kill()
             except Exception:
                 pass
-            err_thread.join(timeout=30)
+            err_thread.join(timeout=stderr_reader_timeout)
             raise
         else:
-            err_thread.join(timeout=300)
+            err_thread.join(timeout=30)
     finally:
         for stream in (getattr(proc, "stdout", None), getattr(proc, "stderr", None)):
             if stream is not None:
@@ -453,10 +463,12 @@ def remote_verify_python3(remote: RemoteTarget, password_for_sshpass: Optional[s
         raise RemoteEncodeError(f"Remote host must have ``python3`` on PATH for scanning. SSH: {err or cp.returncode}")
 
 
-def _scan_script_source(root: str, exts: Tuple[str, ...]) -> str:
+def _scan_script_source(root: str, exts: Tuple[str, ...], codec: str = "av1") -> str:
+    """Remote scan script that skips already-encoded files based on codec suffix."""
     # root embedded as repr — must be a trusted path from our own parser only.
     ext_list = sorted(set(e.lower() if e.startswith(".") else f".{e.lower()}" for e in exts))
     ext_repr = repr(tuple(ext_list))
+    codec_tag = CODEC_TAGS.get(codec, "av1")
     # Remote: resolve path from SSH login cwd; follow symlinked dirs (media trees).
     # os.walk on a missing path yields nothing and exits 0 — detect with isdir first.
     return f"""import os,sys
@@ -469,6 +481,7 @@ if not os.path.isdir(root):
     print(_ed, flush=True)
     sys.exit(3)
 exts=set({ext_repr})
+codec_tag="{codec_tag}"
 out_n=0
 for dp,dns,fns in os.walk(root, followlinks=True):
     dns[:]=[x for x in dns if not x.startswith(".")]
@@ -479,7 +492,7 @@ for dp,dns,fns in os.walk(root, followlinks=True):
         if not any(low.endswith(e) for e in exts):
             continue
         stem,xe=os.path.splitext(fn)
-        if stem.lower().endswith("_av1"):
+        if stem.lower().endswith(f"_{codec_tag}"):
             continue
         fp=os.path.join(dp,fn)
         try:
@@ -526,15 +539,17 @@ def _remote_scan_console_hint(
     root_requested: str,
     parsed_queue_len: int,
     protocol_text: str,
+    codec: str = "av1",
 ) -> str:
     """One line for the encoder UI (thread-safe emit from worker)."""
+    codec_tag = CODEC_TAGS.get(codec, "av1")
     files_n, root_s = _parse_remote_scan_summary(protocol_text)
     ext_line = ".mp4, .mkv, .mov, .webm, .ts, .avi, .3gp, .mpg"
     if files_n is not None and root_s is not None:
         if files_n == 0:
             return (
                 f"Remote: 0 videos under {root_s} on the server "
-                f"(extensions {ext_line}; names ending with _av1 before the extension are skipped)."
+                f"(extensions {ext_line}; names ending with _{codec_tag} before the extension are skipped)."
             )
         if parsed_queue_len != files_n:
             return (
@@ -767,7 +782,7 @@ def remote_unlink(remote: RemoteTarget, file_posix: str, password_for_sshpass: O
     run_ssh_argv(cmd, password_for_sshpass=password_for_sshpass, timeout=CONNECT_SCP + 60)
 
 
-def join_dst_local(dst_local: str, rel_stem_posix: str) -> str:
+def join_dst_local(dst_local: str, rel_stem_posix: str, codec: str = "av1", container: str = "mp4") -> str:
     """``rel_stem_posix`` is relative path without extension, using ``/``."""
     rel_stem_posix = rel_stem_posix.replace("\\", "/").strip("/")
     if ".." in rel_stem_posix.split("/"):
@@ -777,10 +792,12 @@ def join_dst_local(dst_local: str, rel_stem_posix: str) -> str:
         raise ValueError("invalid path")
     base = os.path.abspath(dst_local)
     out = os.path.join(base, *parent.split("/")) if parent else base
-    return os.path.join(out, f"{stem}_av1.mp4")
+    codec_tag = CODEC_TAGS.get(codec, "av1")
+    ext = CONTAINER_EXT_MAP.get((codec, container), ".mp4")
+    return os.path.join(out, f"{stem}_{codec_tag}{ext}")
 
 
-def posix_join_under(root: str, rel_stem_posix: str) -> str:
+def posix_join_under(root: str, rel_stem_posix: str, codec: str = "av1", container: str = "mp4") -> str:
     """Absolute POSIX output path under remote root (for scp destination)."""
     rel_stem_posix = rel_stem_posix.replace("\\", "/").strip("/")
     if ".." in rel_stem_posix.split("/"):
@@ -789,9 +806,12 @@ def posix_join_under(root: str, rel_stem_posix: str) -> str:
     if not rel_stem_posix:
         raise ValueError("invalid path")
     parent, stem = posixpath.split(rel_stem_posix)
+    codec_tag = CODEC_TAGS.get(codec, "av1")
+    ext = CONTAINER_EXT_MAP.get((codec, container), ".mp4")
+    suffix = f"{stem}_{codec_tag}{ext}"
     if parent:
-        return f"{r}/{parent}/{stem}_av1.mp4".replace("//", "/")
-    return f"{r}/{stem}_av1.mp4".replace("//", "/")
+        return f"{r}/{parent}/{suffix}".replace("//", "/")
+    return f"{r}/{suffix}".replace("//", "/")
 
 
 def common_structure_root_posix(refs: List[RemoteFileRef]) -> str:

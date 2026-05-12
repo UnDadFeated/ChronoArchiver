@@ -101,7 +101,7 @@ def detect_artifact_mask_u8(
     layers.append(np.clip(chrom / p99c * 255.0, 0, 255).astype(np.uint8))
 
     # 5) Dropout / clipped flat patches (dead sensor blocks, macro corruption)
-    local = cv2.medianBlur(y, 5)
+    local = cv2.medianBlur(y, 15)
     flat = cv2.absdiff(y, local)
     _, flatm = cv2.threshold(flat, 3, 255, cv2.THRESH_BINARY_INV)
     _, dark = cv2.threshold(y, 10, 255, cv2.THRESH_BINARY_INV)
@@ -113,9 +113,9 @@ def detect_artifact_mask_u8(
     out = cv2.GaussianBlur(out, (3, 3), 0)
     # Per-frame gate: keep only the upper tail (true blockiness tends to spike above texture floor).
     gate = float(percentile_gate if percentile_gate is not None else ARTIFACT_MASK_PERCENTILE_GATE)
-    flat = out.astype(np.float32).ravel()
-    pg = float(np.percentile(flat, gate))
-    out = np.maximum(flat - pg, 0.0).reshape(out.shape)
+    flat_vals = out.astype(np.float32).ravel()
+    pg = float(np.percentile(flat_vals, gate))
+    out = np.maximum(flat_vals - pg, 0.0).reshape(out.shape)
     mx = float(out.max())
     if mx > 1e-6:
         out = (out * (255.0 / mx)).clip(0, 255).astype(np.uint8)
@@ -179,14 +179,16 @@ def prepare_source_for_realesrgan(
         except Exception:
             inp = None
         if inp is not None and inp.shape == bgr.shape:
-            mb = np.clip(m[..., np.newaxis] * blend, 0.0, 1.0)
+            mb = np.broadcast_to((m * blend).reshape(h, w, 1), (h, w, 3))
+            mb = np.clip(mb, 0.0, 1.0)
             return np.clip(
                 bgr.astype(np.float32) * (1.0 - mb) + inp.astype(np.float32) * mb,
                 0,
                 255,
             ).astype(np.uint8)
     inp = cv2.inpaint(bgr, mh, 5, cv2.INPAINT_TELEA)
-    mb = np.clip(m[..., np.newaxis] * blend, 0.0, 1.0)
+    mb = np.broadcast_to((m * blend).reshape(h, w, 1), (h, w, 3))
+    mb = np.clip(mb, 0.0, 1.0)
     return np.clip(
         bgr.astype(np.float32) * (1.0 - mb) + inp.astype(np.float32) * mb,
         0,

@@ -2,10 +2,18 @@
 
 ## [Unreleased]
 
+## [6.0.2] - 2026-05-11
+
+### Fixed
+- **Comprehensive bug audit (56 issues)**: Applied fixes across the codebase — double-hashing in model downloads, single-instance lock error distinction, circular imports in AI runner modules, threading protection in subprocess tee, `weights_only=True` on `torch.load`, VideoCapture cancel support, on_progress exception handling, artifact directory creation, LaMa validation reduced to single forward pass, mask squeezing, variable shadowing, settings None guards, import consolidation, blur radius tuning, preset migration assertions, type annotations, broadcast safety, noise score clipping warnings, and more.
+- **Model downloads**: Eliminated double-hashing I/O (single-pass missing-model + size computation).
+- **Single-instance guard**: Distinguished `Timeout` (another instance) from `OSError` (permissions), added error logging.
+
 ## [6.0.1] - 2026-04-19
 
 ### Added
 - **Flatpak packaging (initial)**: Added `flatpak/io.github.UnDadFeated.ChronoArchiver.yml`, desktop/metainfo files, launcher shim, and `tools/build_flatpak.sh` for local bundle testing on Bazzite/Fedora Atomic.
+- **Flathub automation tooling**: Added `tools/render_flathub_manifest.py`, `tools/prepare_flathub_submission.sh`, `tools/bootstrap_flathub_repo.sh`, and template `flatpak/io.github.UnDadFeated.ChronoArchiver.flathub.yml.in` to auto-render release-pinned Flathub manifests and stage PR-ready `applications/` content.
 - **AI Media Scanner**: Added duplicate-detection mode (dhash similarity grouping) with representative swap controls in the scanner panel.
 
 ### Changed

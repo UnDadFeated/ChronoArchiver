@@ -10,11 +10,6 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from core.realesrgan_runner import (
-    invalidate_rrdb_checkpoint_cache,
-    validate_rrdb_rgb_checkpoint_file,
-)
-
 # Official release assets (xinntao/Real-ESRGAN)
 X2PLUS_NAME = "RealESRGAN_x2plus.pth"
 X4PLUS_NAME = "RealESRGAN_x4plus.pth"
@@ -83,6 +78,7 @@ class RealESRGANModelManager:
             return False
         if p.stat().st_size <= _MIN_VALID_BYTES:
             return False
+        from core.realesrgan_runner import invalidate_rrdb_checkpoint_cache, validate_rrdb_rgb_checkpoint_file
         ok, err, quarantine = validate_rrdb_rgb_checkpoint_file(p)
         if ok:
             return True

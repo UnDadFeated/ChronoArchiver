@@ -15,6 +15,13 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.2": """## [6.0.2] - 2026-05-11
+
+### Fixed
+- **Comprehensive bug audit (56 issues)**: Applied fixes across the codebase — double-hashing in model downloads, single-instance lock error distinction, circular imports in AI runner modules, threading protection in subprocess tee, `weights_only=True` on `torch.load`, VideoCapture cancel support, on_progress exception handling, artifact directory creation, LaMa validation reduced to single forward pass, mask squeezing, variable shadowing, settings None guards, import consolidation, blur radius tuning, preset migration assertions, type annotations, broadcast safety, noise score clipping warnings, and more.
+- **Model downloads**: Eliminated double-hashing I/O (single-pass missing-model + size computation).
+- **Single-instance guard**: Distinguished `Timeout` (another instance) from `OSError` (permissions), added error logging.
+""",
     "6.0.1": """## [6.0.1] - 2026-04-19
 
 ### Added
@@ -31,15 +38,15 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.9.0": """## [5.9.0] - 2026-04-11
 
 ### Changed
-- **Mass AV1 Encoder**: **If output exists** defaults to **Skip** so re-runs do not overwrite finished **`_av1`** outputs by accident.
+- **Mass Video Encoder**: **If output exists** defaults to **Skip** so re-runs do not overwrite finished outputs by accident.
 
 ### Fixed
-- **Mass AV1 Encoder**: **Start** works again after a batch completes (no stuck grey button). **STOP** does not log spurious **FAILED** on **SIGTERM**. **FFmpeg** maps **first video + first audio** only (fixes multi-track / junk-stream mux failures); **AV1** remux passthrough aligned. **TIP** lines after real failures (**SIGKILL**, **dvd_nav**).
+- **Mass Video Encoder**: **Start** works again after a batch completes (no stuck grey button). **STOP** does not log spurious **FAILED** on **SIGTERM**. **FFmpeg** maps **first video + first audio** only (fixes multi-track / junk-stream mux failures); passthrough remux aligned. **TIP** lines after real failures (**SIGKILL**, **dvd_nav**).
 """,
     "5.8.0": """## [5.8.0] - 2026-04-10
 
 ### Fixed
-- **Mass AV1 Encoder**: **Worker threads** marshal console lines to the **GUI thread** (no direct **`QPlainTextEdit`** updates); **per-thread progress bars** stay in sync when **finish** handling is deferred vs the next encode on the same engine.
+- **Mass Video Encoder**: **Worker threads** marshal console lines to the **GUI thread** (no direct **`QPlainTextEdit`** updates); **per-thread progress bars** stay in sync when **finish** handling is deferred vs the next encode on the same engine.
 
 ### Added
 - **Debug log**: **Crash diagnostics** — **faulthandler** stacks in the session log; **PID** / **gdb** hints at startup; **SIGUSR2** stack dump; optional **`CHRONOARCHIVER_GDB_BACKTRACE`** live **gdb** backtrace (Linux).
@@ -47,23 +54,23 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.7.11": """## [5.7.11] - 2026-04-12
 
 ### Fixed
-- **Mass AV1 Encoder**: **Stale progress** after a file finishes is ignored (**SIGSEGV** mitigation). **Master/ETA/I-O** updates capped at **~10/s**.
+- **Mass Video Encoder**: **Stale progress** after a file finishes is ignored (**SIGSEGV** mitigation). **Master/ETA/I-O** updates capped at **~10/s**.
 """,
     "5.7.10": """## [5.7.10] - 2026-04-12
 
 ### Fixed
-- **Mass AV1 Encoder**: **SSH** scan dialog shows **live** progress; **encode finish** UI work is **serialized** for stability.
+- **Mass Video Encoder**: **SSH** scan dialog shows **live** progress; **encode finish** UI work is **serialized** for stability.
 
 ### Changed
-- **Mass AV1 Encoder**: **FFmpeg** progress posts throttled to **~6.7/s** per worker.
+- **Mass Video Encoder**: **FFmpeg** progress posts throttled to **~6.7/s** per worker.
 """,
     "5.7.9": """## [5.7.9] - 2026-04-10
 
 ### Fixed
-- **Mass AV1 Encoder**: Safer **4-thread** worker exit (**atomic** active-job count); no false **batch complete** on **STOP** in **remote pipeline** mode.
+- **Mass Video Encoder**: Safer **4-thread** worker exit (**atomic** active-job count); no false **batch complete** on **STOP** in **remote pipeline** mode.
 
 ### Changed
-- **Mass AV1 Encoder**: **GC** every **400** files on very long batches.
+- **Mass Video Encoder**: **GC** every **400** files on very long batches.
 """,
     "5.7.8": """## [5.7.8] - 2026-04-12
 
@@ -73,7 +80,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.7.7": """## [5.7.7] - 2026-04-12
 
 ### Fixed
-- **Mass AV1 Encoder**: Throttled FFmpeg **progress → UI** updates (~8/s per worker) to avoid Qt event-queue overload on long encodes.
+- **Mass Video Encoder**: Throttled FFmpeg **progress → UI** updates (~8/s per worker) to avoid Qt event-queue overload on long encodes.
 """,
     "5.7.6": """## [5.7.6] - 2026-04-12
 
@@ -86,10 +93,10 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.7.5": """## [5.7.5] - 2026-04-11
 
 ### Changed
-- **Mass AV1 Encoder**: Red **STOP ENCODING** styling (clears guide pulse overrides); **Preset**, **Threads**, and **If output exists** combos size to content.
+- **Mass Video Encoder**: Red **STOP ENCODING** styling (clears guide pulse overrides); **Preset**, **Threads**, and **If output exists** combos size to content.
 
 ### Fixed
-- **Mass AV1 Encoder**: **STOP** remains enabled while encoding when the form re-validates.
+- **Mass Video Encoder**: **STOP** remains enabled while encoding when the form re-validates.
 """,
     "5.7.4": """## [5.7.4] - 2026-04-10
 
@@ -99,12 +106,12 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.7.3": """## [5.7.3] - 2026-04-10
 
 ### Fixed
-- **Mass AV1 Encoder**: Console uses **plain text** (`QPlainTextEdit`) instead of rich HTML so long encode batches do not crash Qt during repaint.
+- **Mass Video Encoder**: Console uses **plain text** (`QPlainTextEdit`) instead of rich HTML so long encode batches do not crash Qt during repaint.
 """,
     "5.7.2": """## [5.7.2] - 2026-04-10
 
 ### Fixed
-- **Mass AV1 Encoder**: Per-job **fps / speed** line parses current FFmpeg progress fields (including ``time=N/A`` warmup and ``KiB``/``Lsize``).
+- **Mass Video Encoder**: Per-job **fps / speed** line parses current FFmpeg progress fields (including ``time=N/A`` warmup and ``KiB``/``Lsize``).
 """,
     "5.7.1": """## [5.7.1] - 2026-04-10
 
@@ -114,7 +121,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.7.0": """## [5.7.0] - 2026-04-10
 
 ### Added
-- **Mass AV1 Encoder**: Already-**AV1** sources passthrough to `*_av1.mp4` (copy or **ffmpeg -c copy** remux) instead of re-encoding.
+- **Mass Video Encoder**: Already-**AV1** sources passthrough to `*_av1.mp4` (copy or **ffmpeg -c copy** remux) instead of re-encoding.
 
 ### Changed
 - Encoder codec UI via **ffprobe** + queued signals; **NVENC** CUDA-decode skip after first **183/218** per batch; browse dialog layout fixes.
@@ -125,7 +132,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.6.4": """## [5.6.4] - 2026-04-10
 
 ### Added
-- **Mass AV1 Encoder / network batches**: Prefetch pipeline overlaps **scp** downloads with local **FFmpeg** encoding (bounded queue); cleans temps after upload.
+- **Mass Video Encoder / network batches**: Prefetch pipeline overlaps **scp** downloads with local **FFmpeg** encoding (bounded queue); cleans temps after upload.
 """,
     "5.6.3": """## [5.6.3] - 2026-04-10
 
@@ -146,7 +153,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.6.0": """## [5.6.0] - 2026-04-10
 
 ### Added
-- **Mass AV1 Encoder — remote source and/or destination**: **scp** pull, local **FFmpeg**, **scp** push; remote scan via **SSH** + **python3** on the host; optional **sshpass** for password auth.
+- **Mass Video Encoder — remote source and/or destination**: **scp** pull, local **FFmpeg**, **scp** push; remote scan via **SSH** + **python3** on the host; optional **sshpass** for password auth.
 
 ### Fixed
 - **Encoder guide**: Local source + remote destination no longer traps the highlight on **Browse**.
@@ -159,7 +166,7 @@ EMBEDDED_RELEASE_NOTES: dict[str, str] = {
     "5.5.0": """## [5.5.0] - 2026-04-10
 
 ### Added
-- **Browse (Organizer, Mass AV1 Encoder, AI Media Scanner)**: pop-up **Local folder** vs **Remote (SSH / SFTP)** with `sftp://` or `user@host:/path`, optional password (not saved), and **Test SSH**. Remote URIs are stored in the path field; local processing shows a clear error until paths are local or mounted.
+- **Browse (Organizer, Mass Video Encoder, AI Media Scanner)**: pop-up **Local folder** vs **Remote (SSH / SFTP)** with `sftp://` or `user@host:/path`, optional password (not saved), and **Test SSH**. Remote URIs are stored in the path field; local processing shows a clear error until paths are local or mounted.
 """,
     "5.4.4": """## [5.4.4] - 2026-04-09
 

@@ -56,7 +56,7 @@ from PySide6.QtGui import (
 
 from version import __version__
 from ui.panels.organizer_panel import MediaOrganizerPanel
-from ui.panels.encoder_panel import AV1EncoderPanel
+from ui.panels.encoder_panel import VideoEncoderPanel
 from ui.panels.scanner_panel import AIScannerPanel
 from ui.panels.upscaler_panel import AIImageUpscalerPanel
 from ui.panels.video_upscaler_panel import VideoUpscalerPanel
@@ -106,7 +106,7 @@ _FONT_MONO = (
     else "'JetBrains Mono', 'DejaVu Sans Mono', monospace"
 )
 
-# Global Stylesheet (Mass AV1 Encoder QSS)
+# Global Stylesheet (Mass Video Encoder QSS)
 # Use .format() to avoid f-string parsing CSS braces as Python expressions (NameError on Windows)
 QSS = """
 QMainWindow {{ background-color: #0c0c0c; }}
@@ -250,14 +250,14 @@ QPushButton#navBtn[active="true"] {{
 # Main window nav — button text and log titles (stack index 0..4; keep in sync with panel order below).
 _NAV_BUTTON_TEXT = (
     "MEDIA ORGANIZER",
-    "MASS AV1 ENCODER",
+    "MASS VIDEO ENCODER",
     "AI MEDIA SCANNER",
     "AI IMAGE UPSCALER",
     "AI VIDEO UPSCALER",
 )
 _NAV_PANEL_LOG_NAME = (
     "Media Organizer",
-    "Mass AV1 Encoder",
+    "Mass Video Encoder",
     "AI Media Scanner",
     "AI Image Upscaler",
     "AI Video Upscaler",
@@ -446,9 +446,13 @@ class PreReqDialog(QDialog):
                 log_installer_popup(INSTALLER_APP_MAIN, "PreReqDialog", "download_failed")
                 self._lbl_ffmpeg_status.setText("Failed")
                 self._lbl_phase.setText("Install failed. Check debug log.")
+                self._downloading = False
                 self._btn_download.setEnabled(True)
-            if not self._downloading:
                 return
+            if not self._downloading:
+                self._downloading = False
+                return
+            self._downloading = False
             _on_progress("done", 100, "")
 
         timer = QTimer(self)
@@ -530,6 +534,7 @@ class UpdateDownloadDialog(QDialog):
         except OSError:
             pass
         self._dest_path = dest
+        downloaded_ok = False
 
         def _on_progress(downloaded, total, pct, mbps):
             log_installer_popup(
@@ -569,12 +574,17 @@ class UpdateDownloadDialog(QDialog):
             except queue.Empty:
                 pass
 
+        self._download_stopped = threading.Event()
+
         def _worker():
-            ok = updater.download_installer_with_progress(url, dest, size_bytes, _on_progress)
-            try:
-                self._progress_queue.put_nowait(("done", ok, None, None))
-            except queue.Full:
-                pass
+            ok = updater.download_installer_with_progress(
+                url, dest, size_bytes, _on_progress
+            )
+            if not self._download_stopped.is_set():
+                try:
+                    self._progress_queue.put_nowait(("done", ok, None, None))
+                except queue.Full:
+                    pass
 
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(_poll)
@@ -582,6 +592,7 @@ class UpdateDownloadDialog(QDialog):
         threading.Thread(target=_worker, daemon=True).start()
 
         result = self.exec()
+        self._download_stopped.set()
         self._poll_timer.stop()
         if result != QDialog.DialogCode.Accepted or not self._download_ok:
             try:
@@ -656,7 +667,7 @@ class ChronoArchiverApp(QMainWindow):
         # ── STACKED PANELS ──
         self.stack = QStackedWidget()
         self.panel_org = MediaOrganizerPanel(log_callback=self._log, status_callback=self._set_activity)
-        self.panel_enc = AV1EncoderPanel(
+        self.panel_enc = VideoEncoderPanel(
             log_callback=self._log, metrics_callback=self._on_encoder_metrics, status_callback=self._set_activity
         )
         self.panel_scn = AIScannerPanel(log_callback=self._log, status_callback=self._set_activity)
@@ -1345,17 +1356,10 @@ class ChronoArchiverApp(QMainWindow):
         QTimer.singleShot(4000, self._restore_update_button_after_no_network)
 
     def _restore_update_button_after_no_network(self):
-        if getattr(self, "_update_btn_saved_text", None):
-            self.btn_update.setText(self._update_btn_saved_text)
-        else:
-            self.btn_update.setText("CHECKING FOR UPDATES...")
-        self.btn_update.setStyleSheet(
-            getattr(
-                self,
-                "_update_btn_saved_style",
-                "font-size: 9px; color: #4b5563; border:none; background:transparent;",
-            )
-        )
+        saved_text = getattr(self, "_update_btn_saved_text", None)
+        saved_style = getattr(self, "_update_btn_saved_style", None)
+        self.btn_update.setText(saved_text if saved_text else "CHECKING FOR UPDATES...")
+        self.btn_update.setStyleSheet(saved_style if saved_style else self.btn_update.styleSheet())
         if self.updater.is_update_available():
             self._update_pulse_phase = 0
             self._update_pulse_timer.start()

@@ -101,14 +101,6 @@ def _bdf_from_nvidia_smi_L_line(line: str) -> str:
     mm2 = re.search(r"\b([0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\b", line, re.I)
     if mm2:
         return mm2.group(1).lower()
-        # "at PCI:1:0:0" (bus:device.function as decimal / hex)
-        mm3 = re.search(r"PCI:\s*([0-9a-fx]+):([0-9a-fx]+):([0-9a-fx]+)", line, re.I)
-        if mm3:
-            try:
-                bus, dev, fn = (int(mm3.group(i), 0) for i in (1, 2, 3))
-                return f"{bus & 0xFF:02x}:{dev & 0xFF:02x}.{fn & 0x7:x}"
-            except ValueError:
-                pass
     return ""
 
 
@@ -1458,13 +1450,13 @@ def _download_wheel_with_progress(url: str, progress_callback, total_hint: int =
     """Download wheel to temp file with valid PEP 427 filename. Returns path or None on failure."""
     if not requests:
         return None
+    tmpdir = tempfile.mkdtemp()
     try:
         r = requests.get(url, stream=True, timeout=(10, 120))
         r.raise_for_status()
         total = int(r.headers.get("content-length", 0) or 0) or total_hint
         progress_callback("Downloading...", "0.00 MB/s", 0, total)
         filename = _get_wheel_filename(r, url)
-        tmpdir = tempfile.mkdtemp()
         path = os.path.join(tmpdir, filename)
         try:
             start = time.monotonic()
@@ -1490,13 +1482,17 @@ def _download_wheel_with_progress(url: str, progress_callback, total_hint: int =
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-                if os.path.isdir(tmpdir):
-                    shutil.rmtree(tmpdir, ignore_errors=True)
             except OSError:
                 pass
             return None
     except Exception:
         return None
+    finally:
+        try:
+            if os.path.isdir(tmpdir):
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        except OSError:
+            pass
 
 
 def install_opencv(progress_callback=None, variant: str | None = None) -> tuple[bool, str | None]:
@@ -1765,7 +1761,12 @@ def _add_nvidia_libs_to_ld_path():
     if nvidia_libs:
         existing = os.environ.get("LD_LIBRARY_PATH", "")
         prefix = ":".join(nvidia_libs)
-        os.environ["LD_LIBRARY_PATH"] = f"{prefix}:{existing}" if existing else prefix
+        # Deduplicate: split existing paths, filter out any that are already in prefix, then rejoin
+        if existing:
+            existing_parts = [p for p in existing.split(":") if p and p not in nvidia_libs]
+            os.environ["LD_LIBRARY_PATH"] = f"{prefix}:{':'.join(existing_parts)}"
+        else:
+            os.environ["LD_LIBRARY_PATH"] = prefix
 
 
 def add_venv_to_path():

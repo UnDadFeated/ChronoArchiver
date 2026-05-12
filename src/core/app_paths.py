@@ -134,7 +134,7 @@ def models_dir() -> Path:
 
 
 def encoder_config_dir() -> Path:
-    """Directory containing av1_config.json (install Settings/ else single-segment user config)."""
+    """Directory containing encoder_config.json (install Settings/ else single-segment user config)."""
     ir = install_root()
     if ir is not None:
         return ir / "Settings"
@@ -143,13 +143,13 @@ def encoder_config_dir() -> Path:
     return Path.home() / ".config" / APP_NAME
 
 
-def legacy_av1_config_file() -> Path:
+def legacy_encoder_config_file() -> Path:
     """Pre-unification Windows path (nested …\\ChronoArchiver\\ChronoArchiver\\av1_config.json)."""
     if os.name == "nt":
         local = os.environ.get("LOCALAPPDATA", "")
         if local:
             return Path(local) / APP_NAME / APP_NAME / "av1_config.json"
-    return encoder_config_dir() / "av1_config.json"
+    return encoder_config_dir() / "encoder_config.json"
 
 
 def remove_empty_windows_legacy_config_nest() -> None:

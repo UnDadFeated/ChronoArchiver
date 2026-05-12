@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Optional
 import shutil
 
 from PySide6.QtCore import QUrl
@@ -62,6 +63,7 @@ class HealthSummaryDialog(QDialog):
         self._chk_dismiss: QCheckBox | None = None
         if show_dismiss_checkbox:
             self._chk_dismiss = QCheckBox("Do not show this summary automatically on startup")
+            self._chk_dismiss.setObjectName("_chk_dismiss")
             self._chk_dismiss.setStyleSheet("font-size: 10px; color: #d1d5db;")
             v.addWidget(self._chk_dismiss)
 

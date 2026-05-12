@@ -1,5 +1,5 @@
 """
-Serialize heavy filesystem work across panels (Media Organizer, Mass AV1 encode,
+Serialize heavy filesystem work across panels (Media Organizer, Mass Video Encoder,
 AI Media Scanner batch scan, AI Image / Video upscaler jobs) so concurrent operations
 do not contend on the same volumes.
 """

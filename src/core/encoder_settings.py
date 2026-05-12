@@ -4,14 +4,17 @@ import shutil
 from pathlib import Path
 
 try:
-    from .app_paths import encoder_config_dir, legacy_av1_config_file
+    from .app_paths import encoder_config_dir, legacy_encoder_config_file
 except ImportError:
-    from core.app_paths import encoder_config_dir, legacy_av1_config_file
+    from core.app_paths import encoder_config_dir, legacy_encoder_config_file
 
 try:
     from .debug_logger import debug, UTILITY_APP
 except ImportError:
     from core.debug_logger import debug, UTILITY_APP
+
+VALID_CODECS = ("h264", "h265", "av1")
+VALID_CONTAINERS = ("mp4", "mkv")
 
 
 def _sanitize_encoder_config(data: dict, defaults: dict) -> dict:
@@ -46,28 +49,39 @@ def _sanitize_encoder_config(data: dict, defaults: dict) -> dict:
     if eo not in ("overwrite", "skip", "rename"):
         out["existing_output"] = "skip"
     p = str(out.get("preset", "p4")).lower().strip()
+    _FFPRESETS = {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"}
     if len(p) == 2 and p[0] == "p" and p[1].isdigit():
         pn = int(p[1])
         out["preset"] = f"p{pn}" if 1 <= pn <= 7 else "p4"
+    elif p in _FFPRESETS:
+        out["preset"] = p
     else:
         out["preset"] = "p4"
+    # Codec: validate against allowed set
+    c = str(out.get("codec", "av1")).lower().strip()
+    if c not in VALID_CODECS:
+        out["codec"] = "av1"
+    # Container: validate against allowed set
+    ct = str(out.get("container", "mp4")).lower().strip()
+    if ct not in VALID_CONTAINERS:
+        out["container"] = "mp4"
     return out
 
 
-def _av1_config_dir() -> Path:
-    """Writable directory for av1_config.json — see app_paths.encoder_config_dir."""
+def _encoder_config_dir() -> Path:
+    """Writable directory for encoder_config.json — see app_paths.encoder_config_dir."""
     return encoder_config_dir()
 
 
-def _legacy_av1_config_file() -> Path:
-    """Legacy path before unified Settings — see app_paths.legacy_av1_config_file."""
-    return legacy_av1_config_file()
+def _legacy_encoder_config_file() -> Path:
+    """Legacy path before unified Settings — see app_paths.legacy_encoder_config_file."""
+    return legacy_encoder_config_file()
 
 
-def _migrate_legacy_av1_config(dest: Path) -> None:
+def _migrate_legacy_encoder_config(dest: Path) -> None:
     if dest.exists():
         return
-    legacy = _legacy_av1_config_file()
+    legacy = _legacy_encoder_config_file()
     if not legacy.is_file() or legacy.resolve() == dest.resolve():
         return
     try:
@@ -81,18 +95,20 @@ def _migrate_legacy_av1_config(dest: Path) -> None:
         pass
 
 
-class AV1Settings:
-    """Handles persistent settings for ChronoArchiver AV1 Encoder."""
+class EncoderSettings:
+    """Handles persistent settings for ChronoArchiver Mass Video Encoder."""
 
     def __init__(self):
-        cfg_dir = _av1_config_dir()
-        self.config_path = str(cfg_dir / "av1_config.json")
-        _migrate_legacy_av1_config(Path(self.config_path))
+        cfg_dir = _encoder_config_dir()
+        self.config_path = str(cfg_dir / "encoder_config.json")
+        _migrate_legacy_encoder_config(Path(self.config_path))
         self.config_dir = str(cfg_dir)
         self.defaults = {
+            "codec": "av1",
+            "container": "mp4",
             "quality": 30,
             "preset": "p4",
-            "output_ext": ".mkv",
+            "output_ext": ".mp4",
             "reencode_audio": True,
             "concurrent_jobs": 2,
             "source_folder": "",
@@ -108,6 +124,7 @@ class AV1Settings:
             "hw_accel_decode": False,
             "shutdown_on_finish": False,
             "existing_output": "skip",  # overwrite | skip | rename
+            "output_ext": ".mp4",  # deprecated — kept for backward compat
         }
         self.data = self.load()
 
@@ -118,7 +135,7 @@ class AV1Settings:
                     merged = {**self.defaults, **json.load(f)}
                 return _sanitize_encoder_config(merged, self.defaults)
             except (json.JSONDecodeError, OSError) as e:
-                debug(UTILITY_APP, f"AV1 config load failed, using defaults: {e}")
+                debug(UTILITY_APP, f"Encoder config load failed, using defaults: {e}")
                 return _sanitize_encoder_config(dict(self.defaults), self.defaults)
         return _sanitize_encoder_config({**self.defaults}, self.defaults)
 
@@ -128,10 +145,10 @@ class AV1Settings:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=4)
         except OSError as e:
-            debug(UTILITY_APP, f"AV1 config save failed: {e}")
+            debug(UTILITY_APP, f"Encoder config save failed: {e}")
 
-    def get(self, key):
-        return self.data.get(key, self.defaults.get(key))
+    def get(self, key, default=None):
+        return self.data.get(key, self.defaults.get(key, default))
 
     def set(self, key, value):
         self.data[key] = value

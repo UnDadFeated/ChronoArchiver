@@ -1,5 +1,5 @@
 """
-Modal-less scan progress dialog — shared by Mass AV1 Encoder, Media Organizer, etc.
+Modal-less scan progress dialog — shared by Mass Video Encoder, Media Organizer, etc.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import time
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
 from PySide6.QtGui import QCloseEvent, QShowEvent
 
-from core.debug_logger import log_installer_popup, INSTALLER_APP_MASS_AV1_ENCODER
+from core.debug_logger import log_installer_popup, INSTALLER_APP_MASS_VIDEO_ENCODER
 
 
 class ScanProgressDialog(QDialog):
@@ -20,7 +20,7 @@ class ScanProgressDialog(QDialog):
         parent=None,
         *,
         title: str = "Scanning Source",
-        log_app: str = INSTALLER_APP_MASS_AV1_ENCODER,
+        log_app: str = INSTALLER_APP_MASS_VIDEO_ENCODER,
     ):
         super().__init__(parent)
         self._log_app = log_app

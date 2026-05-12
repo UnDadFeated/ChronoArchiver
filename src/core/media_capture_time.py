@@ -623,7 +623,7 @@ def _remux_mp4_inplace_creation_metadata(output_path: str, epoch: float) -> bool
     the old inode (birth time becomes “now”). **Truncating overwrite** keeps the inode so birth time
     stays aligned with the original file when possible.
 
-    Maps first video + optional first audio (same idea as Mass AV1 Encoder).
+    Maps first video + optional first audio (same idea as Mass Video Encoder).
     """
     meta = ffmpeg_metadata_creation_args(epoch)
     if not meta:
@@ -876,12 +876,12 @@ def sync_preserved_media_dates_to_existing_output(
 ) -> bool:
     """
     Copy best-effort capture/recording time from ``source_path`` onto an existing ``output_path``
-    (e.g. ``*_av1.mp4`` next to sources): MP4/MOV/M4V container ``creation_time`` via stream-copy
+    (e.g. ``*_h264.mp4`` next to sources): MP4/MOV/M4V container ``creation_time`` via stream-copy
     remux when ``remux_mp4_metadata`` is True, then set filesystem mtime/atime.
 
     Does not create ``output_path``; returns False if either path is missing or identical.
     If the target already matches (see ``preserved_media_dates_already_match``), returns True
-    without rewriting the file — unless ``force`` is True (Mass AV1 **Fix media dates** always
+    without rewriting the file — unless ``force`` is True (Mass Video Encoder **Fix media dates** always
     passes ``force`` so each job re-applies metadata and filesystem times).
     """
     if not source_path or not output_path:

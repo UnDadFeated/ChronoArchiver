@@ -35,6 +35,7 @@ _log_path = None
 _file = None
 _jsonl_path = None
 _jsonl_file = None
+_init_lock = threading.RLock()
 
 _hooks_installed = False
 _prev_sys_excepthook = None
@@ -49,7 +50,7 @@ _uncaught = logging.getLogger("ChronoArchiver.uncaught")
 
 UTILITY_APP = "ChronoArchiver"
 UTILITY_MEDIA_ORGANIZER = "Media Organizer"
-UTILITY_MASS_AV1_ENCODER = "Mass AV1 Encoder"
+UTILITY_MASS_VIDEO_ENCODER = "Mass Video Encoder"
 UTILITY_AI_MEDIA_SCANNER = "AI Media Scanner"
 UTILITY_OPENCV_INSTALL = "OpenCV Install"
 UTILITY_MODEL_SETUP = "Model Setup"
@@ -61,7 +62,7 @@ INSTALLER_APP_MAIN = "ChronoArchiver"
 INSTALLER_APP_AI_VIDEO_UPSCALER = "AI Video Upscaler"
 INSTALLER_APP_AI_IMAGE_UPSCALER = "AI Image Upscaler"
 INSTALLER_APP_AI_MEDIA_SCANNER = "AI Media Scanner"
-INSTALLER_APP_MASS_AV1_ENCODER = "Mass AV1 Encoder"
+INSTALLER_APP_MASS_VIDEO_ENCODER = "Mass Video Encoder"
 INSTALLER_APP_MEDIA_ORGANIZER = "Media Organizer"
 
 
@@ -92,14 +93,18 @@ def _ensure_init():
     global _log_dir, _log_path, _file, _jsonl_path, _jsonl_file
     if _log_path is not None:
         return
-    _log_dir = str(logs_dir())
-    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    _log_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}{LOG_SUFFIX}")
-    _file = open(_log_path, "a", encoding="utf-8")
-    if _structured_jsonl_enabled():
-        _jsonl_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}_structured.jsonl")
-        _jsonl_file = open(_jsonl_path, "a", encoding="utf-8")
-    _prune_old_logs()
+    with _init_lock:
+        # Double-check after acquiring lock (another thread may have initialized)
+        if _log_path is not None:
+            return
+        _log_dir = str(logs_dir())
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        _log_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}{LOG_SUFFIX}")
+        _file = open(_log_path, "a", encoding="utf-8")
+        if _structured_jsonl_enabled():
+            _jsonl_path = os.path.join(_log_dir, f"{LOG_PREFIX}_{ts}_structured.jsonl")
+            _jsonl_file = open(_jsonl_path, "a", encoding="utf-8")
+        _prune_old_logs()
 
 
 def _prune_old_logs():
@@ -123,12 +128,13 @@ def debug(utility: str, message: str):
         _ensure_init()
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         line = f"{ts} | {utility} | {message}\n"
-        _file.write(line)
-        _file.flush()
-        if _jsonl_file is not None:
-            rec = {"ts": ts, "utility": utility, "message": message, "kind": "debug"}
-            _jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            _jsonl_file.flush()
+        with _init_lock:
+            _file.write(line)
+            _file.flush()
+            if _jsonl_file is not None:
+                rec = {"ts": ts, "utility": utility, "message": message, "kind": "debug"}
+                _jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                _jsonl_file.flush()
     except Exception:
         pass
 

@@ -1,6 +1,6 @@
 """
 scanner_panel.py — AI Media Scanner panel for ChronoArchiver.
-Visual style exactly matches Mass AV1 Encoder v12.
+Visual style exactly matches Mass Video Encoder v12.
 """
 
 import csv

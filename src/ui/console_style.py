@@ -1,5 +1,5 @@
 """
-console_style.py — Console log coloring for Media Organizer, AV1 Encoder, AI Scanner.
+console_style.py — Console log coloring for Media Organizer, Mass Video Encoder, AI Scanner.
 Token-level coloring: basename bright white; folder segments and path slashes distinct.
 """
 
@@ -167,7 +167,7 @@ def message_to_html(msg: str) -> str:
     return "".join(parts) if parts else _span(msg, line_color)
 
 
-# Shared console look (matches app.py QSS). QTextEdit (rich HTML) or QPlainTextEdit (Mass AV1 Encoder log).
+# Shared console look (matches app.py QSS). QTextEdit (rich HTML) or QPlainTextEdit (Mass Video Encoder log).
 PANEL_CONSOLE_TEXTEDIT_STYLE = (
     "QTextEdit#panelConsole, QPlainTextEdit#panelConsole {"
     " background-color: #080808;"

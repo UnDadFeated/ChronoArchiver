@@ -15,15 +15,15 @@ from __future__ import annotations
 import gc
 import re
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from PIL import Image, ImageOps
 
 # Small BLIP; conditional captioning continues from the text prefix.
 BEAUTIFY_ANALYSIS_MODEL_ID = "Salesforce/blip-image-captioning-base"
 
-_blip_processor = None
-_blip_model = None
+_blip_processor: Any = None
+_blip_model: Any = None
 
 # Skip tiny crops (very small faces / degenerate boxes).
 _MIN_REGION_PX = 40

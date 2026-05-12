@@ -50,18 +50,12 @@ def validate_lama_torchscript_file(model_path: str | Path) -> tuple[bool, str, b
         m = _load_lama_jit(p, map_location="cpu")
         m.eval()
         with torch.no_grad():
-            ok_fwd = False
-            for sz in (64, 96, 128, 192, 256):
-                try:
-                    x = torch.zeros(1, 3, sz, sz, dtype=torch.float32)
-                    mk = torch.zeros(1, 1, sz, sz, dtype=torch.float32)
-                    _ = m(x, mk)
-                    ok_fwd = True
-                    break
-                except Exception:
-                    continue
-            if not ok_fwd:
-                raise RuntimeError("LaMa TorchScript forward failed at test sizes")
+            try:
+                x = torch.zeros(1, 3, 128, 128, dtype=torch.float32)
+                mk = torch.zeros(1, 1, 128, 128, dtype=torch.float32)
+                _ = m(x, mk)
+            except Exception:
+                raise RuntimeError("LaMa TorchScript forward failed at test size 128x128")
     except Exception as e:
         err = str(e)
         _lama_checkpoint_cache[key] = (st.st_mtime, st.st_size, False, err, True)
@@ -122,6 +116,7 @@ class LamaInpaintRunner:
         if bgr is None or bgr.size == 0:
             return bgr
         h, w = bgr.shape[:2]
+        mask_u8 = np.squeeze(mask_u8)
         if mask_u8.shape[0] != h or mask_u8.shape[1] != w:
             mask_u8 = cv2.resize(mask_u8, (w, h), interpolation=cv2.INTER_LINEAR)
 

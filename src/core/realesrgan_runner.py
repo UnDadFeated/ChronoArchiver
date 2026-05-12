@@ -15,7 +15,7 @@ def _extract_state_dict(model_path: str | Path) -> dict:
     """Load checkpoint dict (params / params_ema / raw) from a .pth file."""
     import torch
     p = str(model_path)
-    loadnet = torch.load(p, map_location=torch.device("cpu"))
+    loadnet = torch.load(p, map_location=torch.device("cpu"), weights_only=True)
     if isinstance(loadnet, dict):
         if "params_ema" in loadnet:
             state = loadnet["params_ema"]

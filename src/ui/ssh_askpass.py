@@ -12,18 +12,23 @@ def main() -> int:
     except ImportError:
         return 1
 
-    _ = QApplication(["chronoarchiver-ssh-askpass"])
-    prompt = sys.argv[1] if len(sys.argv) > 1 else "Password:"
-    text, ok = QInputDialog.getText(
-        None,
-        "SSH authentication",
-        prompt,
-        QLineEdit.EchoMode.Password,
-    )
-    if ok and text is not None:
-        sys.stdout.write(text)
-        sys.stdout.flush()
-    return 0 if ok else 1
+    app = QApplication(["chronoarchiver-ssh-askpass"])
+    try:
+        prompt = sys.argv[1] if len(sys.argv) > 1 else "Password:"
+        text, ok = QInputDialog.getText(
+            None,
+            "SSH authentication",
+            prompt,
+            QLineEdit.EchoMode.Password,
+        )
+        if ok and text is not None:
+            sys.stdout.write(text)
+            sys.stdout.flush()
+        return 0 if ok else 1
+    finally:
+        app.quit()
+        app.deleteLater()
+        app.processEvents()
 
 
 if __name__ == "__main__":

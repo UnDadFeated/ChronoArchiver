@@ -1,6 +1,6 @@
 """
 organizer_panel.py — Media Organizer panel for ChronoArchiver.
-Visual style matches Mass AV1 Encoder v12.
+Visual style matches Mass Video Encoder v12.
 Uses src/core/organizer.py unchanged.
 """
 
@@ -455,7 +455,7 @@ class MediaOrganizerPanel(QWidget):
             QMessageBox.warning(
                 self,
                 "Busy",
-                "Another file-heavy task is running (Mass AV1 Encoder, AI Media Scanner, AI Image Upscaler, "
+                "Another file-heavy task is running (Mass Video Encoder, AI Media Scanner, AI Image Upscaler, "
                 "or AI Video Upscaler). Wait for it to finish.",
             )
             return
