@@ -211,11 +211,11 @@ class OrganizerEngine:
                 self.logger("ERROR: Target cannot be inside source or vice versa.")
                 debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: overlap src={src_real} tgt={tgt_real}")
                 return
-if not dry_run:
-                    if not os.access(target_dir, os.W_OK):
-                        self.logger("ERROR: Target directory is not writable.")
-                        debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
-                        return
+        if not dry_run:
+            if not os.access(target_dir, os.W_OK):
+                self.logger("ERROR: Target directory is not writable.")
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
+                return
         # In-place operations need write access on source directory
         if not target_dir and not dry_run:
             if not os.access(source_dir, os.W_OK):

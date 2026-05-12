@@ -281,7 +281,8 @@ def passthrough_to_output(
             if log:
                 log.warning("Passthrough: copy failed: %s", e)
             return False
-  try:
+
+    try:
         cmd = [
             "ffmpeg",
             "-y",
@@ -467,7 +468,7 @@ class VideoEncoderEngine:
 
     def scan_files(self, directory: str, stop_event: Optional[threading.Event] = None) -> Generator[tuple, None, None]:
         """Scans a directory for supported video files, yielding results for real-time feedback."""
-       extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm", ".m4v", ".wmv", ".mpeg")
+        extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm", ".m4v", ".wmv", ".mpeg")
         self.logger.info(f"scan_files: start dir={directory}")
         debug(UTILITY_MASS_VIDEO_ENCODER, f"scan_files: start dir={directory}")
 
@@ -720,7 +721,7 @@ class VideoEncoderEngine:
             # VAAPI doesn't need explicit color metadata; HW handles it
             return hw_flags, v_args, None
 
-       elif hw == "amf":
+        elif hw == "amf":
             if hw_decode:
                 hw_flags = ["-hwaccel", "dxva2"]
             else:
@@ -732,7 +733,7 @@ class VideoEncoderEngine:
             v_args = ["-c:v", ff_vcodec, "-pix_fmt", pix_fmt, "-qp_i", str(qp), "-qp_p", str(qp)]
             return hw_flags, v_args, hdr_info if hdr_info else None
 
-      elif hw == "qsv":
+        elif hw == "qsv":
             ff_vcodec = CODEC_FFMAP[codec].get("hw_qsv", f"{codec}_qsv" if codec != "h265" else "hevc_qsv")
             if hw_decode:
                 hw_flags = ["-hwaccel", "qsv", "-hwaccel_output_format", "qsv"]
@@ -890,7 +891,7 @@ class VideoEncoderEngine:
         # Map primary video + first audio only. ``-map 0`` muxes every audio/subtitle/data stream;
         # libopus/aac then runs per audio stream and a bad/extra track aborts the whole job.
         # ``0:a:0?`` is optional when there is no audio (e.g. silent video).
-      cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
+        cmd = ["ffmpeg", "-y", "-stats_period", "0.5"] + hw_flags + ["-i", input_path]
         cmd += (
             [
                 "-map",
