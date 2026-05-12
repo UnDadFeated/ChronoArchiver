@@ -920,7 +920,7 @@ def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:
         chunk_size = 256 * 1024
         total = -1
 
-        with requests_get_stream_with_retries(url, stream=True, timeout=TIMEOUT, attempts=3) as req:
+        with requests_get_stream_with_retries(url, timeout=TIMEOUT, attempts=3) as req:
             try:
                 total = int(req.headers.get("content-length", 0))
             except (ValueError, TypeError):
