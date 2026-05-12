@@ -45,6 +45,16 @@
 - **Mass Video Encoder scan suffix filter**: Replaced hardcoded `_av1`/`_h264`/`_hevc` filename skip with user-configurable dropdown. Scanner now respects "Scan suffix" setting (`None` / `_h264` / `_h265` / `_av1`) instead of blindly filtering all files with those patterns in the stem. "None" scans all files.
 - **Remote scan script suffix filtering**: Remote scan Python script now accepts and applies `skip_suffixes` parameter, matching local scan behavior.
 
+## [6.1.0] - 2026-05-12
+
+### Fixed
+- **Pipeline prefetch finally block sends sentinels to wrong queue after batch transition**: The `_pipeline_prefetch_loop` finally block unconditionally sent `None` sentinels on exit, which could strand a new batch's workers if the old prefetch thread survived the join timeout. Guarded sentinel-sending with `_pipeline_prefetch_stop.is_set()` check so sentinels are only sent when STOP was explicitly pressed.
+- **Space-saved bypass for same-size outputs**: `_apply_encode_finished` skipped zero-savings outputs (`saved_override == 0`) without recalculating from file sizes. Changed condition from `is not None` to `is not None and > 0` so same-size passthrough outputs correctly fall through to file-size recalculation.
+- **Concurrent scan-then-start threads from rapid START clicks**: `_start_encoding` with an empty queue launched inline scan-then-start threads without checking `_scan_in_progress`. Added guard to prevent duplicate concurrent scans.
+
+### Added
+- **Encoder panel**: Bug fixes 60–71 (pipeline pause, scan token/race, progress slot guard, dead parameter, batch-complete on STOP, space-saved recalc, concurrent scan prevention, and more).
+
 ## [Unreleased]
 
 ## [6.0.3] - 2026-05-11

@@ -19,6 +19,7 @@ import secrets
 import shlex
 import shutil
 import subprocess
+from subprocess import TimeoutExpired
 import tempfile
 import threading
 import time
@@ -197,6 +198,7 @@ def run_scp_from_remote(
     local_path: str,
     *,
     password_for_sshpass: Optional[str],
+    timeout: Optional[float] = 3600.0,
 ) -> None:
     spec = f"{remote.ssh_spec()}:{remote_posix}"
     batch = password_for_sshpass is None
@@ -213,12 +215,15 @@ def run_scp_from_remote(
         "stdin": subprocess.DEVNULL,
         "capture_output": True,
         "text": True,
-        "timeout": None,
+        "timeout": timeout,
         "env": env,
     }
     if os.name != "nt":
         kw["start_new_session"] = True
-    cp = subprocess.run(cmd, **kw)
+    try:
+        cp = subprocess.run(cmd, **kw)
+    except TimeoutExpired:
+        raise RemoteEncodeError("scp pull timed out")
     if cp.returncode != 0:
         err = (cp.stderr or cp.stdout or "").strip() or f"exit {cp.returncode}"
         raise RemoteEncodeError(f"scp pull failed: {err}")
@@ -230,6 +235,7 @@ def run_scp_to_remote(
     remote_posix: str,
     *,
     password_for_sshpass: Optional[str],
+    timeout: Optional[float] = 3600.0,
 ) -> None:
     spec = f"{remote.ssh_spec()}:{remote_posix}"
     batch = password_for_sshpass is None
@@ -246,12 +252,15 @@ def run_scp_to_remote(
         "stdin": subprocess.DEVNULL,
         "capture_output": True,
         "text": True,
-        "timeout": None,
+        "timeout": timeout,
         "env": env,
     }
     if os.name != "nt":
         kw["start_new_session"] = True
-    cp = subprocess.run(cmd, **kw)
+    try:
+        cp = subprocess.run(cmd, **kw)
+    except TimeoutExpired:
+        raise RemoteEncodeError("scp push timed out")
     if cp.returncode != 0:
         err = (cp.stderr or cp.stdout or "").strip() or f"exit {cp.returncode}"
         raise RemoteEncodeError(f"scp push failed: {err}")

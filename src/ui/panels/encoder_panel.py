@@ -127,8 +127,8 @@ class _Signals(QObject):
     batch_complete = Signal()  # emitted when all workers finish, queue empty — auto-stop UI
     # total_bytes can exceed 2^31-1 (Qt C++ int); use object so Shiboken does not overflow.
     scan_progress = Signal(int, object)  # count, total_bytes (thread-safe for scan updates)
-    scan_done = Signal(list, str)  # items, src — emitted from worker, handled in main thread
-    scan_done_then_start = Signal(list, str, str)  # items, src, dst — for Start+empty queue
+    scan_done = Signal(list, str, object)  # items, src, scan_tok — emitted from worker, handled in main thread
+    scan_done_then_start = Signal(list, str, str, object)  # items, src, dst, scan_tok — for Start+empty queue
 
 
 class VideoEncoderPanel(QWidget):
@@ -160,6 +160,7 @@ class VideoEncoderPanel(QWidget):
         self._done_bytes = 0.0
         self._total_count = 0
         self._done_count = 0
+        self._done_lock = threading.Lock()
         self._active_jobs = 0
         self._active_lock = threading.Lock()
         self._encoding_batch_ui_finalized = False
@@ -178,6 +179,9 @@ class VideoEncoderPanel(QWidget):
         self._encode_pipeline_q: queue.Queue | None = None
         self._pipeline_prefetch_thread: threading.Thread | None = None
         self._pipeline_prefetch_stop = threading.Event()
+        self._paused_item: dict[int, tuple] = {}
+        self._scan_in_progress = False
+        self._scan_token = 0
         # Serialize heavy per-file UI work across event-loop turns — multiple workers can emit
         # ``finished`` back-to-back; stacking many QPlainTextEdit / bar updates in one tick risks SIGSEGV.
         self._encode_finish_queue: deque = deque()
@@ -824,6 +828,8 @@ class VideoEncoderPanel(QWidget):
             self._auto_scan()
 
     def _on_src_changed(self):
+        if self._is_encoding:
+            return
         self._source_scanned = False
         self._scan_debounce.stop()
         self._scan_debounce.start(400)
@@ -1006,6 +1012,9 @@ class VideoEncoderPanel(QWidget):
     def _auto_scan(self):
         if self._is_encoding:
             return
+        if self._scan_in_progress:
+            debug(UTILITY_MASS_VIDEO_ENCODER, "Auto-scan: already in progress, skipping")
+            return
         src = self._edit_src.text().strip()
         self._queue.clear()
         if not src:
@@ -1014,9 +1023,12 @@ class VideoEncoderPanel(QWidget):
             return
         if is_remote_path(src):
             self._source_scanned = False
+            self._scan_in_progress = True
+            self._scan_token += 1
+            current_scan_token = self._scan_token
             self._add_log("Scanning remote source (SSH)...")
             self._update_start_enabled()
-            debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan remote: {src[:200]}")
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan remote: {src[:200]}, token={current_scan_token}")
 
             old_dlg = getattr(self, "_scan_dialog", None)
             if old_dlg:
@@ -1034,14 +1046,17 @@ class VideoEncoderPanel(QWidget):
             scan_dialog.show()
 
             def _scan_remote():
-                items = self._run_remote_scan_collect(src)
+                scan_tok = current_scan_token
+                suffix_str = self._settings.get("scan_suffix", "")
+                suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
+                items = self._run_remote_scan_collect(src, suffixes)
                 total_b = sum(s for _, s in items)
                 self._sig.scan_progress.emit(len(items), total_b)
                 debug(
                     UTILITY_MASS_VIDEO_ENCODER,
                     f"Auto-scan remote complete: count={len(items)}, total_bytes={total_b}",
                 )
-                self._sig.scan_done.emit(items, src)
+                self._sig.scan_done.emit(items, src, scan_tok)
 
             threading.Thread(target=_scan_remote, daemon=True).start()
             return
@@ -1050,9 +1065,12 @@ class VideoEncoderPanel(QWidget):
             self._update_start_enabled()
             return
         self._source_scanned = False
+        self._scan_in_progress = True
+        self._scan_token += 1
+        current_scan_token = self._scan_token
         self._add_log("Scanning source folder...")
         self._update_start_enabled()
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan start: src={src}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan start: src={src}, token={current_scan_token}")
 
         old_dlg = getattr(self, "_scan_dialog", None)
         if old_dlg:
@@ -1074,6 +1092,7 @@ class VideoEncoderPanel(QWidget):
             total_bytes = 0
             items = []
             last_emit = [0]
+            scan_tok = current_scan_token
             suffix_str = self._settings.get("scan_suffix", "")
             suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
             try:
@@ -1090,11 +1109,11 @@ class VideoEncoderPanel(QWidget):
                 self._sig.log_msg.emit(f"Scan error: {e}")
                 debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan error: {e}")
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Auto-scan complete: count={count}, total_bytes={total_bytes}")
-            self._sig.scan_done.emit(items, src)
+            self._sig.scan_done.emit(items, src, scan_tok)
 
         threading.Thread(target=_scan, daemon=True).start()
 
-    def _on_scan_done(self, items, scanned_src):
+    def _on_scan_done(self, items, scanned_src, scan_tok=None):
         """Called in main thread when scan completes."""
         dlg = getattr(self, "_scan_dialog", None)
         if dlg:
@@ -1107,10 +1126,20 @@ class VideoEncoderPanel(QWidget):
             except Exception:
                 pass
         self._scan_dialog = None
+        if scan_tok is not None and scan_tok != self._scan_token:
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan result rejected: stale token {scan_tok} vs current {self._scan_token}")
+            self._scan_in_progress = False
+            return
+        self._scan_in_progress = False
         self._apply_scan_result(items, scanned_src)
 
-    def _on_scan_done_then_start(self, items, src, dst):
+    def _on_scan_done_then_start(self, items, src, dst, scan_tok=None):
         """Called in main thread when scan completes (Start+empty queue path)."""
+        if scan_tok is not None and scan_tok != self._scan_token:
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan+start rejected: stale token {scan_tok} vs current {self._scan_token}")
+            self._scan_in_progress = False
+            return
+        self._scan_in_progress = False
         dlg = getattr(self, "_scan_dialog", None)
         if dlg:
             try:
@@ -1177,6 +1206,9 @@ class VideoEncoderPanel(QWidget):
             return
 
         if not self._queue:
+            if self._scan_in_progress:
+                debug(UTILITY_MASS_VIDEO_ENCODER, "Start encoding: scan already in progress, skipping duplicate")
+                return
             self._add_log("Scanning source...")
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Start encoding: queue empty, scanning src={src}")
             old_dlg = getattr(self, "_scan_dialog", None)
@@ -1195,13 +1227,14 @@ class VideoEncoderPanel(QWidget):
             scan_dialog.show()
 
             def _scan_then_start():
+                scan_tok = self._scan_token
                 if is_remote_path(src):
                     suffix_str = self._settings.get("scan_suffix", "")
                     suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
                     items = self._run_remote_scan_collect(src, suffixes)
                     total_b = sum(s for _, s in items)
                     self._sig.scan_progress.emit(len(items), total_b)
-                    self._sig.scan_done_then_start.emit(items, src, dst)
+                    self._sig.scan_done_then_start.emit(items, src, dst, scan_tok)
                     return
                 count = 0
                 total_bytes = 0
@@ -1217,7 +1250,7 @@ class VideoEncoderPanel(QWidget):
                 except Exception as e:
                     self._sig.log_msg.emit(f"Scan error: {e}")
                     debug(UTILITY_MASS_VIDEO_ENCODER, f"Scan error: {e}")
-                self._sig.scan_done_then_start.emit(items, src, dst)
+                self._sig.scan_done_then_start.emit(items, src, dst, scan_tok)
 
             threading.Thread(target=_scan_then_start, daemon=True).start()
             return
@@ -1225,6 +1258,9 @@ class VideoEncoderPanel(QWidget):
         self._continue_start_encoding(src, dst)
 
     def _continue_start_encoding(self, src, dst):
+        if self._is_encoding:
+            debug(UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: already encoding, ignoring src={src}, dst={dst}")
+            return
         debug(UTILITY_MASS_VIDEO_ENCODER, f"_continue_start_encoding: queue_len={len(self._queue)}, src={src}, dst={dst}")
         if not self._queue:
             self._add_log("No compatible files found.")
@@ -1249,6 +1285,15 @@ class VideoEncoderPanel(QWidget):
             self._add_log("ERROR: Remote source scan has not completed or found no files.")
             debug(UTILITY_MASS_VIDEO_ENCODER, "Start blocked: remote source not scanned")
             return
+
+        # Compute common structure root for remote source files (Keep Subdirs)
+        if r_src and self._queue:
+            refs = [p for p, _ in self._queue if isinstance(p, RemoteFileRef)]
+            if refs:
+                try:
+                    self._remote_src_structure_root_posix = common_structure_root_posix(refs)
+                except ValueError:
+                    self._remote_src_structure_root_posix = None
 
         # Long path warning (Windows MAX_PATH ~260)
         if platform.system() == "Windows":
@@ -1292,7 +1337,10 @@ class VideoEncoderPanel(QWidget):
             dirs: list[str] = []
             for path_item, _ in self._queue:
                 if isinstance(path_item, RemoteFileRef):
-                    dirs.append(posixpath.dirname(path_item.abs_posix))
+                    d = posixpath.dirname(path_item.abs_posix)
+                    if os.sep != "/":
+                        d = d.replace("/", os.sep)
+                    dirs.append(d)
                 else:
                     dirs.append(os.path.dirname(path_item))
             if dirs:
@@ -1305,11 +1353,11 @@ class VideoEncoderPanel(QWidget):
             k = p.abs_posix if isinstance(p, RemoteFileRef) else p
             self._queue_sizes[k] = s
         self._total_q_bytes = sum(s for _, s in self._queue)
-        self._done_bytes = 0.0
+        with self._done_lock:
+            self._done_bytes = 0.0
+            self._done_count = 0
         self._total_count = len(self._queue)
-        self._done_count = 0
         self._active_jobs = 0
-        self._active_lock = threading.Lock()
         self._encoding_batch_ui_finalized = False
         self._encode_finish_queue.clear()
         self._encode_finish_drain_scheduled = False
@@ -1317,6 +1365,7 @@ class VideoEncoderPanel(QWidget):
         self._current_files = {}
         self._total_saved = 0
         self._is_paused = False
+        self._paused_item.clear()
         self._batch_start = time.time()
         self._last_encoder_agg_ui_at = 0.0
         if self._status_cb:
@@ -1342,6 +1391,11 @@ class VideoEncoderPanel(QWidget):
             num_workers = 1
         num_workers = max(1, min(4, num_workers))
         VideoEncoderEngine.reset_nvenc_cuda_hwaccel_for_new_batch()
+        # Stop any previous prefetch thread to prevent concurrent access to shared state
+        self._pipeline_prefetch_stop.set()
+        old_thread = self._pipeline_prefetch_thread
+        if old_thread is not None and old_thread.is_alive():
+            old_thread.join(timeout=2.0)
         self._pipeline_prefetch_stop.clear()
         if r_src and num_workers >= 2:
             self._encode_pipeline_q = queue.Queue(maxsize=_remote_pipeline_queue_cap(num_workers))
@@ -1365,8 +1419,16 @@ class VideoEncoderPanel(QWidget):
         return "encoding" if self._is_encoding else "idle"
 
     def _stop_encoding(self):
-        self._is_encoding = False
         self._pipeline_prefetch_stop.set()
+        # Send None sentinels so pipeline workers exit cleanly (avoids AttributeError when they later
+        # check self._encode_pipeline_q which is cleared below).
+        pq_ref = self._encode_pipeline_q
+        if pq_ref is not None:
+            try:
+                for _ in range(self._settings.get("concurrent_jobs", 1)):
+                    pq_ref.put(None, timeout=10)
+            except Exception:
+                pass
         self._encode_pipeline_q = None
         self._pipeline_prefetch_thread = None
         with self._queue_lock:
@@ -1378,10 +1440,26 @@ class VideoEncoderPanel(QWidget):
         self._remote_dst_remote = None
         self._remote_dst_root_posix = None
         self._remote_src_structure_root_posix = None
-        if self._status_cb:
-            self._status_cb("idle")
         for eng in self._engine_pool:
             eng.cancel()
+        # Transition UI to clean idle state (resets buttons, bars, labels)
+        self._is_encoding = False
+        self._encoding_batch_ui_finalized = True
+        if self._status_cb:
+            self._status_cb("idle")
+        self._bar_master.setRange(0, 1)
+        self._bar_master.setValue(0)
+        self._bar_master.setFormat("0/0 Files")
+        self._lbl_eta.setText("ESTIMATED TIME REMAINING: --:--:--")
+        self._lbl_io.setText("I/O: 0.0 MB/s")
+        self._job_progress.clear()
+        self._current_files.clear()
+        self._btn_start.setStyleSheet("")
+        self._btn_start.setText("START ENCODING")
+        self._btn_start.setObjectName("btnStart")
+        self._btn_start.setStyle(self.style())
+        self._btn_pause.setEnabled(False)
+        self._update_start_enabled()
         if self._fs_heavy_held:
             release_fs_heavy()
             self._fs_heavy_held = False
@@ -1396,7 +1474,13 @@ class VideoEncoderPanel(QWidget):
         QTimer.singleShot(2500, self._sweep_chrono_encoder_tempdir)
 
     def _toggle_pause(self):
-        self._is_paused = not self._is_paused
+        new_state = not self._is_paused
+        # Ignore duplicate rapid-clicks: if state hasn't actually changed (e.g. user
+        # clicked PAUSE, it's already paused, then clicked PAUSE again rapidly),
+        # don't flip back and forth.
+        if new_state == self._is_paused:
+            return
+        self._is_paused = new_state
         for eng in self._engine_pool:
             if self._is_paused:
                 eng.pause()
@@ -1410,7 +1494,6 @@ class VideoEncoderPanel(QWidget):
         size: int,
         src: str,
         dst: str,
-        structure_root,
         *,
         dst_remote,
         dst_root_px: str,
@@ -1423,6 +1506,7 @@ class VideoEncoderPanel(QWidget):
         """
         ref = item if isinstance(item, RemoteFileRef) else None
         if not ref:
+            self._sig.log_msg.emit(f"Pipeline: unexpected non-RemoteFileRef item: {item}")
             return (
                 "fin",
                 {
@@ -1556,7 +1640,6 @@ class VideoEncoderPanel(QWidget):
                     size,
                     src,
                     dst,
-                    structure_root,
                     dst_remote=dst_remote,
                     dst_root_px=dst_root_px,
                     rem_struct=rem_struct,
@@ -1575,6 +1658,10 @@ class VideoEncoderPanel(QWidget):
                 fd, tmp_in = tempfile.mkstemp(suffix="_" + _src_bn, prefix=_ENCODER_TMP_PREFIX)
                 os.close(fd)
                 tmp_cleanup.append(tmp_in)
+                if not self._is_encoding:
+                    _finalize_encoder_temp_files(tmp_cleanup, success=False, local_in=tmp_in, local_out="")
+                    pq.put({"op": "fin", "payload": {"logical_key": ctx["logical_key"], "ok": False, "remote_src_ref": ref, "tmp_cleanup": []}}, timeout=600)
+                    continue
                 try:
                     run_scp_from_remote(ref.target, ref.abs_posix, tmp_in, password_for_sshpass=pw)
                 except RemoteEncodeError as e:
@@ -1611,13 +1698,14 @@ class VideoEncoderPanel(QWidget):
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Pipeline prefetch fatal: {e}")
             log_exception(e, context="pipeline_prefetch", utility=UTILITY_MASS_VIDEO_ENCODER)
         finally:
-            try:
-                for _ in range(num_workers):
-                    pq.put(None, timeout=60)
-            except Exception:
-                pass
+            if self._pipeline_prefetch_stop.is_set():
+                try:
+                    for _ in range(num_workers):
+                        pq.put(None, timeout=60)
+                except Exception:
+                    pass
 
-    def _encoder_worker_exit_finalize(self, *, pipeline_mode: bool) -> None:
+    def _encoder_worker_exit_finalize(self, engine, *, pipeline_mode: bool) -> None:
         """Decrement ``_active_jobs`` atomically; emit ``batch_complete`` at most once as a finalize backup.
 
         Lock order: ``_queue_lock`` then ``_active_lock`` (legacy workers already pop under ``_queue_lock``).
@@ -1631,25 +1719,35 @@ class VideoEncoderPanel(QWidget):
                 self._active_jobs -= 1
                 if self._active_jobs != 0:
                     return
-                if not pipeline_mode and len(self._queue) > 0:
-                    return
                 if self._encoding_batch_ui_finalized:
                     return
-                if not self._is_encoding and self._done_count < self._total_count:
-                    return
-                if not (self._is_encoding or self._done_count >= self._total_count):
-                    return
-                should_emit = True
+                if pipeline_mode:
+                    # Pipeline: emit when all jobs done (queue contents irrelevant, workers drain from pq).
+                    with self._done_lock:
+                        dc = self._done_count
+                    if dc >= self._total_count:
+                        should_emit = True
+                else:
+                    # Legacy: emit when queue empty and all jobs done (or STOP pressed).
+                    with self._done_lock:
+                        dc = self._done_count
+                    if len(self._queue) == 0 and (self._is_encoding or dc >= self._total_count):
+                        should_emit = True
         if should_emit:
             self._sig.log_msg.emit("Encoding batch complete.")
             self._sig.batch_complete.emit()
             debug(UTILITY_MASS_VIDEO_ENCODER, "Encoding batch complete (worker drain).")
+        # Clean per-engine state to prevent unbounded growth across batches
+        with self._queue_lock:
+            self._paused_item.pop(engine.job_id, None)
+        self._job_progress.pop(engine.job_id, None)
+        self._current_files.pop(engine.job_id, None)
 
-    def _job_worker_pipeline(self, engine, src, dst, structure_root=None):
+    def _job_worker_pipeline(self, engine, src, dst, structure_root=None, pq_ref=None):
         """Consumer for prefetched remote files (overlap download + NVENC)."""
         pw = self._encode_pw
         dst_remote = self._remote_dst_remote
-        pq = self._encode_pipeline_q
+        pq = pq_ref
 
         with self._active_lock:
             self._active_jobs += 1
@@ -1662,6 +1760,9 @@ class VideoEncoderPanel(QWidget):
             # _is_encoding: _finalize_batch_complete clears it when the last file finishes,
             # which would otherwise exit before sentinels are consumed and strand queue items.
             while True:
+                if self._is_paused:
+                    time.sleep(0.2)
+                    continue
                 try:
                     task = pq.get(timeout=0.5)
                 except queue.Empty:
@@ -1673,9 +1774,6 @@ class VideoEncoderPanel(QWidget):
                         UTILITY_MASS_VIDEO_ENCODER,
                         f"Pipeline worker: ignored non-dict queue item: {type(task).__name__}",
                     )
-                    continue
-                if self._is_paused:
-                    time.sleep(0.2)
                     continue
                 if task.get("op") == "fin":
                     pl = task.get("payload") or {}
@@ -1864,12 +1962,15 @@ class VideoEncoderPanel(QWidget):
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder pipeline worker: {e}")
             log_exception(e, context="encoder_pipeline_worker", utility=UTILITY_MASS_VIDEO_ENCODER)
         finally:
-            self._encoder_worker_exit_finalize(pipeline_mode=True)
+            self._encoder_worker_exit_finalize(engine, pipeline_mode=True)
 
     def _job_worker(self, engine, src, dst, structure_root=None):
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id} started (pipeline={self._encode_pipeline_q is not None})")
-        if self._encode_pipeline_q is not None:
-            self._job_worker_pipeline(engine, src, dst, structure_root)
+        # Capture pipeline queue reference atomically to prevent race where STOP clears
+        # self._encode_pipeline_q between the check and the worker entering its path.
+        pq_ref = self._encode_pipeline_q
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id} started (pipeline={pq_ref is not None})")
+        if pq_ref is not None:
+            self._job_worker_pipeline(engine, src, dst, structure_root, pq_ref)
             return
 
         debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id} entering main loop (queue_len={len(self._queue)})")
@@ -1889,8 +1990,12 @@ class VideoEncoderPanel(QWidget):
             while self._is_encoding:
                 item = None
                 size = 0
+                # Check for paused item first (held by this worker during pause)
                 with q_lock:
-                    if self._queue:
+                    held = self._paused_item.pop(engine.job_id, None)
+                    if held is not None:
+                        item, size = held
+                    elif self._queue:
                         item, size = self._queue.pop(0)
                         ref0 = item if isinstance(item, RemoteFileRef) else None
                         self._current_files[engine.job_id] = ref0.abs_posix if ref0 else item
@@ -1901,7 +2006,7 @@ class VideoEncoderPanel(QWidget):
 
                 if self._is_paused:
                     with q_lock:
-                        self._queue.append((item, size))
+                        self._paused_item[engine.job_id] = (item, size)
                     time.sleep(0.2)
                     continue
 
@@ -1922,7 +2027,7 @@ class VideoEncoderPanel(QWidget):
                                 )
                             except ValueError:
                                 self._sig.log_msg.emit(f"SKIP (invalid path): {posixpath.basename(ref.rel_posix)}")
-                                _fin(False, logical_key, "", None)
+                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                                 continue
                         elif ref:
                             rel_stem = posixpath.splitext(ref.rel_posix.replace("\\", "/"))[0]
@@ -1934,7 +2039,7 @@ class VideoEncoderPanel(QWidget):
                             self._sig.log_msg.emit(
                                 f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                             )
-                            _fin(False, logical_key, "", None)
+                            _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                             continue
                         if dst_remote:
                             remote_out_posix = posix_join_under(dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container"))
@@ -1945,7 +2050,7 @@ class VideoEncoderPanel(QWidget):
                                 self._sig.log_msg.emit(
                                     f"SKIP (invalid path): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                 )
-                                _fin(False, logical_key, "", None)
+                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                                 continue
                             try:
                                 real_tpath = os.path.realpath(tpath_local)
@@ -1954,10 +2059,10 @@ class VideoEncoderPanel(QWidget):
                                     self._sig.log_msg.emit(
                                         f"SKIP (path outside target): {posixpath.basename(ref.rel_posix) if ref else os.path.basename(item)}"
                                     )
-                                    _fin(False, logical_key, "", None)
+                                    _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                                     continue
                             except OSError:
-                                _fin(False, logical_key, "", None)
+                                _fin(False, logical_key, "", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                                 continue
                             out_dir = os.path.dirname(tpath_local)
                             if out_dir:
@@ -1987,7 +2092,7 @@ class VideoEncoderPanel(QWidget):
                             )
                             self._sig.log_msg.emit(f"SKIP (exists): {disp}")
                             debug(UTILITY_MASS_VIDEO_ENCODER, f"Skipped existing: {remote_out_posix or tpath_local}")
-                            _fin(True, logical_key, "", None)
+                            _fin(True, logical_key, "", {"logical_key": logical_key, "ok": True, "remote_src_ref": ref, "tmp_cleanup": []})
                             continue
                         if policy == "rename":
                             if dst_remote and remote_out_posix:
@@ -2182,7 +2287,7 @@ class VideoEncoderPanel(QWidget):
             self._sig.log_msg.emit(f"ERROR: {e}")
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Encoder worker exception: {e}")
         finally:
-            self._encoder_worker_exit_finalize(pipeline_mode=False)
+            self._encoder_worker_exit_finalize(engine, pipeline_mode=False)
 
     # ── signal handlers ───────────────────────────────────────────────────────
 
@@ -2312,7 +2417,7 @@ class VideoEncoderPanel(QWidget):
 
         saved_override = meta.get("saved_bytes") if meta else None
         if success:
-            if saved_override is not None:
+            if saved_override is not None and saved_override > 0:
                 try:
                     saved = int(saved_override)
                     if saved > 0:
@@ -2387,8 +2492,10 @@ class VideoEncoderPanel(QWidget):
 
         f_size = self._queue_sizes.get(lk, 0.0)
         self._done_bytes += f_size
-        self._done_count += 1
-        if self._done_count % 400 == 0:
+        with self._done_lock:
+            self._done_count += 1
+            dc = self._done_count
+        if dc % 400 == 0:
             gc.collect(0)
 
         # Update master bar + ETA on every file completion (progress may never fire for short encodes)
@@ -2415,7 +2522,9 @@ class VideoEncoderPanel(QWidget):
             self._job_vid[job_id].setText("-")
             self._job_aud[job_id].setText("-")
 
-        if self._done_count >= self._total_count and self._is_encoding:
+        with self._done_lock:
+            dc = self._done_count
+        if dc >= self._total_count and self._is_encoding:
             self._finalize_batch_complete()
 
     def _on_batch_complete(self):

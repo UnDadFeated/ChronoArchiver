@@ -159,73 +159,83 @@ def _ffmpeg_encode_failure_hint(
 def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
     """
     Ensure a local path is fully written and readable as video before FFmpeg runs.
-    Avoids decode/encoder failures when a transfer is incomplete or still flushing.
+    Retries up to 3 times with 500ms delay to handle transient OS/NFS issues.
     """
     if not path:
         return False, "empty path"
     if not os.path.isfile(path):
         return False, "not a regular file"
-    try:
-        s1 = os.path.getsize(path)
-    except OSError as e:
-        return False, str(e)
-    if s1 <= 0:
-        return False, "empty file"
-    time.sleep(0.05)
-    try:
-        s2 = os.path.getsize(path)
-    except OSError as e:
-        return False, str(e)
-    if s1 != s2:
-        return False, "file size changed (transfer may still be in progress)"
-    try:
-        out = subprocess.check_output(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=codec_type",
-                "-of",
-                "csv=p=0",
-                path,
-            ],
-            text=True,
-            stderr=subprocess.STDOUT,
-            timeout=120,
-        )
-        if "video" not in out.lower():
-            return False, f"no video stream (ffprobe: {out.strip()!r})"
-    except subprocess.CalledProcessError as e:
-        tail = (e.output or "")[:300]
-        return False, f"ffprobe stream check failed: {tail}"
-    except subprocess.TimeoutExpired:
-        return False, "ffprobe stream check timed out"
-    try:
-        d_out = subprocess.check_output(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                path,
-            ],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=120,
-        ).strip()
-        if not d_out:
-            return False, "zero duration"
-        if float(d_out) <= 0.0:
-            return False, "zero duration"
-    except (subprocess.SubprocessError, ValueError, OSError) as e:
-        return False, f"duration probe failed: {e}"
-    return True, None
+
+    def _check_once() -> tuple[bool, str | None]:
+        try:
+            s1 = os.path.getsize(path)
+        except OSError as e:
+            return False, str(e)
+        if s1 <= 0:
+            return False, "empty file"
+        time.sleep(0.05)
+        try:
+            s2 = os.path.getsize(path)
+        except OSError as e:
+            return False, str(e)
+        if s1 != s2:
+            return False, "file size changed (transfer may still be in progress)"
+        try:
+            out = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=codec_type",
+                    "-of",
+                    "csv=p=0",
+                    path,
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=120,
+            )
+            if "video" not in out.lower():
+                return False, f"no video stream (ffprobe: {out.strip()!r})"
+        except subprocess.CalledProcessError as e:
+            tail = (e.output or "")[:300]
+            return False, f"ffprobe stream check failed: {tail}"
+        except subprocess.TimeoutExpired:
+            return False, "ffprobe stream check timed out"
+        try:
+            d_out = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    path,
+                ],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=120,
+            ).strip()
+            if not d_out:
+                return False, "zero duration"
+            if float(d_out) <= 0.0:
+                return False, "zero duration"
+        except (subprocess.SubprocessError, ValueError, OSError) as e:
+            return False, f"duration probe failed: {e}"
+        return True, None
+
+    for attempt in range(3):
+        ok, err = _check_once()
+        if ok:
+            return True, None
+        if attempt < 2:
+            time.sleep(0.5)
+    return False, err
 
 
 def file_has_codec(input_path: str, target_codec: str) -> bool:

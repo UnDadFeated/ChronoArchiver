@@ -15,6 +15,16 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.1.0": """## [6.1.0] - 2026-05-12
+
+### Fixed
+- **Pipeline prefetch finally block sends sentinels to wrong queue after batch transition**: The `_pipeline_prefetch_loop` finally block unconditionally sent `None` sentinels on exit, which could strand a new batch's workers if the old prefetch thread survived the join timeout. Guarded sentinel-sending with `_pipeline_prefetch_stop.is_set()` check so sentinels are only sent when STOP was explicitly pressed.
+- **Space-saved bypass for same-size outputs**: `_apply_encode_finished` skipped zero-savings outputs (`saved_override == 0`) without recalculating from file sizes. Changed condition from `is not None` to `is not None and > 0` so same-size passthrough outputs correctly fall through to file-size recalculation.
+- **Concurrent scan-then-start threads from rapid START clicks**: `_start_encoding` with an empty queue launched inline scan-then-start threads without checking `_scan_in_progress`. Added guard to prevent duplicate concurrent scans.
+
+### Added
+- **Encoder panel**: Bug fixes 60–71 (pipeline pause, scan token/race, progress slot guard, dead parameter, batch-complete on STOP, space-saved recalc, concurrent scan prevention, and more).
+""",
     "6.0.11": """## [6.0.11] - 2026-05-11
 
 ### Fixed
