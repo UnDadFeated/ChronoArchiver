@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.5.0] - 2026-05-12
+
+### Fixed
+- **NVENC preset mapping missing**: NVENC encoders received invalid preset values like "p1" instead of FFmpeg names like "ultrafast". Now maps P1–P7 to ultrafast–veryslow using the same logic as libx264.
+- **Spurious ERROR logs for CUDA decode failures**: FFmpeg exits 183/218 (CUDA out-of-memory during decode) logged ERROR before the automatic software decode retry. Now logs only INFO about the retry for expected failures.
+
 ## [6.4.0] - 2026-05-12
 
 ### Fixed

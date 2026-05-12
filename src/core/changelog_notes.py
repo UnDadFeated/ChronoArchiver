@@ -14,8 +14,12 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
-EMBEDDED_RELEASE_NOTES: dict[str, str] = {
-    "6.4.0": """## [6.4.0] - 2026-05-12
+EMBEDDED_RELEASE_NOTES: dict[str, str] = {    "6.5.0": """## [6.5.0] - 2026-05-12
+
+### Fixed
+- **NVENC preset mapping missing**: NVENC encoders received invalid preset values like "p1" instead of FFmpeg names like "ultrafast". Now maps P1–P7 to ultrafast–veryslow using the same logic as libx264.
+- **Spurious ERROR logs for CUDA decode failures**: FFmpeg exits 183/218 (CUDA out-of-memory during decode) logged ERROR before the automatic software decode retry. Now logs only INFO about the retry for expected failures.
+""",    "6.4.0": """## [6.4.0] - 2026-05-12
 
 ### Fixed
 - **VAAPI encoding without hardware decode fails**: When `hw_accel_decode` is unchecked, VAAPI branch passed a VAAPI encoder name but no `-vaapi_device` flag, causing FFmpeg to fail with device context errors. Now passes `-vaapi_device /dev/dri/renderD*` when a render node is available even without hardware decode.

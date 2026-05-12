@@ -695,12 +695,14 @@ class VideoEncoderEngine:
             hw_flags = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"] if hw_decode else []
             ff_vcodec = CODEC_FFMAP[codec]["hw_nvenc"]
             pix_fmt = "p010le" if hdr_info else "yuv420p"
+            # Map preset to FFmpeg NVENC preset names
+            nvenc_preset = SOFTWARE_PRESET_MAP["libx264"].get(preset, "medium")
             v_args = [
                 "-c:v", ff_vcodec,
                 "-pix_fmt", pix_fmt,
                 "-rc", "vbr",
                 "-cq", str(quality),
-                "-preset", preset,
+                "-preset", nvenc_preset,
             ]
             gpu_raw = (os.environ.get("CHRONOARCHIVER_FFMPEG_NVENC_GPU") or "").strip()
             if gpu_raw:
@@ -1112,7 +1114,9 @@ class VideoEncoderEngine:
                         f"Encode stopped by user (not a failure): {input_path} (returncode={rc})",
                     )
                     return False, input_path, output_path, None, True
-                self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
+                # Don't log ERROR for expected CUDA decode failures that will retry
+                if rc not in (183, 218):
+                    self.logger.error(f"FFmpeg failed for {os.path.basename(input_path)}.")
                 debug(UTILITY_MASS_VIDEO_ENCODER, f"FFmpeg failed: {input_path} (returncode={rc})")
                 if error_log:
                     tail = list(error_log)[-8:]
