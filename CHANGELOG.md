@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.0.4] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder scan suffix filter**: Replaced hardcoded `_av1`/`_h264`/`_hevc` filename skip with user-configurable dropdown. Scanner now respects "Scan suffix" setting (`None` / `_h264` / `_h265` / `_av1`) instead of blindly filtering all files with those patterns in the stem. "None" scans all files.
+- **Remote scan script suffix filtering**: Remote scan Python script now accepts and applies `skip_suffixes` parameter, matching local scan behavior.
+
 ## [Unreleased]
 
 ## [6.0.3] - 2026-05-11

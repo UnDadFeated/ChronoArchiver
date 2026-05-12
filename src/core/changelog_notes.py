@@ -15,6 +15,12 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.4": """## [6.0.4] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder scan suffix filter**: Replaced hardcoded `_av1`/`_h264`/`_hevc` filename skip with user-configurable dropdown (`None` / `_h264` / `_h265` / `_av1`). "None" scans all files.
+- **Remote scan script**: Now accepts and applies `skip_suffixes` parameter, matching local scan behavior.
+""",
     "6.0.3": """## [6.0.3] - 2026-05-11
 
 ### Fixed

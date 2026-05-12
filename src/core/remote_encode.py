@@ -463,12 +463,12 @@ def remote_verify_python3(remote: RemoteTarget, password_for_sshpass: Optional[s
         raise RemoteEncodeError(f"Remote host must have ``python3`` on PATH for scanning. SSH: {err or cp.returncode}")
 
 
-def _scan_script_source(root: str, exts: Tuple[str, ...], codec: str = "av1") -> str:
-    """Remote scan script that skips already-encoded files based on codec suffix."""
+def _scan_script_source(root: str, exts: Tuple[str, ...], skip_suffixes: Optional[List[str]] = None) -> str:
+    """Remote scan script for discovering video files in a directory tree."""
     # root embedded as repr — must be a trusted path from our own parser only.
     ext_list = sorted(set(e.lower() if e.startswith(".") else f".{e.lower()}" for e in exts))
     ext_repr = repr(tuple(ext_list))
-    codec_tag = CODEC_TAGS.get(codec, "av1")
+    skip_repr = repr([s.lower() for s in (skip_suffixes or [])])
     # Remote: resolve path from SSH login cwd; follow symlinked dirs (media trees).
     # os.walk on a missing path yields nothing and exits 0 — detect with isdir first.
     return f"""import os,sys
@@ -481,7 +481,7 @@ if not os.path.isdir(root):
     print(_ed, flush=True)
     sys.exit(3)
 exts=set({ext_repr})
-codec_tag="{codec_tag}"
+skip=[s.lower() for s in {skip_repr}]
 out_n=0
 for dp,dns,fns in os.walk(root, followlinks=True):
     dns[:]=[x for x in dns if not x.startswith(".")]
@@ -492,7 +492,7 @@ for dp,dns,fns in os.walk(root, followlinks=True):
         if not any(low.endswith(e) for e in exts):
             continue
         stem,xe=os.path.splitext(fn)
-        if stem.lower().endswith(f"_{codec_tag}"):
+        if any(stem.lower().endswith(s) for s in skip):
             continue
         fp=os.path.join(dp,fn)
         try:
@@ -542,14 +542,12 @@ def _remote_scan_console_hint(
     codec: str = "av1",
 ) -> str:
     """One line for the encoder UI (thread-safe emit from worker)."""
-    codec_tag = CODEC_TAGS.get(codec, "av1")
     files_n, root_s = _parse_remote_scan_summary(protocol_text)
     ext_line = ".mp4, .mkv, .mov, .webm, .ts, .avi, .3gp, .mpg"
     if files_n is not None and root_s is not None:
         if files_n == 0:
             return (
-                f"Remote: 0 videos under {root_s} on the server "
-                f"(extensions {ext_line}; names ending with _{codec_tag} before the extension are skipped)."
+                f"Remote: 0 videos under {root_s} on the server (extensions {ext_line})."
             )
         if parsed_queue_len != files_n:
             return (
@@ -672,10 +670,11 @@ def remote_scan_videos(
     extensions: Tuple[str, ...],
     password_for_sshpass: Optional[str],
     on_progress: Optional[Callable[[int, int], None]] = None,
+    skip_suffixes: Optional[List[str]] = None,
 ) -> Tuple[List[RemoteFileRef], str]:
     """Return (video file refs, one-line console hint for the UI) for ``root_posix`` on the remote host."""
     root_norm = root_posix.rstrip("/") or "/"
-    script = _scan_script_source(root_norm, extensions)
+    script = _scan_script_source(root_norm, extensions, skip_suffixes=skip_suffixes)
     batch = password_for_sshpass is None
 
     def _finalize(result: Tuple[List[RemoteFileRef], str]) -> Tuple[List[RemoteFileRef], str]:

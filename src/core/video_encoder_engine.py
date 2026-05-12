@@ -11,7 +11,7 @@ import json
 import psutil
 import logging
 from dataclasses import dataclass
-from typing import Optional, Callable, Generator, Sequence
+from typing import Optional, Callable, Generator, List, Sequence
 from collections import deque
 
 try:
@@ -466,15 +466,19 @@ class VideoEncoderEngine:
             self.logger.warning("ffmpeg -encoders failed — hardware acceleration unavailable")
             return ""
 
-    def scan_files(self, directory: str, stop_event: Optional[threading.Event] = None) -> Generator[tuple, None, None]:
+    def scan_files(
+        self, directory: str, stop_event: Optional[threading.Event] = None, skip_suffixes: Optional[List[str]] = None
+    ) -> Generator[tuple, None, None]:
         """Scans a directory for supported video files, yielding results for real-time feedback."""
         extensions = (".mpg", ".mp4", ".ts", ".avi", ".3gp", ".mkv", ".mov", ".webm", ".m4v", ".wmv", ".mpeg")
-        self.logger.info(f"scan_files: start dir={directory}")
-        debug(UTILITY_MASS_VIDEO_ENCODER, f"scan_files: start dir={directory}")
+        self.logger.info(f"scan_files: start dir={directory} skip_suffixes={skip_suffixes}")
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"scan_files: start dir={directory} skip_suffixes={skip_suffixes}")
 
         def _skip_error(err):
             self.logger.warning(f"Scan skip dir: {err}")
             debug(UTILITY_MASS_VIDEO_ENCODER, f"scan_files: skip dir {err}")
+
+        skip = [s.lower() for s in (skip_suffixes or [])]
 
         try:
             for root, dirs, filenames in os.walk(directory, onerror=_skip_error):
@@ -485,16 +489,10 @@ class VideoEncoderEngine:
                 dirs[:] = [d for d in dirs if not d.startswith(".")]
 
                 for filename in filenames:
-                    name_stem = os.path.splitext(filename)[0]
-                    # Skip files with any _<codec>. extension pattern (e.g. _h264.mp4, _hevc.mkv)
-                    skip = False
-                    for codec_tag in CODEC_SUFFIX_MAP.values():
-                        if name_stem.endswith(f"_{codec_tag}"):
-                            skip = True
-                            break
-                    if skip:
-                        continue
                     if filename.lower().endswith(extensions):
+                        stem, _ = os.path.splitext(filename)
+                        if any(stem.lower().endswith(s) for s in skip):
+                            continue
                         full_path = os.path.join(root, filename)
                         try:
                             size = os.path.getsize(full_path)

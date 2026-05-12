@@ -125,6 +125,7 @@ class EncoderSettings:
             "shutdown_on_finish": False,
             "existing_output": "skip",  # overwrite | skip | rename
             "output_ext": ".mp4",  # deprecated — kept for backward compat
+            "scan_suffix": "",
         }
         self.data = self.load()
 

@@ -422,6 +422,24 @@ class VideoEncoderPanel(QWidget):
         h_audio_left.addWidget(self._lbl_pcm_hint, 0, Qt.AlignmentFlag.AlignLeft)
         h_a.addWidget(w_audio_left, 0, Qt.AlignmentFlag.AlignLeft)
         h_a.addStretch(1)
+        w_suffix = QWidget()
+        h_suffix = QHBoxLayout(w_suffix)
+        h_suffix.setContentsMargins(0, 0, 0, 0)
+        h_suffix.setSpacing(4)
+        lbl_scan = QLabel("Scan suffix:", styleSheet="font-size:9px; font-weight:700; color:#aaa; spacing:4px;")
+        h_suffix.addWidget(lbl_scan, 0, Qt.AlignmentFlag.AlignRight)
+        self._combo_scan_suffix = QComboBox()
+        self._combo_scan_suffix.addItems(["None", "_h264", "_h265", "_av1"])
+        cur_scan = self._settings.get("scan_suffix", "")
+        idx_scan = {"": 0, "_h264": 1, "_h265": 2, "_av1": 3}.get(cur_scan, 0)
+        self._combo_scan_suffix.setCurrentIndex(idx_scan)
+        self._combo_scan_suffix.setStyleSheet(COMBO_BOX_PANEL_QSS + "QComboBox { color: #aaa; }")
+        self._combo_scan_suffix.setFixedHeight(18)
+        self._combo_scan_suffix.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._combo_scan_suffix.currentTextChanged.connect(lambda v: self._settings.set("scan_suffix", v if v != "None" else ""))
+        self._combo_scan_suffix.setToolTip("Files with this suffix before the extension are skipped during scan")
+        h_suffix.addWidget(self._combo_scan_suffix, 0, Qt.AlignmentFlag.AlignRight)
+        h_a.addWidget(w_suffix, 0, Qt.AlignmentFlag.AlignRight)
         v_cfg.addLayout(h_a)
 
         v_cfg.addStretch()
@@ -943,7 +961,7 @@ class VideoEncoderPanel(QWidget):
         else:
             self._clear_guide_glow(target)
 
-    def _run_remote_scan_collect(self, src: str) -> list:
+    def _run_remote_scan_collect(self, src: str, suffixes: list[str] | None = None) -> list:
         _lg = logging.getLogger(APP_NAME)
         try:
             pw = password_for_remote_encode(self._edit_ssh_pw.text())
@@ -960,7 +978,7 @@ class VideoEncoderPanel(QWidget):
             def _remote_scan_progress(count: int, total_bytes: int) -> None:
                 self._sig.scan_progress.emit(count, max(0, total_bytes))
 
-            refs, scan_hint = remote_scan_videos(rt, root, exts, pw, on_progress=_remote_scan_progress)
+            refs, scan_hint = remote_scan_videos(rt, root, exts, pw, on_progress=_remote_scan_progress, skip_suffixes=suffixes)
             if scan_hint:
                 self._sig.log_msg.emit(scan_hint)
             return [(r, r.size) for r in refs]
@@ -1047,8 +1065,10 @@ class VideoEncoderPanel(QWidget):
             total_bytes = 0
             items = []
             last_emit = [0]
+            suffix_str = self._settings.get("scan_suffix", "")
+            suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
             try:
-                for path, size in VideoEncoderEngine().scan_files(src):
+                for path, size in VideoEncoderEngine().scan_files(src, skip_suffixes=suffixes):
                     items.append((path, max(0, size)))
                     count += 1
                     total_bytes = max(0, total_bytes + size)
@@ -1167,7 +1187,9 @@ class VideoEncoderPanel(QWidget):
 
             def _scan_then_start():
                 if is_remote_path(src):
-                    items = self._run_remote_scan_collect(src)
+                    suffix_str = self._settings.get("scan_suffix", "")
+                    suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
+                    items = self._run_remote_scan_collect(src, suffixes)
                     total_b = sum(s for _, s in items)
                     self._sig.scan_progress.emit(len(items), total_b)
                     self._sig.scan_done_then_start.emit(items, src, dst)
@@ -1175,8 +1197,10 @@ class VideoEncoderPanel(QWidget):
                 count = 0
                 total_bytes = 0
                 items = []
+                suffix_str = self._settings.get("scan_suffix", "")
+                suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
                 try:
-                    for path, size in VideoEncoderEngine().scan_files(src):
+                    for path, size in VideoEncoderEngine().scan_files(src, skip_suffixes=suffixes):
                         items.append((path, size))
                         count += 1
                         total_bytes += size
@@ -1380,10 +1404,10 @@ class VideoEncoderPanel(QWidget):
             if ".." in rel_stem.split("/"):
                 return ("fin", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
             if dst_remote:
-                remote_out_posix = posix_join_under(dst_root_px, rel_stem)
+                remote_out_posix = posix_join_under(dst_root_px, rel_stem, self._settings.get("codec"), self._settings.get("container"))
             else:
                 try:
-                    tpath_local = join_dst_local(dst, rel_stem)
+                    tpath_local = join_dst_local(dst, rel_stem, self._settings.get("codec"), self._settings.get("container"))
                 except ValueError:
                     return ("fin", {"logical_key": logical_key, "ok": False, "remote_src_ref": ref, "tmp_cleanup": []})
                 try:
