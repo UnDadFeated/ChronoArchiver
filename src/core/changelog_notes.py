@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.0.9": """## [6.0.9] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder not starting**: `self._engine_pool` was an empty list from `__init__` and never populated with `VideoEncoderEngine` instances. The `for eng in self._engine_pool:` loop iterated over zero engines, so no worker threads were spawned. Engines are now created from `concurrent_jobs` setting before the worker loop starts. `_is_encoding = True` moved before thread creation to prevent race condition.
+""",
     "6.0.8": """## [6.0.8] - 2026-05-11
 
 ### Fixed

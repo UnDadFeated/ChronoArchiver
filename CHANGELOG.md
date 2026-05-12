@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.0.9] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder not starting**: Root cause was `self._engine_pool` being an empty list in `__init__` and never populated with `VideoEncoderEngine` instances. The `for eng in self._engine_pool:` loop iterated over zero engines, so no worker threads were ever spawned. Engines are now created from `concurrent_jobs` setting before the worker loop starts. `_is_encoding = True` is also moved before thread creation to prevent a race condition where workers exit immediately.
+
 ## [6.0.8] - 2026-05-11
 
 ### Fixed

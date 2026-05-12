@@ -1335,11 +1335,19 @@ class VideoEncoderPanel(QWidget):
         self._btn_pause.setEnabled(True)
         self._update_start_enabled()
 
+        num_workers = self._settings.get("concurrent_jobs")
+        try:
+            num_workers = int(num_workers)
+        except (TypeError, ValueError):
+            num_workers = 1
+        num_workers = max(1, min(4, num_workers))
+        VideoEncoderEngine.reset_nvenc_cuda_hwaccel_for_new_batch()
+        self._engine_pool = [VideoEncoderEngine(job_id=i) for i in range(num_workers)]
+        self._is_encoding = True
         for eng in self._engine_pool:
             eng.on_progress = lambda j, p: self._sig.progress.emit(j, p)
             eng.on_details = lambda j, v, a: self._sig.details.emit(j, v, a)
             threading.Thread(target=self._job_worker, args=(eng, src, dst, structure_root), daemon=True).start()
-        self._is_encoding = True
 
     def get_activity(self):
         return "encoding" if self._is_encoding else "idle"
@@ -1840,10 +1848,12 @@ class VideoEncoderPanel(QWidget):
             self._encoder_worker_exit_finalize(pipeline_mode=True)
 
     def _job_worker(self, engine, src, dst, structure_root=None):
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id} started (pipeline={self._encode_pipeline_q is not None})")
         if self._encode_pipeline_q is not None:
             self._job_worker_pipeline(engine, src, dst, structure_root)
             return
 
+        debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id} entering main loop (queue_len={len(self._queue)})")
         pw = self._encode_pw
         dst_remote = self._remote_dst_remote
         dst_root_px = (self._remote_dst_root_posix or "").strip() or "/"
@@ -1867,10 +1877,12 @@ class VideoEncoderPanel(QWidget):
                         self._current_files[engine.job_id] = ref0.abs_posix if ref0 else item
 
                 if item is None:
+                    debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id}: queue empty, exiting")
                     break
 
                 ref = item if isinstance(item, RemoteFileRef) else None
                 logical_key = ref.abs_posix if ref else item
+                debug(UTILITY_MASS_VIDEO_ENCODER, f"Worker {engine.job_id}: processing {os.path.basename(logical_key)}")
                 tmp_cleanup: list[str] = []
 
                 try:
