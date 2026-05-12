@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.0.5] - 2026-05-11
+
+### Changed
+- **Mass Video Encoder scan suffix**: Added `None` option to the scan suffix dropdown, allowing the scanner to find all files recursively without skipping any codec suffix. Output suffix is now auto-determined from the codec selection (no separate dropdown needed).
+
 ## [6.0.4] - 2026-05-11
 
 ### Fixed
