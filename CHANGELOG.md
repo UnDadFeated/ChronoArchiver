@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.0.6] - 2026-05-11
+
+### Changed
+- **Mass Video Encoder**: Renamed "Scan suffix" dropdown label to "Skip Suffix" for clarity.
+
 ## [6.0.5] - 2026-05-11
 
 ### Changed
