@@ -15,6 +15,13 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.3.0": """## [6.3.0] - 2026-05-12
+
+### Fixed
+- **Pipeline prefetch finally block never sends sentinels on normal completion**: The `finally` block gated sentinel-sending on `_pipeline_prefetch_stop.is_set()`, which is only True when STOP is pressed. On normal batch completion, no sentinels were sent and pipeline workers spun forever. Removed the guard so sentinels are always sent (double-sentinel on STOP is harmless — extra None items sit in the discarded queue and are GC'd).
+- **`_nvenc_skip_cuda_hwaccel` reset on every engine construction**: The class-level flag was reset to `False` in `__init__`, defeating the purpose of the CUDA-decode retry suppression. The flag is now managed solely by `reset_nvenc_cuda_hwaccel_for_new_batch()` at batch start.
+- **`_start_encoding` scan-then-start race**: `_scan_in_progress` was checked but never set to `True`, allowing duplicate scan threads on rapid double-clicks. Added `self._scan_in_progress = True` before thread launch. The scan token was also captured inside the thread body instead of at creation time, allowing stale results to slip through. Now captured in a closure variable at creation time.
+""",
     "6.2.0": """## [6.2.0] - 2026-05-12
 
 ### Fixed

@@ -1225,9 +1225,11 @@ class VideoEncoderPanel(QWidget):
             self._scan_dialog = scan_dialog
             self._sig.scan_progress.connect(scan_dialog.update_progress, Qt.ConnectionType.QueuedConnection)
             scan_dialog.show()
+            self._scan_in_progress = True
+            current_scan_tok = self._scan_token
 
             def _scan_then_start():
-                scan_tok = self._scan_token
+                scan_tok = current_scan_tok
                 if is_remote_path(src):
                     suffix_str = self._settings.get("scan_suffix", "")
                     suffixes = [s.strip() for s in suffix_str.split(",") if s.strip()]
@@ -1687,12 +1689,11 @@ class VideoEncoderPanel(QWidget):
             debug(UTILITY_MASS_VIDEO_ENCODER, f"Pipeline prefetch fatal: {e}")
             log_exception(e, context="pipeline_prefetch", utility=UTILITY_MASS_VIDEO_ENCODER)
         finally:
-            if self._pipeline_prefetch_stop.is_set():
-                try:
-                    for _ in range(num_workers):
-                        pq.put(None, timeout=60)
-                except Exception:
-                    pass
+            try:
+                for _ in range(num_workers):
+                    pq.put(None, timeout=60)
+            except Exception:
+                pass
 
     def _encoder_worker_exit_finalize(self, engine, *, pipeline_mode: bool) -> None:
         """Decrement ``_active_jobs`` atomically; emit ``batch_complete`` at most once as a finalize backup.

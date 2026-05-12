@@ -410,8 +410,6 @@ class VideoEncoderEngine:
         self.job_id = job_id
         self.on_progress: Optional[Callable[[int, EncodingProgress], None]] = None
         self.on_details: Optional[Callable[[int, str, str], None]] = None
-        with VideoEncoderEngine._nvenc_cuda_lock:
-            VideoEncoderEngine._nvenc_skip_cuda_hwaccel = False
         self._encoders_output = self._get_encoders_output()
         self._detect_hardware()
         self._current_process: Optional[subprocess.Popen] = None
