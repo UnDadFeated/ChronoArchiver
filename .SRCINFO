@@ -1,7 +1,7 @@
 pkgbase = chronoarchiver
 	pkgdesc = Unified Media Archive Organizer and AV1 Encoder - Time to Archive!
 	pkgver = 6.0.3
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/UnDadFeated/ChronoArchiver
 	install = chronoarchiver.install
 	arch = any
@@ -10,6 +10,8 @@ pkgbase = chronoarchiver
 	makedepends = python-setuptools
 	depends = python
 	source = git+https://github.com/UnDadFeated/ChronoArchiver.git#tag=v6.0.3
+	source = fix-indentation.patch
+	sha256sums = SKIP
 	sha256sums = SKIP
 
 pkgname = chronoarchiver
