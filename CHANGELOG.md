@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.0.7] - 2026-05-11
+
+### Fixed
+- **Mass Video Encoder start button unresponsive**: Fixed `NameError` crash in worker threads caused by undefined `structure_root` variable. Encoder threads now start properly when pressing START ENCODING.
+- **Mass Video Encoder output filename suffix duplication**: Old codec suffixes are now stripped from output filenames (e.g. `movie_h265.mp4` → `movie_h264.mp4` instead of `movie_h265_h264.mp4`).
+
 ## [6.0.6] - 2026-05-11
 
 ### Changed

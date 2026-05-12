@@ -781,6 +781,17 @@ def remote_unlink(remote: RemoteTarget, file_posix: str, password_for_sshpass: O
     run_ssh_argv(cmd, password_for_sshpass=password_for_sshpass, timeout=CONNECT_SCP + 60)
 
 
+_OLD_CODEC_SUFFIXES = ("_h264", "_h265", "_hevc", "_av1")
+
+
+def _strip_old_codec_suffix(stem: str) -> str:
+    """Strip old codec suffixes from a filename stem (e.g. 'movie_h265' → 'movie')."""
+    for suffix in _OLD_CODEC_SUFFIXES:
+        if stem.endswith(suffix):
+            return stem[: -len(suffix)]
+    return stem
+
+
 def join_dst_local(dst_local: str, rel_stem_posix: str, codec: str = "av1", container: str = "mp4") -> str:
     """``rel_stem_posix`` is relative path without extension, using ``/``."""
     rel_stem_posix = rel_stem_posix.replace("\\", "/").strip("/")
@@ -789,6 +800,7 @@ def join_dst_local(dst_local: str, rel_stem_posix: str, codec: str = "av1", cont
     parent, stem = posixpath.split(rel_stem_posix) if rel_stem_posix else ("", "")
     if not stem:
         raise ValueError("invalid path")
+    stem = _strip_old_codec_suffix(stem)
     base = os.path.abspath(dst_local)
     out = os.path.join(base, *parent.split("/")) if parent else base
     codec_tag = CODEC_TAGS.get(codec, "av1")
@@ -805,6 +817,7 @@ def posix_join_under(root: str, rel_stem_posix: str, codec: str = "av1", contain
     if not rel_stem_posix:
         raise ValueError("invalid path")
     parent, stem = posixpath.split(rel_stem_posix)
+    stem = _strip_old_codec_suffix(stem)
     codec_tag = CODEC_TAGS.get(codec, "av1")
     ext = CONTAINER_EXT_MAP.get((codec, container), ".mp4")
     suffix = f"{stem}_{codec_tag}{ext}"

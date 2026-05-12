@@ -800,9 +800,18 @@ class VideoEncoderPanel(QWidget):
         container = self._settings.get("container")
         return {"mp4": ".mp4", "mkv": ".mkv"}.get(container, ".mp4")
 
+    _OLD_CODEC_SUFFIXES = ("_h264", "_h265", "_hevc", "_av1")
+
     def _output_suffix(self) -> str:
         """Return the full output suffix: '_<codec>.<ext>' (e.g. '_h264.mp4', '_hevc.mkv')."""
         return f"_{self._codec_tag()}{self._container_ext()}"
+
+    def _strip_old_codec_suffix(self, stem: str) -> str:
+        """Strip old codec suffixes from a filename stem (e.g. 'movie_h265' → 'movie')."""
+        for suffix in self._OLD_CODEC_SUFFIXES:
+            if stem.endswith(suffix):
+                return stem[: -len(suffix)]
+        return stem
 
     def _browse_src(self):
         picked, dialog_pw = run_local_remote_path_dialog(self, self._edit_src.text().strip(), purpose="source")
@@ -1277,6 +1286,20 @@ class VideoEncoderPanel(QWidget):
             return
         self._fs_heavy_held = True
 
+        # Compute structure_root: common parent directory of all scanned files
+        structure_root: str | None = None
+        try:
+            dirs: list[str] = []
+            for item in self._queue:
+                if isinstance(item, RemoteFileRef):
+                    dirs.append(posixpath.dirname(item.abs_posix))
+                else:
+                    dirs.append(os.path.dirname(item))
+            if dirs:
+                structure_root = os.path.commonpath(dirs)
+        except ValueError:
+            structure_root = None
+
         self._queue_sizes = {}
         for p, s in self._queue:
             k = p.abs_posix if isinstance(p, RemoteFileRef) else p
@@ -1428,7 +1451,7 @@ class VideoEncoderPanel(QWidget):
             if dst_remote:
                 remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
             else:
-                tpath_local = os.path.join(dst, flat_stem + self._output_suffix())
+                tpath_local = os.path.join(dst, self._strip_old_codec_suffix(flat_stem) + self._output_suffix())
 
         policy = self._settings.get("existing_output")
         pw = self._encode_pw
@@ -1910,7 +1933,7 @@ class VideoEncoderPanel(QWidget):
                         if dst_remote:
                             remote_out_posix = posix_join_under(dst_root_px, flat_stem, self._settings.get("codec"), self._settings.get("container"))
                         else:
-                            tpath_local = os.path.join(dst, flat_stem + self._output_suffix())
+                            tpath_local = os.path.join(dst, self._strip_old_codec_suffix(flat_stem) + self._output_suffix())
 
                     policy = self._settings.get("existing_output")
                     if dst_remote and remote_out_posix:
