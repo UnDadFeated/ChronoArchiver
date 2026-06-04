@@ -70,6 +70,7 @@ def main() -> int:
     txt = re.sub(r"tag `v\d+\.\d+\.\d+`", f"tag `v{new_v}`", txt, count=1)
     txt = re.sub(r"ChronoArchiver-Setup-\d+\.\d+\.\d+-", f"ChronoArchiver-Setup-{new_v}-", txt)
     txt = re.sub(r"at \*\*\d+\.\d+\.\d+\*\*:", f"at **{new_v}**:", txt, count=1)
+    txt = re.sub(r"--version \d+\.\d+\.\d+", f"--version {new_v}", txt)
     r.write_text(txt, encoding="utf-8")
 
     # 4) PKGBUILD
@@ -110,6 +111,17 @@ def main() -> int:
         wtxt = re.sub(r"default:\s*'[\d.]+'", f"default: '{new_v}'", wtxt, count=1)
         wtxt = re.sub(r"\(e\.g\. [\d.]+\)", f"(e.g. {new_v})", wtxt, count=1)
         wf.write_text(wtxt, encoding="utf-8")
+
+    # 8) Flatpak metainfo XML
+    meta = ROOT / "flatpak" / "io.github.UnDadFeated.ChronoArchiver.metainfo.xml"
+    if meta.is_file():
+        import datetime
+        today = datetime.date.today().isoformat()
+        mtxt = meta.read_text(encoding="utf-8")
+        if f'version="{new_v}"' not in mtxt:
+            release_element = f'\n    <release version="{new_v}" date="{today}"/>'
+            mtxt = re.sub(r'(<releases>)', rf'\1{release_element}', mtxt, count=1)
+            meta.write_text(mtxt, encoding="utf-8")
 
     print(f"Bumped {prev} -> {new_v}")
     print(

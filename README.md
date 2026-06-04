@@ -37,7 +37,7 @@ The Flatpak package is intentionally small. Python prerequisites and AI models a
 For Flathub publication automation:
 
 ```bash
-./tools/prepare_flathub_submission.sh --version 6.0.3
+./tools/prepare_flathub_submission.sh --version 6.6.0
 ./tools/bootstrap_flathub_repo.sh
 ```
 
