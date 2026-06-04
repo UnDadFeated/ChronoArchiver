@@ -15,6 +15,19 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.6.2": """## [6.6.2] - 2026-06-04
+
+### Added
+- **Standardized Error Database**: Added a new errors.py module defining centralized application-wide error codes (E100 to E999) with human-readable descriptions and possible fixes.
+- **Improved Error Handling**: Integrated E1xx, E2xx, E3xx, and E4xx error codes into the setup/venv manager, media organizer, video encoder, and SSH/remote modules.
+- **Fail-safes**: Hardened path resolution and target directory boundary validation.
+
+### Fixed
+- **Windows Bootstrapper**: Resolved venv creation checks failing when using the standard Windows Python Launcher (py.exe).
+- **Video Encoder Engine initialization**: Fixed AttributeError by initializing the logger before querying local encoder capabilities.
+- **Organizer Keep-Newer Policy**: Corrected bypass logic that was skipping copy/move execution entirely when the source file was newer.
+- **Unit Tests Compatibility**: Fixed a platform-specific unit test crash when checking SSH connection multiplexing on Windows.
+""",
     "6.6.1": """## [6.6.1] - 2026-06-04
 
 ### Security

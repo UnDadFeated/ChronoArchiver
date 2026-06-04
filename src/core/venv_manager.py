@@ -37,6 +37,11 @@ except ImportError:
 
 from . import app_paths
 
+try:
+    from .errors import AppErrorCode, format_error_msg
+except ImportError:
+    from core.errors import AppErrorCode, format_error_msg
+
 
 def _is_frozen() -> bool:
     """True when running as PyInstaller bundle (no venv)."""
@@ -1108,7 +1113,7 @@ def check_venv_bootstrap_prereqs(py_exe: Path) -> tuple[bool, str]:
     Verify the host Python can create a venv with pip (ensurepip / venv module).
     On some Linux distros users must install the ``python-venv`` / ``python-ensurepip`` package.
     """
-    if not py_exe.is_file():
+    if not py_exe.is_file() and not shutil.which(str(py_exe)):
         return False, f"Interpreter not found: {py_exe}"
     try:
         r = subprocess.run(
@@ -1193,18 +1198,22 @@ def ensure_venv(progress_callback=None) -> bool:
         creator = get_venv_python_creator_cmd()
         if not creator:
             hi = _venv_python_ceiling()
+            err_msg = format_error_msg(
+                AppErrorCode.VENV_INTERPRETER_NOT_FOUND, f"Python 3.{VENV_PYTHON_MIN[1]}-3.{hi[1]} not on PATH"
+            )
             prog(
                 "No suitable Python for venv",
-                f"Install Python 3.{hi[1]} or 3.12 (any in 3.{VENV_PYTHON_MIN[1]}–3.{hi[1]}) and restart.",
+                err_msg,
                 0,
             )
             return False
         py_create = Path(creator[0])
         ok_pre, err_pre = check_venv_bootstrap_prereqs(py_create)
         if not ok_pre:
+            err_msg = format_error_msg(AppErrorCode.VENV_INTERPRETER_NOT_FOUND, f"Prereqs failed: {err_pre}")
             prog(
                 "Python venv prerequisites missing",
-                (err_pre or "Install python-venv / ensurepip on your system.") + f"  Interpreter: {py_create}",
+                err_msg,
                 0,
             )
             debug(UTILITY_OPENCV_INSTALL, f"ensure_venv: bootstrap prereq failed: {err_pre}")
@@ -1218,7 +1227,8 @@ def ensure_venv(progress_callback=None) -> bool:
         )
         if r.returncode != 0:
             err = ((r.stderr or "") + (r.stdout or "")).strip()[:400]
-            prog("venv creation failed", err or "unknown error", 0)
+            err_msg = format_error_msg(AppErrorCode.VENV_CREATION_FAILED, f"Exit code {r.returncode}: {err}")
+            prog("venv creation failed", err_msg, 0)
             debug(UTILITY_OPENCV_INSTALL, f"ensure_venv: venv failed rc={r.returncode} err={err}")
             return False
 
@@ -1252,7 +1262,8 @@ def ensure_venv(progress_callback=None) -> bool:
             prog("pip install timeout", "", 0)
             return False
         if proc.returncode != 0:
-            prog(f"Failed: {pkg}", "", 0)
+            err_msg = format_error_msg(AppErrorCode.VENV_PIP_INSTALL_FAILED, f"Failed installing {pkg}")
+            prog(f"Failed: {pkg}", err_msg, 0)
             return False
         prog(f"Installed {pkg} ({i + 1}/{n})", "", 100.0 * (i + 1) / n)
 

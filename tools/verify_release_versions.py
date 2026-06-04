@@ -55,7 +55,6 @@ def main() -> int:
     ):
         errors.append("tools/chronoarchiver_setup.spec default CHRONOARCHIVER_VERSION mismatch")
 
-
     cn = (ROOT / "src" / "core" / "changelog_notes.py").read_text(encoding="utf-8")
     if not re.search(rf'["\']{re.escape(ver)}["\']\s*:\s*"""', cn):
         errors.append(

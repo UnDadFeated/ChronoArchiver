@@ -32,6 +32,11 @@ except ImportError:
         resolve_best_capture_epoch,
     )
 
+try:
+    from .errors import AppErrorCode, format_error_msg
+except ImportError:
+    from core.errors import AppErrorCode, format_error_msg
+
 PHOTO_EXTS = {
     ".jpg",
     ".jpeg",
@@ -181,12 +186,14 @@ class OrganizerEngine:
         )
         source_dir = (source_dir or "").strip()
         if not source_dir:
-            self.logger("Source directory is empty.")
-            debug(UTILITY_MEDIA_ORGANIZER, "ERROR: Source directory empty")
+            err_msg = format_error_msg(AppErrorCode.ORGANIZER_SRC_NOT_FOUND, "Path is empty")
+            self.logger(err_msg)
+            debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
             return
         if not os.path.exists(source_dir):
-            self.logger("Source directory does not exist.")
-            debug(UTILITY_MEDIA_ORGANIZER, "ERROR: Source directory does not exist")
+            err_msg = format_error_msg(AppErrorCode.ORGANIZER_SRC_NOT_FOUND, f"Path: {source_dir}")
+            self.logger(err_msg)
+            debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
             return
 
         self.cancel_flag = False
@@ -201,26 +208,38 @@ class OrganizerEngine:
 
         # Fail-safes: source/target overlap, writable, disk space
         if target_dir:
-            src_real = os.path.normcase(os.path.realpath(source_dir))
-            tgt_real = os.path.normcase(os.path.realpath(target_dir))
+            try:
+                src_real = os.path.normcase(os.path.realpath(source_dir))
+                tgt_real = os.path.normcase(os.path.realpath(target_dir))
+            except Exception as e:
+                err_msg = format_error_msg(AppErrorCode.ORGANIZER_RESOLUTION_FAILED, f"Failed resolving paths: {e}")
+                self.logger(err_msg)
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
+                return
             if src_real == tgt_real:
-                self.logger("ERROR: Source and target are the same directory.")
-                debug(UTILITY_MEDIA_ORGANIZER, "ERROR: source == target")
+                err_msg = format_error_msg(AppErrorCode.ORGANIZER_PATHS_OVERLAP, f"Source == Target ({src_real})")
+                self.logger(err_msg)
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
                 return
             if src_real.startswith(tgt_real + os.sep) or tgt_real.startswith(src_real + os.sep):
-                self.logger("ERROR: Target cannot be inside source or vice versa.")
-                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: overlap src={src_real} tgt={tgt_real}")
+                err_msg = format_error_msg(
+                    AppErrorCode.ORGANIZER_PATHS_OVERLAP, f"Overlap: src={src_real} tgt={tgt_real}"
+                )
+                self.logger(err_msg)
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
                 return
         if not dry_run:
             if not os.access(target_dir, os.W_OK):  # type: ignore[arg-type]
-                self.logger("ERROR: Target directory is not writable.")
-                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: target not writable: {target_dir}")
+                err_msg = format_error_msg(AppErrorCode.ORGANIZER_TGT_NOT_WRITABLE, f"Path: {target_dir}")
+                self.logger(err_msg)
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
                 return
         # In-place operations need write access on source directory
         if not target_dir and not dry_run:
             if not os.access(source_dir, os.W_OK):
-                self.logger("ERROR: Source directory is not writable (in-place mode).")
-                debug(UTILITY_MEDIA_ORGANIZER, "ERROR: source not writable for in-place operation")
+                err_msg = format_error_msg(AppErrorCode.ORGANIZER_SRC_NOT_WRITABLE, f"Path: {source_dir}")
+                self.logger(err_msg)
+                debug(UTILITY_MEDIA_ORGANIZER, f"ERROR: {err_msg}")
                 return
 
         if exif_auto_rotate and action == "symlink":
@@ -389,11 +408,18 @@ class OrganizerEngine:
                 real_target = os.path.realpath(target_path)
                 real_base = os.path.realpath(base_dir)
                 if not (real_target == real_base or real_target.startswith(real_base + os.sep)):
-                    self.logger(f"Skipping {file}: Resolved path outside target.")
-                    debug(UTILITY_MEDIA_ORGANIZER, f"Skip (path escape): {file}")
+                    err_msg = format_error_msg(
+                        AppErrorCode.ORGANIZER_RESOLUTION_FAILED, f"Target resolved outside base_dir: {real_target}"
+                    )
+                    self.logger(err_msg)
+                    debug(UTILITY_MEDIA_ORGANIZER, f"Skip: {err_msg}")
                     skipped += 1
                     continue
-            except OSError:
+            except OSError as e:
+                err_msg = format_error_msg(
+                    AppErrorCode.ORGANIZER_RESOLUTION_FAILED, f"OS error resolving {target_path}: {e}"
+                )
+                self.logger(err_msg)
                 skipped += 1
                 continue
 

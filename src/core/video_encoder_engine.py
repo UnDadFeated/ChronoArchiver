@@ -32,6 +32,11 @@ except ImportError:
         resolve_best_capture_epoch,
     )
 
+try:
+    from .errors import AppErrorCode, format_error_msg
+except ImportError:
+    from core.errors import AppErrorCode, format_error_msg
+
 CODEC_CONTAINER_EXT = {
     ("h264", "mp4"): ".mp4",
     ("h264", "mkv"): ".mkv",
@@ -178,9 +183,9 @@ def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
     Retries up to 3 times with 500ms delay to handle transient OS/NFS issues.
     """
     if not path:
-        return False, "empty path"
+        return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, "path is empty")
     if not os.path.isfile(path):
-        return False, "not a regular file"
+        return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, f"not a regular file: {path}")
 
     def _check_once() -> tuple[bool, str | None]:
         try:
@@ -188,14 +193,16 @@ def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
         except OSError as e:
             return False, str(e)
         if s1 <= 0:
-            return False, "empty file"
+            return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, "zero/empty file size")
         time.sleep(0.05)
         try:
             s2 = os.path.getsize(path)
         except OSError as e:
             return False, str(e)
         if s1 != s2:
-            return False, "file size changed (transfer may still be in progress)"
+            return False, format_error_msg(
+                AppErrorCode.ENCODER_INPUT_INVALID, "file size changed (transfer may still be in progress)"
+            )
         try:
             out = subprocess.check_output(
                 [
@@ -215,12 +222,14 @@ def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
                 timeout=120,
             )
             if "video" not in out.lower():
-                return False, f"no video stream (ffprobe: {out.strip()!r})"
+                return False, format_error_msg(
+                    AppErrorCode.ENCODER_INPUT_INVALID, f"no video stream (ffprobe: {out.strip()!r})"
+                )
         except subprocess.CalledProcessError as e:
             tail = (e.output or "")[:300]
-            return False, f"ffprobe stream check failed: {tail}"
+            return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, f"ffprobe stream check failed: {tail}")
         except subprocess.TimeoutExpired:
-            return False, "ffprobe stream check timed out"
+            return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, "ffprobe stream check timed out")
         try:
             d_out = subprocess.check_output(
                 [
@@ -238,11 +247,11 @@ def verify_local_media_file_ready(path: str) -> tuple[bool, str | None]:
                 timeout=120,
             ).strip()
             if not d_out:
-                return False, "zero duration"
+                return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, "zero duration")
             if float(d_out) <= 0.0:
-                return False, "zero duration"
+                return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, "zero duration")
         except (subprocess.SubprocessError, ValueError, OSError) as e:
-            return False, f"duration probe failed: {e}"
+            return False, format_error_msg(AppErrorCode.ENCODER_INPUT_INVALID, f"duration probe failed: {e}")
         return True, None
 
     err = None
@@ -427,13 +436,13 @@ class VideoEncoderEngine:
         self.job_id = job_id
         self.on_progress: Optional[Callable[[int, EncodingProgress], None]] = None
         self.on_details: Optional[Callable[[int, str, str], None]] = None
+        self.logger = logging.getLogger("ChronoArchiver.Encoder")
         self._encoders_output = self._get_encoders_output()
         self._detect_hardware()
         self._current_process: Optional[subprocess.Popen] = None
         self._is_paused = False
         self._lock = threading.Lock()
         self._encode_stop_requested = False
-        self.logger = logging.getLogger("ChronoArchiver.Encoder")
         if self._hw_encoder:
             self.logger.info(f"HW encoder: {self._hw_encoder}")
         else:
@@ -487,8 +496,9 @@ class VideoEncoderEngine:
     def _get_encoders_output(self) -> str:
         try:
             return subprocess.check_output(["ffmpeg", "-encoders"], stderr=subprocess.STDOUT, text=True)
-        except Exception:
-            self.logger.warning("ffmpeg -encoders failed — hardware acceleration unavailable")
+        except Exception as e:
+            err_msg = format_error_msg(AppErrorCode.ENCODER_FFMPEG_MISSING, f"ffmpeg check failed: {e}")
+            self.logger.warning(err_msg)
             return ""
 
     def scan_files(

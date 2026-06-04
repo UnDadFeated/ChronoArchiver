@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
+try:
+    from .errors import AppErrorCode, format_error_msg
+except ImportError:
+    from core.errors import AppErrorCode, format_error_msg
+
 # Match subprocess watchdog to ConnectTimeout + margin (SafeCopi-style).
 SSH_SUBPROCESS_MAX_RUNTIME_OVERHEAD_SEC: int = 120
 SSH_TEST_CONNECT_TIMEOUT_SEC: int = 12
@@ -281,12 +286,15 @@ def run_ssh_echo_ok_test(
             password_for_sshpass=pw_ssh,
         )
     except FileNotFoundError as e:
-        return False, str(e)
+        err_msg = format_error_msg(AppErrorCode.SSH_SSHPASS_MISSING, str(e))
+        return False, err_msg
     except subprocess.TimeoutExpired:
-        return False, "Connection timed out. Check host, network, and firewall."
+        err_msg = format_error_msg(AppErrorCode.SSH_CONNECTION_FAILED, "Connection timed out.")
+        return False, err_msg
     out = (cp.stdout or "").strip().lower()
     ok = cp.returncode == 0 and "ok" in out
     if ok:
         return True, "SSH connection succeeded."
     err = (cp.stderr or "").strip() or f"exit {cp.returncode}"
-    return False, f"SSH test failed:\n{err}"
+    err_msg = format_error_msg(AppErrorCode.SSH_CONNECTION_FAILED, f"{err} (Exit code {cp.returncode})")
+    return False, err_msg

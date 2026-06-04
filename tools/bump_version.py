@@ -111,7 +111,6 @@ def main() -> int:
         wtxt = re.sub(r"\(e\.g\. [\d.]+\)", f"(e.g. {new_v})", wtxt, count=1)
         wf.write_text(wtxt, encoding="utf-8")
 
-
     print(f"Bumped {prev} -> {new_v}")
     print(
         f"Reminder: add ## [{new_v}] to CHANGELOG.md and copy its block into "

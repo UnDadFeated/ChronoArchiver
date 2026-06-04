@@ -44,11 +44,16 @@ def test_to_sftp_folder_uri():
 
 
 def test_ssh_connection_multiplex_argv_stable():
+    import os
+
     r = RemoteTarget(host="192.168.4.112", path="/mnt/x", user="u")
     a = ssh_connection_multiplex_argv(r)
-    assert "-o" in a
-    assert any("ControlMaster=auto" == x for x in a)
-    assert any("ControlPath=" in x for x in a)
+    if os.name == "nt":
+        assert a == []
+    else:
+        assert "-o" in a
+        assert any("ControlMaster=auto" == x for x in a)
+        assert any("ControlPath=" in x for x in a)
     b = ssh_connection_multiplex_argv(r)
     assert a == b
 
