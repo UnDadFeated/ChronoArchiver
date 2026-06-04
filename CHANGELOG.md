@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.6.1] - 2026-06-04
+
+### Security
+- **MD5 Security Scan Alert**: Added `usedforsecurity=False` to `hashlib.md5()` call in `tools/setup_launcher.py` to silence static analysis/CodeQL warnings.
+
 ## [6.6.0] - 2026-05-12
 
 ### Fixed

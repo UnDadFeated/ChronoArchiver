@@ -41,7 +41,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.6.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.6.1")
 
 
 VERSION = _read_version()
@@ -192,7 +192,7 @@ def _setup_console_line(line: str, console_q: queue.Queue | None) -> None:
 
 
 def _md5_digest_stream(fobj) -> bytes:
-    h = hashlib.md5()
+    h = hashlib.md5(usedforsecurity=False)
     while True:
         b = fobj.read(65536)
         if not b:

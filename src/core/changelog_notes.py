@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.6.1": """## [6.6.1] - 2026-06-04
+
+### Security
+- **MD5 Security Scan Alert**: Added `usedforsecurity=False` to `hashlib.md5()` call in `tools/setup_launcher.py` to silence static analysis/CodeQL warnings.
+""",
     "6.6.0": """## [6.6.0] - 2026-05-12
 
 ### Fixed
