@@ -35,8 +35,6 @@ def main() -> int:
         errors.append(f"README.md badge must contain version-{ver}-blue")
     if f"Release **{ver}**" not in readme:
         errors.append(f"README.md must contain Release **{ver}**")
-    if f"prepare_flathub_submission.sh --version {ver}" not in readme:
-        errors.append(f"README.md Flathub submission command version must be {ver}")
 
     pkg = (ROOT / "PKGBUILD").read_text(encoding="utf-8")
     m3 = re.search(r"^pkgver=([^\s#]+)", pkg, re.M)
@@ -57,9 +55,6 @@ def main() -> int:
     ):
         errors.append("tools/chronoarchiver_setup.spec default CHRONOARCHIVER_VERSION mismatch")
 
-    meta = (ROOT / "flatpak" / "io.github.UnDadFeated.ChronoArchiver.metainfo.xml").read_text(encoding="utf-8")
-    if f'version="{ver}"' not in meta:
-        errors.append(f"flatpak/io.github.UnDadFeated.ChronoArchiver.metainfo.xml must contain release version {ver}")
 
     cn = (ROOT / "src" / "core" / "changelog_notes.py").read_text(encoding="utf-8")
     if not re.search(rf'["\']{re.escape(ver)}["\']\s*:\s*"""', cn):

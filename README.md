@@ -24,24 +24,6 @@ If the bundled environment breaks: `python src/bootstrap.py --reset-venv`.
 
 **Arch Linux:** [`chronoarchiver`](https://aur.archlinux.org/packages/chronoarchiver) — e.g. `paru -S chronoarchiver` or `yay -S chronoarchiver`.
 
-**Flatpak (Bazzite/Fedora Atomic testing):**
-
-```bash
-./tools/build_flatpak.sh
-flatpak install --user --reinstall ./io.github.UnDadFeated.ChronoArchiver.flatpak
-flatpak run io.github.UnDadFeated.ChronoArchiver
-```
-
-The Flatpak package is intentionally small. Python prerequisites and AI models are downloaded inside the app after install.
-
-For Flathub publication automation:
-
-```bash
-./tools/prepare_flathub_submission.sh --version 6.6.0
-./tools/bootstrap_flathub_repo.sh
-```
-
-This generates a release-pinned Flathub manifest and prepares a local `flathub/` clone with the app manifest copied into `applications/`.
 
 ## Overview
 
