@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.6.3": """## [6.6.3] - 2026-06-04
+
+### Changed
+- **Code Cleanup**: Removed unused functions and variables flagged by Vulture in business logic and configuration structures (`acquire_fs_heavy_blocking`, `sync_preserved_media_dates_to_existing_output`, `get_opencv_package`, `ensure_ffmpeg_in_venv`, `CODEC_CONTAINER_EXT`, `CODEC_SUFFIX_MAP`).
+""",
     "6.6.2": """## [6.6.2] - 2026-06-04
 
 ### Added

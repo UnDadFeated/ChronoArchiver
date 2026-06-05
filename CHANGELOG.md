@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.6.3] - 2026-06-04
+
+### Changed
+- **Code Cleanup**: Removed unused functions and variables flagged by Vulture in business logic and configuration structures (`acquire_fs_heavy_blocking`, `sync_preserved_media_dates_to_existing_output`, `get_opencv_package`, `ensure_ffmpeg_in_venv`, `CODEC_CONTAINER_EXT`, `CODEC_SUFFIX_MAP`).
+
 ## [6.6.2] - 2026-06-04
 
 ### Added

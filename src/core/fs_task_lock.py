@@ -22,12 +22,6 @@ def try_acquire_fs_heavy(name: str = "") -> bool:
     return ok
 
 
-def acquire_fs_heavy_blocking(name: str = "") -> None:
-    """Blocking acquire (reserved for callers that must wait)."""
-    global _holder
-    _lock.acquire()
-    _holder = (name or "Heavy task").strip() or "Heavy task"
-
 
 def release_fs_heavy() -> None:
     global _holder

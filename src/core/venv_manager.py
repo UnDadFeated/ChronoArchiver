@@ -652,10 +652,6 @@ def get_opencv_variant_label() -> str:
     }.get(v, "OpenCV (OpenCL)")
 
 
-def get_opencv_package() -> str:
-    """PyPI name for non-CUDA OpenCV (OpenCL) when installing from AI Scanner — opencv-python, not the CUDA wheel."""
-    return "opencv-python"
-
 
 def get_venv_packages() -> list:
     """Packages for ensure_venv / pip install -r requirements.txt (OpenCV only via AI Scanner)."""
@@ -839,13 +835,6 @@ def check_ffmpeg_in_venv() -> bool:
     except Exception:
         return False
 
-
-def ensure_ffmpeg_in_venv() -> bool:
-    """
-    Ensure FFmpeg/ffprobe binaries are available via static-ffmpeg. Downloads on first run.
-    Call add_ffmpeg_to_path() after this returns True.
-    """
-    return ensure_bundled_ffmpeg(None)
 
 
 def ensure_ffmpeg_in_venv_with_progress(progress_callback=None) -> bool:

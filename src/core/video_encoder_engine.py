@@ -37,15 +37,6 @@ try:
 except ImportError:
     from core.errors import AppErrorCode, format_error_msg
 
-CODEC_CONTAINER_EXT = {
-    ("h264", "mp4"): ".mp4",
-    ("h264", "mkv"): ".mkv",
-    ("h265", "mp4"): ".mp4",
-    ("h265", "mkv"): ".mkv",
-    ("av1", "mp4"): ".mp4",
-    ("av1", "mkv"): ".mkv",
-}
-
 CODEC_FFMAP = {
     "h264": {
         "hw_nvenc": "h264_nvenc",
@@ -102,12 +93,6 @@ SOFTWARE_CRF_RANGE = {
     "libx264": {"min_crf": 18, "max_crf": 28},
     "libx265": {"min_crf": 22, "max_crf": 32},
     "libsvtav1": {"min_crf": 0, "max_crf": 63},
-}
-
-CODEC_SUFFIX_MAP = {
-    "h264": "h264",
-    "h265": "hevc",
-    "av1": "av1",
 }
 
 CODEC_AUDIO_MAP = {
