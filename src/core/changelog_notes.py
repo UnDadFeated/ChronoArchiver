@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.6.4": """## [6.6.4] - 2026-06-04
+
+### Changed
+- **Code Cleanup Pass 2**: Removed newly dead functions from `media_capture_time.py` that became unused after the initial cleanup pass (`apply_resolved_epoch_to_existing_output`, `preserved_media_dates_already_match`, etc.).
+""",
     "6.6.3": """## [6.6.3] - 2026-06-04
 
 ### Changed

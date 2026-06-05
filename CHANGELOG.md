@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.6.4] - 2026-06-04
+
+### Changed
+- **Code Cleanup Pass 2**: Removed newly dead functions from `media_capture_time.py` that became unused after the initial cleanup pass (`apply_resolved_epoch_to_existing_output`, `preserved_media_dates_already_match`, etc.).
+
 ## [6.6.3] - 2026-06-04
 
 ### Changed
