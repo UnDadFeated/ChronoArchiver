@@ -63,6 +63,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 is_win = sys.platform == "win32"
 is_mac = sys.platform == "darwin"
+is_linux = sys.platform == "linux"
 icon_path = os.path.join(src_dir, "ui", "assets", "icon.ico") if is_win else None
 if is_mac:
     icon_path = os.path.join(src_dir, "ui", "assets", "icon.icns") if os.path.exists(os.path.join(src_dir, "ui", "assets", "icon.icns")) else None
@@ -125,6 +126,28 @@ elif is_mac:
             "CFBundleVersion": _version,
             "CFBundleShortVersionString": _version,
         },
+    )
+elif is_linux:
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name=f"ChronoArchiver-Setup-{_version}",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
     )
 else:
     raise SystemExit("Setup launcher only supports Windows and macOS")
