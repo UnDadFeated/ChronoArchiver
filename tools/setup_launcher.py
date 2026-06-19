@@ -1,15 +1,20 @@
-"""
-ChronoArchiver Setup Launcher ??? Minimal bootstrap (~6MB) that downloads Python source on first run.
+﻿"""
+App Setup Launcher — Minimal bootstrap (~6MB) that downloads Python source on first run.
 Installs as .pyw/pythonw (no native compile). Uses stdlib: tkinter, urllib, zipfile.
 
 Updates: merge-extract into the install dir (preserves venv), skip re-downloading the source zip when
 installed src/version.py already matches this setup's version, and run pip install -r on existing
 venvs so new requirements are applied without wiping site-packages. Merge skips only byte-identical
-files (MD5), not same-size-only ??? avoids stale src/version.py when patch digits change without size change.
-Welcome screen with logo; optional ChronoArchiver_installer.log beside the setup exe (appends sessions).
+files (MD5), not same-size-only … avoids stale src/version.py when patch digits change without size change.
+Welcome screen with logo; optional {APP_NAME}_installer.log beside the setup exe (appends sessions).
 """
 
+# App metadata — all names derived from these constants.
+APP_NAME = "ChronoArchiver"
+APP_DISPLAY_NAME = "ChronoArchiver"
+
 import hashlib
+import struct
 import json
 import os
 import queue
@@ -41,13 +46,15 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.6.10")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.0")
 
 
 VERSION = _read_version()
-GITHUB_RELEASES = "https://api.github.com/repos/UnDadFeated/ChronoArchiver/releases/tags/v{version}"
+GITHUB_OWNER = "UnDadFeated"
+GITHUB_REPO = "ChronoArchiver"
+GITHUB_RELEASES = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/tags/v{{version}}"
 
-# Optional file log (ChronoArchiver_installer.log next to setup exe when enabled from welcome screen)
+# Optional file log ({APP_NAME}_installer.log next to setup exe when enabled from welcome screen)
 _INSTALL_LOG_FILE: Path | None = None
 
 
@@ -85,7 +92,7 @@ def _welcome_logo_photo(master) -> object | None:
         img = tk.PhotoImage(master=master, file=str(path))
     except tk.TclError:
         return None
-    # Target max width; subsample divides W/H equally ??? no stretching.
+    # Target max width; subsample divides W/H equally … no stretching.
     tw = 56
     w = img.width()
     if w > tw:
@@ -106,11 +113,11 @@ def _setup_install_logging(enabled: bool) -> None:
     if not enabled:
         _INSTALL_LOG_FILE = None
         return
-    p = _installer_log_dir() / "ChronoArchiver_installer.log"
+    p = _installer_log_dir() / f"{APP_NAME}_installer.log"
     try:
         # ASCII in header avoids mojibake in some Windows viewers; BOM on first create helps Notepad UTF-8.
         header = (
-            f"ChronoArchiver installer log - v{VERSION}\n"
+            f"{APP_NAME} installer log - v{VERSION}\n"
             f"Started {datetime.now().isoformat(timespec='seconds')}\n"
             f"frozen={getattr(sys, 'frozen', False)} executable={sys.executable!r}\n"
             f"platform={platform.system()} {platform.release()} python={sys.version.split()[0]}\n\n"
@@ -242,7 +249,7 @@ def _remove_cancelled_install_tree(app_dir: Path) -> None:
         resolved = app_dir.resolve()
     except OSError:
         resolved = app_dir
-    if resolved.name != "ChronoArchiver":
+    if resolved.name != APP_NAME:
         _install_log(f"cancel cleanup: skipped (unexpected folder name): {resolved}")
         return
     try:
@@ -254,11 +261,11 @@ def _remove_cancelled_install_tree(app_dir: Path) -> None:
 
 
 def _app_dir() -> Path:
-    """Install root: %LOCALAPPDATA%\\ChronoArchiver (Windows) or ~/Library/Application Support/ChronoArchiver (macOS)."""
+    f"Install root: {{LOCALAPPDATA}}\\\\{{APP_NAME}} (Windows) or ~/Library/Application Support/{{APP_NAME}} (macOS)."
     if platform.system() == "Windows":
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-        return Path(base) / "ChronoArchiver"
-    return Path.home() / "Library" / "Application Support" / "ChronoArchiver"
+        return Path(base) / APP_NAME
+    return Path.home() / "Library" / "Application Support" / APP_NAME
 
 
 def _version_file() -> Path:
@@ -268,7 +275,7 @@ def _version_file() -> Path:
 def _can_launch_without_setup(app_dir: Path | None = None) -> bool:
     """
     True only when the install tree already contains this setup's source (src/version.py).
-    Do not use version.txt alone ??? it can get ahead of a failed/partial upgrade and would
+    Do not use version.txt alone … it can get ahead of a failed/partial upgrade and would
     skip downloading/extracting while leaving an older app (e.g. 3.7.7 UI with 3.7.11 stamp).
     """
     root = app_dir if app_dir is not None else _app_dir()
@@ -278,10 +285,10 @@ def _can_launch_without_setup(app_dir: Path | None = None) -> bool:
 def _download_url() -> str:
     """Get download URL for source zip from GitHub releases (same for win/mac)."""
     url = GITHUB_RELEASES.format(version=VERSION)
-    expected_name = f"ChronoArchiver-{VERSION}-src.zip"
+    expected_name = f"{APP_NAME}-{VERSION}-src.zip"
     try:
         req = urllib.request.Request(
-            url, headers={"User-Agent": "ChronoArchiver-Setup", "Accept": "application/vnd.github+json"}
+            url, headers={"User-Agent": f"{APP_NAME}-Setup", "Accept": "application/vnd.github+json"}
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
@@ -298,7 +305,7 @@ def _download_with_progress(url: str, dest_path: str, progress_cb, cancel_event:
     _install_log(f"download: GET {url}")
     _install_log(f"download: dest_path={dest_path!r}")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "ChronoArchiver-Setup"})
+        req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}-Setup"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             total = int(resp.headers.get("Content-Length", 0) or 0)
             downloaded = 0
@@ -318,7 +325,7 @@ def _download_with_progress(url: str, dest_path: str, progress_cb, cancel_event:
                     speed = (downloaded / (1024 * 1024)) / elapsed if elapsed > 0 else 0
                     pct = (100.0 * downloaded / total) if total > 0 else 0
                     size_mb = downloaded / (1024 * 1024)
-                    progress_cb("ChronoArchiver", min(100.0, pct), speed, size_mb)
+                    progress_cb(APP_NAME, min(100.0, pct), speed, size_mb)
         _install_log("download: completed OK")
         return True
     except Exception as e:
@@ -341,7 +348,7 @@ def _read_source_version(app_root: Path) -> str | None:
 
 
 def _should_skip_source_zip(app_root: Path) -> bool:
-    """True when install tree already contains this release's source ??? skip GitHub zip download."""
+    """True when install tree already contains this release's source … skip GitHub zip download."""
     if not (app_root / "chronoarchiver.pyw").is_file():
         return False
     if not (app_root / "requirements.txt").is_file():
@@ -351,8 +358,9 @@ def _should_skip_source_zip(app_root: Path) -> bool:
 
 def _zip_relative_dest(member: str) -> str | None:
     """Map zip entry to path under install root, or None to skip."""
-    if member.startswith("ChronoArchiver/") and len(member) > len("ChronoArchiver/"):
-        rel = member[len("ChronoArchiver/") :].rstrip("/")
+    prefix = f"{APP_NAME}/"
+    if member.startswith(prefix) and len(member) > len(prefix):
+        rel = member[len(prefix) :].rstrip("/")
     else:
         rel = member.rstrip("/")
     if not rel or rel.startswith(".") or "__MACOSX" in rel:
@@ -385,19 +393,19 @@ def _extract_source_zip_merged(
             pct = 100.0 * (i + 1) / n
             if info.is_dir() or info.filename.endswith("/"):
                 dest.mkdir(parents=True, exist_ok=True)
-                progress_cb("Extracting???", pct, 0, 0, rel[:72])
+                progress_cb("Extracting…", pct, 0, 0, rel[:72])
                 continue
             if _dest_matches_zip_member(zf, info, dest):
                 skipped += 1
                 _install_log(f"extract skip identical: {rel} ({info.file_size} B)")
-                progress_cb("Extracting???", pct, 0, 0, f"skip {rel[:48]}")
+                progress_cb("Extracting…", pct, 0, 0, f"skip {rel[:48]}")
                 continue
             written += 1
             _install_log(f"extract write: {rel} ({info.file_size} B)")
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(dest, "wb") as out_f:
                 shutil.copyfileobj(src, out_f)
-            progress_cb("Extracting???", pct, 0, 0, rel[:72])
+            progress_cb("Extracting…", pct, 0, 0, rel[:72])
     _install_log(f"extract summary: wrote {written}, skipped_identical {skipped}")
     _purge_src_pycache(app_dir)
     return True
@@ -423,7 +431,7 @@ def _pip_sync_requirements(
     console_q: queue.Queue | None = None,
     cancel_event: threading.Event | None = None,
 ) -> tuple[bool, str]:
-    """pip install -r requirements.txt ??? idempotent; picks up new deps on upgrade."""
+    """pip install -r requirements.txt … idempotent; picks up new deps on upgrade."""
     req = app_root / "requirements.txt"
     if not req.exists():
         return False, "requirements.txt missing"
@@ -542,7 +550,7 @@ def _run_setup_bootstrap(
         pip_exe = venv / "bin" / "pip"
 
     if py_exe.exists() and pip_exe.exists() and _venv_import_ok(py_exe):
-        progress_cb("Syncing dependencies???", 0, 0, 0, "pip install -r requirements.txt")
+        progress_cb("Syncing dependencies…", 0, 0, 0, "pip install -r requirements.txt")
         ok, err = _pip_sync_requirements(app_root, pip_exe, progress_cb, console_q, cancel_event)
         if ok and _venv_import_ok(py_exe):
             fin_ok, fin_err = _finalize_bootstrap_with_ffmpeg(app_root, py_exe, progress_cb, console_q, cancel_event)
@@ -553,13 +561,13 @@ def _run_setup_bootstrap(
         if ok:
             err = "Dependency verification failed after pip sync."
             _install_log("bootstrap: pip sync OK but _venv_import_ok failed after sync")
-        progress_cb("Replacing virtual environment???", 0, 0, 0, (err or "")[:100])
+        progress_cb("Replacing virtual environment…", 0, 0, 0, (err or "")[:100])
         try:
             shutil.rmtree(venv)
         except OSError:
             pass
     elif venv.exists():
-        progress_cb("Removing incomplete virtual environment???", 0, 0, 0)
+        progress_cb("Removing incomplete virtual environment…", 0, 0, 0)
         try:
             shutil.rmtree(venv)
         except OSError:
@@ -573,7 +581,7 @@ def _run_setup_bootstrap(
     if cancel_event is not None and cancel_event.is_set():
         return False, "Cancelled."
 
-    progress_cb("Creating virtual environment???", 0, 0, 0)
+    progress_cb("Creating virtual environment…", 0, 0, 0)
     try:
         subprocess.run(py_cmd + ["-m", "venv", str(venv)], capture_output=True, timeout=120, check=True, **_win_sp_kw())
     except subprocess.CalledProcessError as e:
@@ -612,7 +620,7 @@ def _run_setup_bootstrap(
             pct = base_pct + (100.0 / n) * sub_pct / 100
             progress_cb(pkg_display, pct, 0, 0, detail)
 
-        _update("Installing???", 0)
+        _update("Installing…", 0)
         proc = subprocess.Popen(
             [str(pip_exe), "install", pkg, "--disable-pip-version-check"],
             stdout=subprocess.PIPE,
@@ -675,7 +683,7 @@ def _run_setup_bootstrap(
             return False, f"pip install failed for {pkg}."
         progress_cb(pkg_display, base_pct + 100.0 / n, 0, 0, "OK")
 
-    progress_cb("Verifying???", 98, 0, 0)
+    progress_cb("Verifying…", 98, 0, 0)
     try:
         r = subprocess.run(
             [str(py_exe), "-c", "import PySide6; import numpy; import PIL; import requests"],
@@ -833,7 +841,7 @@ def _reg_sz_quoted_path(p: str) -> str:
 
 def _windows_uninstall_registry_command(uninstall_bat: Path) -> str:
     """
-    Full command line for UninstallString so Settings ??? Apps works when paths contain spaces.
+    Full command line for UninstallString so Settings … Apps works when paths contain spaces.
     Prefer System32\\cmd.exe (explicit) so ComSpec misconfiguration cannot break uninstall.
     """
     system_root = os.environ.get("SystemRoot", r"C:\Windows")
@@ -848,7 +856,7 @@ def _windows_delete_uninstall_registry() -> None:
         import winreg
     except ImportError:
         return
-    sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+    sub = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
     try:
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, sub)  # type: ignore[attr-defined]
     except OSError:
@@ -863,13 +871,13 @@ def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, displ
         return
     _windows_delete_uninstall_registry()
     uninstall_cmd = _windows_uninstall_registry_command(uninstall_bat)
-    sub = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
+    sub = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
     try:
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub)  # type: ignore[attr-defined]
         try:
-            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, "ChronoArchiver")  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_DISPLAY_NAME)  # type: ignore[attr-defined]
             winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, VERSION)  # type: ignore[attr-defined]
-            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "ChronoArchiver")  # type: ignore[attr-defined]
+            winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, APP_DISPLAY_NAME)  # type: ignore[attr-defined]
             winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(app_root))  # type: ignore[attr-defined]
             winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, display_icon)  # type: ignore[attr-defined]
             winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)  # type: ignore[attr-defined]
@@ -892,7 +900,7 @@ def _create_windows_shortcuts(app_root: Path):
         pass
     if not start_menu.is_dir():
         return
-    folder = start_menu / "ChronoArchiver"
+    folder = start_menu / APP_NAME
     folder.mkdir(exist_ok=True)
 
     venv_pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
@@ -910,42 +918,40 @@ def _create_windows_shortcuts(app_root: Path):
     icon_str = str(icon_path) if icon_path.exists() else ""
 
     def create_shortcut(target_path: Path, name: str):
+        import win32com.client
         target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
-        ps = (
-            f"""
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{target_path}\\{name}.lnk")
-$Shortcut.TargetPath = "{target_exe}"
-$Shortcut.Arguments = '"{launcher_pyw}"'
-$Shortcut.WorkingDirectory = "{app_root}"
-$Shortcut.Description = "ChronoArchiver"
-"""
-            + (f'$Shortcut.IconLocation = "{icon_str.replace(chr(92), chr(92) * 2)}"\n' if icon_str else "")
-            + """
-$Shortcut.Save()
-""".replace("{target_path}", str(target_path))
-            .replace("{name}", name)
-            .replace("{launcher_pyw}", str(launcher_pyw))
-            .replace("{app_root}", str(app_root))
-        )
+        launcher = str(launcher_pyw)
+        work_dir = str(app_root)
+        desc = APP_DISPLAY_NAME
+
         try:
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=10)
+            shell = win32com.client.Dispatch("WScript.Shell")
+            lnk_path = target_path / f"{name}.lnk"
+            lnk_path.parent.mkdir(parents=True, exist_ok=True)
+            sc = shell.CreateShortcut(str(lnk_path))
+            sc.TargetPath = target_exe
+            sc.Arguments = f'"{launcher}"'
+            sc.WorkingDirectory = work_dir
+            sc.Description = desc
+            if icon_str:
+                sc.IconLocation = icon_str
+            sc.Save()
         except Exception:
             pass
 
-    create_shortcut(desktop, "ChronoArchiver")
-    create_shortcut(folder, "ChronoArchiver")
+    create_shortcut(desktop, APP_NAME)
+    create_shortcut(folder, APP_NAME)
 
     # Remove legacy VBS uninstaller shortcut if present
     try:
-        old_uninstall_vbs = folder / "Uninstall ChronoArchiver.vbs"
+        old_uninstall_vbs = folder / f"Uninstall {APP_NAME}.vbs"
         if old_uninstall_vbs.exists():
             old_uninstall_vbs.unlink()
     except OSError:
         pass
 
     # Drop legacy uninstall filenames (spaces in name confuse some shell parsers).
-    for legacy in ("Uninstall ChronoArchiver.cmd", "Uninstall ChronoArchiver.bat"):
+    for legacy in (f"Uninstall {APP_NAME}.cmd", f"Uninstall {APP_NAME}.bat"):
         try:
             lp = folder / legacy
             if lp.is_file():
@@ -954,11 +960,11 @@ $Shortcut.Save()
             pass
 
     # Uninstaller CMD: lives under Start Menu (outside install dir so we can delete that tree first).
-    # PowerShell confirm ??? works from Settings ??? Apps (no console; plain "choice" does not).
+    # PowerShell confirm … works from Settings … Apps (no console; plain "choice" does not).
     install_dir = str(app_root.resolve())
-    uninstall_key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver"
-    uninstall_cmd = folder / "Uninstall_ChronoArchiver.cmd"
-    uninstall_ps1 = folder / "Uninstall_ChronoArchiver.ps1"
+    uninstall_key = rf"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
+    uninstall_cmd = folder / f"Uninstall_{APP_NAME}.cmd"
+    uninstall_ps1 = folder / f"Uninstall_{APP_NAME}.ps1"
 
     def _ps_sq(s: str) -> str:
         """Escape for PowerShell single-quoted literals."""
@@ -983,7 +989,7 @@ $target  = '__TARGET__'
 $unkey   = '__UNKEY__'
 $desk    = '__DESK__'
 $sm      = '__SM__'
-$extraud = Join-Path $env:LOCALAPPDATA 'UnDadFeated\ChronoArchiver'
+$extraud = Join-Path $env:LOCALAPPDATA 'UnDadFeated\{APP_NAME}'
 $root    = '__ROOT__'
 
 $form = New-Object System.Windows.Forms.Form
@@ -1007,7 +1013,7 @@ $dragBar.Dock = 'Top'
 $dragBar.BackColor = [System.Drawing.Color]::FromArgb(26,26,26)
 $form.Controls.Add($dragBar)
 $dragTitle = New-Object System.Windows.Forms.Label
-$dragTitle.Text = '  ChronoArchiver - Uninstall'
+$dragTitle.Text = '  {APP_DISPLAY_NAME} - Uninstall'
 $dragTitle.ForeColor = [System.Drawing.Color]::FromArgb(229,231,235)
 $dragTitle.BackColor = $dragBar.BackColor
 $dragTitle.AutoSize = $false
@@ -1055,7 +1061,7 @@ $dragTitle.Add_MouseMove({
 $font = New-Object System.Drawing.Font('Consolas', 8)
 
 $lbl = New-Object System.Windows.Forms.Label
-$lbl.Text = 'Uninstalling ChronoArchiver...'
+$lbl.Text = 'Uninstalling {APP_DISPLAY_NAME}...'
 $lbl.ForeColor = [System.Drawing.Color]::FromArgb(229,231,235)
 $lbl.Left = 16; $lbl.Top = 42; $lbl.Width = 920; $lbl.Height = 20
 $lbl.BackColor = $form.BackColor
@@ -1174,8 +1180,8 @@ function Remove-TreeLogged {
 }
 
 $r = [System.Windows.Forms.MessageBox]::Show(
-  'Remove ChronoArchiver and all data from this PC?',
-  'ChronoArchiver Uninstall',
+  'Remove {APP_DISPLAY_NAME} and all data from this PC?',
+  '{APP_DISPLAY_NAME} Uninstall',
   'YesNo',
   'Question'
 )
@@ -1186,7 +1192,7 @@ if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
 $form.add_Shown({
   try {
     Pump-Ui
-    Append-Line 'Closing running ChronoArchiver (python) processes...'
+    Append-Line 'Closing running {APP_DISPLAY_NAME} (python) processes...'
     Set-Progress 5
     Pump-Ui
     $procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -1212,12 +1218,12 @@ $form.add_Shown({
     try { $commonDesk = [Environment]::GetFolderPath('CommonDesktopDirectory') } catch { $commonDesk = '' }
     $deskPaths = @(
       $desk,
-      (Join-Path ([Environment]::GetFolderPath('Desktop')) 'ChronoArchiver.lnk'),
-      (Join-Path $env:USERPROFILE 'Desktop\ChronoArchiver.lnk'),
-      (Join-Path $env:USERPROFILE 'OneDrive\Desktop\ChronoArchiver.lnk')
+      (Join-Path ([Environment]::GetFolderPath('Desktop')) '{APP_NAME}.lnk'),
+      (Join-Path $env:USERPROFILE 'Desktop\{APP_NAME}.lnk'),
+      (Join-Path $env:USERPROFILE 'OneDrive\Desktop\{APP_NAME}.lnk')
     )
     if (-not [string]::IsNullOrWhiteSpace($commonDesk)) {
-      $deskPaths += (Join-Path $commonDesk 'ChronoArchiver.lnk')
+      $deskPaths += (Join-Path $commonDesk '{APP_NAME}.lnk')
     }
     $seen = @{}
     foreach ($dp in $deskPaths) {
@@ -1238,14 +1244,14 @@ $form.add_Shown({
       Pump-Ui
     }
 
-    $rkPs = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ChronoArchiver'
+    $rkPs = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}'
     Append-Line "Removing uninstall registry (PowerShell): $rkPs"
     Set-Progress 88
     Pump-Ui
     try {
       if (Test-Path -LiteralPath $rkPs) {
         Remove-Item -LiteralPath $rkPs -Recurse -Force -ErrorAction Stop
-        Append-Line 'Registry key removed (HKCU Software Uninstall ChronoArchiver).'
+        Append-Line 'Registry key removed (HKCU Software Uninstall {APP_NAME}).'
       } else {
         Append-Line '(skip) Registry key not found via PSDrive; trying reg.exe'
       }
@@ -1276,7 +1282,7 @@ $form.add_Shown({
   Append-Line 'Done. You can close this window.'
   Set-Progress 100
   $btn.Enabled = $true
-  $lbl.Text = 'Uninstalling ChronoArchiver...'
+$lbl.Text = 'Uninstalling {APP_DISPLAY_NAME}...'
   Pump-Ui
 })
 
@@ -1285,7 +1291,7 @@ $form.add_Shown({
     ps1 = (
         ps1_tmpl.replace("__TARGET__", _ps_sq(install_dir))
         .replace("__UNKEY__", _ps_sq(uninstall_key))
-        .replace("__DESK__", _ps_sq(str(desktop / "ChronoArchiver.lnk")))
+        .replace("__DESK__", _ps_sq(str(desktop / f"{APP_NAME}.lnk")))
         .replace("__SM__", _ps_sq(str(folder)))
         .replace("__ROOT__", _ps_sq(install_dir))
     )
@@ -1295,25 +1301,25 @@ $form.add_Shown({
         """@echo off
 setlocal
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "%~dp0Uninstall_ChronoArchiver.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "%~dp0Uninstall_{APP_NAME}.ps1"
 exit /b %ERRORLEVEL%
 """,
         encoding="utf-8",
     )
 
-    # Register in Windows Installed Apps (HKCU) ??? winreg preserves UninstallString exactly.
+    # Register in Windows Installed Apps (HKCU) … winreg preserves UninstallString exactly.
     display_icon = str(icon_path) if icon_path.exists() else str(launcher_pyw)
     _windows_write_uninstall_registry(uninstall_cmd, app_root, display_icon)
 
 
 def _create_macos_app_and_uninstaller(app_root: Path):
-    """Create ChronoArchiver.app launcher and Uninstall script."""
-    app_bundle = app_root / "ChronoArchiver.app"
+    """Create app bundle launcher and Uninstall script."""
+    app_bundle = app_root / f"{APP_NAME}.app"
     contents = app_bundle / "Contents"
     macos = contents / "MacOS"
     macos.mkdir(parents=True, exist_ok=True)
 
-    launcher_script = macos / "ChronoArchiver"
+    launcher_script = macos / APP_NAME
     launcher_script.write_text(f"""#!/bin/bash
 cd "{app_root}"
 export {ENV_INSTALL_ROOT}="{app_root}"
@@ -1330,44 +1336,44 @@ fi
     (contents / "Info.plist").write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>ChronoArchiver</string>
-<key>CFBundleIdentifier</key><string>com.undadfeated.chronoarchiver</string>
-<key>CFBundleName</key><string>ChronoArchiver</string>
+<key>CFBundleExecutable</key><string>{APP_NAME}</string>
+<key>CFBundleIdentifier</key><string>com.undadfeated.{APP_NAME.lower()}</string>
+<key>CFBundleName</key><string>{APP_NAME}</string>
 <key>CFBundleVersion</key><string>{VERSION}</string>
 </dict></plist>
 """)
 
-    # Uninstall script (remove whole ChronoArchiver install)
+    # Uninstall script (remove whole app install)
     install_dir = str(_app_dir())
-    uninstall = app_root / "Uninstall ChronoArchiver.command"
+    uninstall = app_root / f"Uninstall {APP_NAME}.command"
     uninstall.write_text(f"""#!/bin/bash
-echo "Uninstalling ChronoArchiver..."
+echo "Uninstalling {APP_NAME}..."
 rm -rf "{install_dir}"
 echo "Done."
 """)
     uninstall.chmod(0o755)
 
     # Also create an app-style uninstaller entry
-    uninstall_app = app_root / "Uninstall ChronoArchiver.app"
+    uninstall_app = app_root / f"Uninstall {APP_NAME}.app"
     u_contents = uninstall_app / "Contents"
     u_macos = u_contents / "MacOS"
     u_macos.mkdir(parents=True, exist_ok=True)
-    u_exec = u_macos / "Uninstall ChronoArchiver"
+    u_exec = u_macos / f"Uninstall {APP_NAME}"
     u_exec.write_text(f"""#!/bin/bash
-osascript -e 'display dialog "Remove ChronoArchiver and all data?" buttons {{"Cancel","Remove"}} default button "Remove"'
+osascript -e 'display dialog "Remove {APP_NAME} and all data?" buttons {{"Cancel","Remove"}} default button "Remove"'
 if [ $? -ne 0 ]; then
   exit 0
 fi
 rm -rf "{install_dir}"
-osascript -e 'display dialog "ChronoArchiver has been uninstalled." buttons {{"OK"}} default button "OK"'
+osascript -e 'display dialog "{APP_NAME} has been uninstalled." buttons {{"OK"}} default button "OK"'
 """)
     u_exec.chmod(0o755)
     (u_contents / "Info.plist").write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>Uninstall ChronoArchiver</string>
-<key>CFBundleIdentifier</key><string>com.undadfeated.chronoarchiver.uninstall</string>
-<key>CFBundleName</key><string>Uninstall ChronoArchiver</string>
+<key>CFBundleExecutable</key><string>Uninstall {APP_NAME}</string>
+<key>CFBundleIdentifier</key><string>com.undadfeated.{APP_NAME.lower()}.uninstall</string>
+<key>CFBundleName</key><string>Uninstall {APP_NAME}</string>
 <key>CFBundleVersion</key><string>{VERSION}</string>
 </dict></plist>
 """)
@@ -1390,7 +1396,7 @@ def _run_app(app_root: Path):
             stderr=subprocess.DEVNULL,
         )
     else:
-        app_bundle = app_root / "ChronoArchiver.app"
+        app_bundle = app_root / f"{APP_NAME}.app"
         if app_bundle.exists():
             _install_log(f"launch: open -a {app_bundle}")
             subprocess.Popen(["open", "-a", str(app_bundle)])
@@ -1443,7 +1449,7 @@ def _show_welcome_and_log_choice() -> tuple[bool, bool]:
     title_bar.pack_propagate(False)
     tb_lbl = tk.Label(
         title_bar,
-        text="  ChronoArchiver - Welcome",
+        text=f"  {APP_DISPLAY_NAME} - Welcome",
         fg="#e5e7eb",
         bg="#1a1a1a",
         font=("", 10, "bold"),
@@ -1473,13 +1479,13 @@ def _show_welcome_and_log_choice() -> tuple[bool, bool]:
 
     tk.Label(
         body,
-        text="Welcome to ChronoArchiver",
+        text=f"Welcome to {APP_DISPLAY_NAME}",
         fg="#e5e7eb",
         bg="#0d0d0d",
         font=("", 13, "bold"),
     ).pack(pady=(4, 6))
     blurb = (
-        f"This installer sets up or updates ChronoArchiver v{VERSION}.\n\n"
+        f"This installer sets up or updates {APP_DISPLAY_NAME} v{VERSION}.\n\n"
         "Your data folder is kept; application files and the Python environment "
         "are refreshed from the official release when needed."
     )
@@ -1487,7 +1493,7 @@ def _show_welcome_and_log_choice() -> tuple[bool, bool]:
     log_var = tk.BooleanVar(value=False)
     tk.Checkbutton(
         body,
-        text="Append detailed install log (ChronoArchiver_installer.log next to this installer)",
+        text=f"Append detailed install log ({APP_NAME}_installer.log next to this installer)",
         variable=log_var,
         fg="#e5e7eb",
         bg="#0d0d0d",
@@ -1530,7 +1536,7 @@ def _do_setup_gui(download_url: str) -> bool:
         import tkinter as tk
         from tkinter import messagebox, ttk
     except ImportError:
-        print("ChronoArchiver: tkinter required for setup UI.")
+        print(f"{APP_NAME}: tkinter required for setup UI.")
         return False
 
     url = download_url
@@ -1539,7 +1545,7 @@ def _do_setup_gui(download_url: str) -> bool:
         _install_log_footer(False, "missing_download_url")
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("ChronoArchiver", f"Could not find download for v{VERSION}. Check your connection.")
+        messagebox.showerror(APP_DISPLAY_NAME, f"Could not find download for v{VERSION}. Check your connection.")
         root.destroy()
         return False
 
@@ -1600,7 +1606,7 @@ def _do_setup_gui(download_url: str) -> bool:
     title_bar.pack_propagate(False)
     tb_title = tk.Label(
         title_bar,
-        text="  ChronoArchiver Setup",
+        text=f"  {APP_DISPLAY_NAME} Setup",
         fg="#e5e7eb",
         bg="#1a1a1a",
         font=("", 10, "bold"),
@@ -1625,7 +1631,7 @@ def _do_setup_gui(download_url: str) -> bool:
         if done[0]:
             return
         cancel_ev.set()
-        _setup_console_line("Cancel requested ??? stopping after the current short step...", console_q)
+        _setup_console_line("Cancel requested … stopping after the current short step...", console_q)
 
     tk.Button(
         title_bar,
@@ -1647,9 +1653,9 @@ def _do_setup_gui(download_url: str) -> bool:
     right = tk.Frame(main_pane, bg="#0d0d0d", width=320)
     main_pane.add(right, minsize=200)
 
-    lbl_title = tk.Label(left, text="Installing ChronoArchiver???", fg="#e5e7eb", bg="#0d0d0d", font=("", 11, "bold"))
+    lbl_title = tk.Label(left, text=f"Installing {APP_DISPLAY_NAME}\u2026", fg="#e5e7eb", bg="#0d0d0d", font=("", 11, "bold"))
     lbl_title.pack(pady=(16, 6))
-    lbl_component = tk.Label(left, text="Preparing???", fg="#9ca3af", bg="#0d0d0d", wraplength=480)
+    lbl_component = tk.Label(left, text="Preparing…", fg="#9ca3af", bg="#0d0d0d", wraplength=480)
     lbl_component.pack(pady=2)
     lbl_detail = tk.Label(left, text="", fg="#6b7280", bg="#0d0d0d", font=("", 8), wraplength=440)
     lbl_detail.pack(pady=2)
@@ -1751,7 +1757,7 @@ def _do_setup_gui(download_url: str) -> bool:
         last_overall_pct[0] = 0.0
         stage["index"] = 0
         stage["base"], stage["span"] = stage_plan[0]
-        lbl_component.config(text="Installation cancelled ??? idle")
+        lbl_component.config(text="Installation cancelled … idle")
         lbl_detail.config(text="")
         lbl_speed.config(text="")
         prog_step["value"] = 0
@@ -1780,7 +1786,7 @@ def _do_setup_gui(download_url: str) -> bool:
             step_pct = min(100, max(0, pct))
             prog_step["value"] = step_pct
             lbl_pct_step.config(text=f"{step_pct:.1f}%")
-            # During "Install dependencies???" we run multiple sub-components in sequence:
+            # During "Install dependencies…" we run multiple sub-components in sequence:
             # - pip installs (any component name during pip/venv bootstrap, pct 0..100)
             # - FFmpeg bootstrap (reported as component="FFmpeg", pct 0..100)
             # Treat FFmpeg as the "10th dependency":
@@ -1818,15 +1824,15 @@ def _do_setup_gui(download_url: str) -> bool:
             try:
                 if _should_skip_source_zip(app_dir):
                     _install_log("task: skipping source zip (tree already matches VERSION)")
-                    _set_stage(0, "Source already matches this version ??? skipping download")
+                    _set_stage(0, "Source already matches this version … skipping download")
                     progress_cb("Using installed source", 100, 0, 0, f"v{VERSION} (src/version.py)")
-                    _set_stage(1, "Application files ??? already up to date")
-                    progress_cb("Extracting???", 100, 0, 0, "skipped")
+                    _set_stage(1, "Application files … already up to date")
+                    progress_cb("Extracting…", 100, 0, 0, "skipped")
                 else:
                     fd, zip_path = tempfile.mkstemp(suffix=".zip")
                     os.close(fd)
                     _install_log(f"task: temp zip {zip_path}")
-                    _set_stage(0, "Downloading ChronoArchiver source???")
+                    _set_stage(0, f"Downloading {APP_NAME} source\u2026")
                     if not _download_with_progress(url, zip_path, progress_cb, cancel_ev):
                         canc = cancel_ev.is_set()
                         _install_log("task: ERROR download failed or cancelled")
@@ -1841,8 +1847,8 @@ def _do_setup_gui(download_url: str) -> bool:
                         done[0] = True
                         return
                     _install_log("task: download OK, merging extract")
-                    _set_stage(1, "Updating application files (venv preserved)???")
-                    progress_cb("Extracting???", 0, 0, 0)
+                    _set_stage(1, "Updating application files (venv preserved)…")
+                    progress_cb("Extracting…", 0, 0, 0)
                     if not _extract_source_zip_merged(zip_path, app_dir, progress_cb, cancel_ev):
                         canc = cancel_ev.is_set()
                         _install_log("task: extract failed or cancelled")
@@ -1872,9 +1878,9 @@ def _do_setup_gui(download_url: str) -> bool:
                 result_error[0] = "Installation cancelled."
                 done[0] = True
                 return
-            _set_stage(2, "Virtual environment???")
-            progress_cb("Virtual environment???", 0, 0, 0)
-            _set_stage(3, "Installing dependencies???")
+            _set_stage(2, "Virtual environment…")
+            progress_cb("Virtual environment…", 0, 0, 0)
+            _set_stage(3, "Installing dependencies…")
             _install_log("task: starting venv / pip bootstrap")
             ok, err = _run_setup_bootstrap(app_dir, progress_cb, console_q, cancel_ev)
             if not ok:
@@ -1889,10 +1895,10 @@ def _do_setup_gui(download_url: str) -> bool:
                 done[0] = True
                 return
             _install_log("task: bootstrap OK")
-            _set_stage(4, "Verifying installation???")
-            progress_cb("Verifying???", 100, 0, 0)
-            _set_stage(5, "Creating shortcuts???")
-            progress_cb("Creating shortcuts???", 0, 0, 0)
+            _set_stage(4, "Verifying installation…")
+            progress_cb("Verifying…", 100, 0, 0)
+            _set_stage(5, "Creating shortcuts…")
+            progress_cb("Creating shortcuts…", 0, 0, 0)
             if platform.system() == "Windows":
                 _create_windows_shortcuts(app_dir)
             else:
@@ -1930,15 +1936,15 @@ def _do_setup_gui(download_url: str) -> bool:
         err_tail = (result_error[0] or "").strip()
         if err_tail == "Installation cancelled.":
             messagebox.showinfo(
-                "ChronoArchiver",
+                APP_DISPLAY_NAME,
                 "Installation was cancelled.\n\n"
-                "The ChronoArchiver install folder under your profile was removed when possible.",
+                f"The {APP_NAME} install folder under your profile was removed when possible.",
             )
         else:
             msg = "Setup failed."
             if err_tail:
                 msg += f"\n\n{err_tail[:600]}"
-            messagebox.showerror("ChronoArchiver", msg)
+            messagebox.showerror(APP_DISPLAY_NAME, msg)
         root2.destroy()
         return False
     return True
@@ -1988,7 +1994,7 @@ def main():
             r = tk.Tk()
             r.withdraw()
             messagebox.showerror(
-                "ChronoArchiver",
+                APP_DISPLAY_NAME,
                 f"Could not find download for v{VERSION}. Check your connection.",
             )
             r.destroy()

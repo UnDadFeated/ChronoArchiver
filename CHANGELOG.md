@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.8.0] - 2026-06-19
+
+### Fixed
+- **Broken desktop shortcuts**: Replaced unreliable PowerShell COM shortcut creation with direct `win32com.client` — shortcuts now reliably create with correct target, arguments, and working directory.
+- **Installer names**: All hardcoded "ChronoArchiver" strings replaced with dynamic `APP_NAME` / `APP_DISPLAY_NAME` constants — installer paths, registry keys, shortcut names, and uninstaller filenames are now all derived from configuration constants.
+
 ## [6.6.10] - 2026-06-19
 
 ### Changed
