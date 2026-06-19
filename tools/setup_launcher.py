@@ -46,7 +46,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.5")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.6")
 
 
 VERSION = _read_version()
@@ -113,7 +113,7 @@ def _setup_install_logging(enabled: bool) -> None:
     if not enabled:
         _INSTALL_LOG_FILE = None
         return
-    p = _installer_log_dir() / f"{APP_NAME}_installer.log"
+    p = _installer_log_dir() / f"{APP_NAME}_installer_{VERSION}.log"
     try:
         # ASCII in header avoids mojibake in some Windows viewers; BOM on first create helps Notepad UTF-8.
         header = (
