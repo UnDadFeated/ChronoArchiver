@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.9.1": """## [6.9.1] - 2026-06-19
+
+### Fixed
+- **Code quality**: Removed unused `import struct` from setup launcher, fixed `SIGKILL` Windows compatibility (`getattr(signal, "SIGKILL", None)`), removed 17 stale `# type: ignore` comments. Both ruff and mypy now pass clean.
+""",
     "6.8.6": """## [6.8.6] - 2026-06-19
 
 ### Changed

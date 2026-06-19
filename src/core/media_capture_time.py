@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 try:
-    import piexif  # type: ignore[import-untyped]
+    import piexif
 except ImportError:
     piexif = None
 
@@ -457,7 +457,7 @@ def _apply_fs_times_windows(path: str, epoch: float) -> bool:
     if t is None:
         return _apply_fs_times_posix(path, epoch)
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
     class FILETIME(ctypes.Structure):
         _fields_ = [("dwLowDateTime", wintypes.DWORD), ("dwHighDateTime", wintypes.DWORD)]

@@ -14,7 +14,6 @@ APP_NAME = "ChronoArchiver"
 APP_DISPLAY_NAME = "ChronoArchiver"
 
 import hashlib
-import struct
 import json
 import os
 import queue
@@ -46,7 +45,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.9.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.9.1")
 
 
 VERSION = _read_version()

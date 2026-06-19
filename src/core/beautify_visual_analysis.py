@@ -176,7 +176,7 @@ def _load_blip(log: Callable[[str], None]):
     if _blip_processor is not None and _blip_model is not None:
         return _blip_processor, _blip_model
     try:
-        from transformers import BlipForConditionalGeneration, BlipProcessor  # type: ignore[import-not-found]
+        from transformers import BlipForConditionalGeneration, BlipProcessor
     except ImportError as e:
         log(f"Beautify analysis skipped (transformers not available: {e}).")
         return None, None

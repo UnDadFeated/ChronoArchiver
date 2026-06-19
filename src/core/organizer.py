@@ -6,13 +6,13 @@ import pathlib
 import time
 from datetime import datetime
 from typing import Callable, Optional
-import piexif  # type: ignore[import-untyped]
+import piexif
 
 try:
     from PIL import Image, ImageOps
 except ImportError:
-    Image = None  # type: ignore[assignment]
-    ImageOps = None  # type: ignore[assignment]
+    Image = None
+    ImageOps = None
 
 try:
     from .debug_logger import debug, UTILITY_MEDIA_ORGANIZER
@@ -121,7 +121,7 @@ class OrganizerEngine:
         try:
             with Image.open(src) as im:
                 exif_bytes = im.info.get("exif", b"")
-                im = ImageOps.exif_transpose(im)  # type: ignore[assignment]
+                im = ImageOps.exif_transpose(im)
                 fmt = (im.format or "").upper()
                 suf = pathlib.Path(dst).suffix.lower()
                 save_kwargs = {}
@@ -139,7 +139,7 @@ class OrganizerEngine:
                     save_kwargs = {"format": "GIF"}
                 if exif_bytes:
                     save_kwargs["exif"] = exif_bytes
-                im.save(dst, **save_kwargs)  # type: ignore[arg-type]
+                im.save(dst, **save_kwargs)
             if delete_src_after:
                 try:
                     os.remove(src)

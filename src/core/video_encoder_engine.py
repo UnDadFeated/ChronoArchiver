@@ -145,7 +145,8 @@ def _ffmpeg_encode_failure_hint(
     rc = returncode
     blob = "\n".join(stderr_lines).lower()
     # Unix: subprocess uses negative -N when child killed by signal N (e.g. -9 = SIGKILL).
-    if rc is not None and rc < 0 and -rc == signal.SIGKILL:
+    sigkill = getattr(signal, "SIGKILL", None)
+    if rc is not None and rc < 0 and sigkill is not None and -rc == sigkill:
         tips.append(
             "TIP: FFmpeg was killed (SIGKILL): often OOM, manual stop, or system pressure — "
             "try fewer concurrent jobs, free RAM, or stabilize NAS/USB I/O."

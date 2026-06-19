@@ -55,7 +55,7 @@ class ZImageUpscaleEngine:
         artifact_cleanup: bool = True,
     ):
         import torch
-        from diffusers import ZImageImg2ImgPipeline  # type: ignore[import-not-found]
+        from diffusers import ZImageImg2ImgPipeline
         from PIL import Image, ImageOps
 
         if torch.cuda.is_available():

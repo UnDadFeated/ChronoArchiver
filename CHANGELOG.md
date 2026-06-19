@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.9.1] - 2026-06-19
+
+### Fixed
+- **Code quality**: Removed unused `import struct` from setup launcher, fixed `SIGKILL` Windows compatibility (`getattr(signal, "SIGKILL", None)`), removed 17 stale `# type: ignore` comments. Both ruff and mypy now pass clean.
+
 ## [6.8.6] - 2026-06-19
 
 ### Changed

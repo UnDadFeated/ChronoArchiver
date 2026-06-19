@@ -413,7 +413,7 @@ def pre_scan_video_upscale(
 
     sf = np.asarray(sub_face, dtype=np.uint8)
     sb = np.asarray(sub_body, dtype=np.uint8)
-    sh = np.asarray(sub_hair, dtype=np.uint8)  # type: ignore[assignment]
+    sh = np.asarray(sub_hair, dtype=np.uint8)
 
     out: VideoPreanalysis = {
         "luma_nr": luma,
@@ -426,6 +426,6 @@ def pre_scan_video_upscale(
         "skin_tone": skin_ar,
         "subject_face": sf,
         "subject_full_body": sb,
-        "subject_hair": sh,  # type: ignore[typeddict-item]
+        "subject_hair": sh,
     }
     return out
