@@ -46,7 +46,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.8")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.9")
 
 
 VERSION = _read_version()
@@ -261,7 +261,7 @@ def _remove_cancelled_install_tree(app_dir: Path) -> None:
 
 
 def _app_dir() -> Path:
-    f"Install root: {{LOCALAPPDATA}}\\\\{{APP_NAME}} (Windows) or ~/Library/Application Support/{{APP_NAME}} (macOS)."
+    """Install root: {LOCALAPPDATA}\\{APP_NAME} (Windows) or ~/Library/Application Support/{APP_NAME} (macOS)."""
     if platform.system() == "Windows":
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
         return Path(base) / APP_NAME
