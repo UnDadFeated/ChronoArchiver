@@ -1,11 +1,11 @@
 # Changelog
 
+## [6.8.6] - 2026-06-19
+
+### Changed
+- **Installer log**: Filename now includes version (`ChronoArchiver_installer_{version}.log`) so each install creates a new file.
+
 ## [6.8.5] - 2026-06-19
-
-### Added
-- **Desktop and Start Menu shortcuts**: Created via wscript.exe + .vbs (no win32com dependency).
-
-## [6.8.4] - 2026-06-19
 
 ### Fixed
 - **Frozen installer**: Removed shortcut creation from the frozen PyInstaller exe (win32com cannot be bundled in onefile mode). Uninstaller and Start Menu entries still work correctly.

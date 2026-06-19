@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.8.6": """## [6.8.6] - 2026-06-19
+
+### Changed
+- **Installer log**: Filename now includes version (`ChronoArchiver_installer_{version}.log`) so each install creates a new file.
+""",
     "6.8.5": """## [6.8.5] - 2026-06-19
 
 ### Added
