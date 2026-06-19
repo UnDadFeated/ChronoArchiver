@@ -1290,11 +1290,13 @@ $lbl.Text = 'Uninstalling {APP_DISPLAY_NAME}...'
         .replace("__DESK__", _ps_sq(str(desktop / f"{APP_NAME}.lnk")))
         .replace("__SM__", _ps_sq(str(folder)))
         .replace("__ROOT__", _ps_sq(install_dir))
+        .replace("{APP_NAME}", APP_NAME)
+        .replace("{APP_DISPLAY_NAME}", APP_DISPLAY_NAME)
     )
     uninstall_ps1.write_text(ps1, encoding="utf-8-sig")
 
     uninstall_cmd.write_text(
-        """@echo off
+        f"""@echo off
 setlocal
 cd /d "%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "%~dp0Uninstall_{APP_NAME}.ps1"
