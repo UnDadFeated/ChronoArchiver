@@ -10,9 +10,33 @@ Desktop app for organizing media by date, batch-encoding video to AV1, and optio
 
 ## Get started
 
-**Installers (Windows):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) — tag the repo with `v{version}` to trigger automated builds.
+### Windows
 
-**From source** (Python 3.10+):
+1. Download `ChronoArchiver-Setup-{version}.exe` from [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
+2. Run the installer — it downloads the full application on first launch.
+
+### macOS
+
+1. Download `ChronoArchiver-Setup-{version}.app` from [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
+2. If Gatekeeper blocks it: right-click → **Open**, or run `xattr -d com.apple.quarantine ChronoArchiver-Setup-{version}.app`.
+3. Launch from Finder or Applications.
+
+### Linux
+
+1. Download `ChronoArchiver-Setup-{version}` from [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
+2. Make it executable: `chmod +x ChronoArchiver-Setup-{version}`.
+3. Run it: `./ChronoArchiver-Setup-{version}`.
+   - Required system libraries: `libegl1`, `libgl1`, `libdbus-1-3`, `libxcb-cursor0`.
+
+### Arch Linux
+
+Install from the AUR:
+
+```bash
+paru -S chronoarchiver   # or: yay -S chronoarchiver
+```
+
+### From source (Python 3.10+)
 
 ```bash
 git clone https://github.com/UnDadFeated/ChronoArchiver.git
@@ -21,8 +45,6 @@ python src/bootstrap.py
 ```
 
 If the bundled environment breaks: `python src/bootstrap.py --reset-venv`.
-
-**Arch Linux:** [`chronoarchiver`](https://aur.archlinux.org/packages/chronoarchiver) — e.g. `paru -S chronoarchiver` or `yay -S chronoarchiver`.
 
 
 ## Overview
