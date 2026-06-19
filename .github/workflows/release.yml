@@ -64,12 +64,14 @@ jobs:
           v="${{ needs.get-version.outputs.version }}"
           echo "CHRONOARCHIVER_VERSION=$v" > tools/_setup_version.txt
           pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+          cd dist
+          zip -r "ChronoArchiver-Setup-${v}.app.zip" "ChronoArchiver-Setup-${v}.app"
         env:
           CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip
 
   build-linux:
     runs-on: ubuntu-latest
@@ -119,7 +121,7 @@ jobs:
           prerelease: false
           files: |
             ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
-            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip
             ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
           body: |
             ## ChronoArchiver ${{ needs.get-version.outputs.version }}

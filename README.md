@@ -17,7 +17,7 @@ Desktop app for organizing media by date, batch-encoding video to AV1, and optio
 
 ### macOS
 
-1. Download `ChronoArchiver-Setup-{version}.app` from [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases).
+1. Download `ChronoArchiver-Setup-{version}.app.zip` from [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) and unzip it.
 2. If Gatekeeper blocks it: right-click → **Open**, or run `xattr -d com.apple.quarantine ChronoArchiver-Setup-{version}.app`.
 3. Launch from Finder or Applications.
 
