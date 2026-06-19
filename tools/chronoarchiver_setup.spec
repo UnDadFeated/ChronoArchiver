@@ -97,7 +97,7 @@ elif is_mac:
         a.scripts,
         [],
         exclude_binaries=True,
-        name="ChronoArchiver-Setup",
+        name=f"ChronoArchiver-Setup-{_version}",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
@@ -113,11 +113,11 @@ elif is_mac:
         strip=False,
         upx=True,
         upx_exclude=[],
-        name="ChronoArchiver-Setup",
+        name=f"ChronoArchiver-Setup-{_version}",
     )
     app = BUNDLE(
         coll,
-        name="ChronoArchiver-Setup.app",
+        name=f"ChronoArchiver-Setup-{_version}.app",
         icon=icon_path,
         bundle_identifier="com.undadfeated.chronoarchiver-setup",
         info_plist={
