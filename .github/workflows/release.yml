@@ -31,6 +31,22 @@ jobs:
             echo "version=$v" >> $GITHUB_OUTPUT
           fi
 
+  build-source-zip:
+    runs-on: ubuntu-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create source zip
+        run: |
+          v="${{ needs.get-version.outputs.version }}"
+          git archive --format=zip -o "ChronoArchiver-${v}-src.zip" HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-zip
+          path: ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip
+
   build-windows:
     runs-on: windows-latest
     needs: get-version
@@ -97,7 +113,7 @@ jobs:
           path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
 
   create-release:
-    needs: [get-version, build-windows, build-macos, build-linux]
+    needs: [get-version, build-source-zip, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -112,6 +128,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-zip
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -123,15 +142,19 @@ jobs:
             ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
             ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip
             ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
+            ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip
           body: |
             ## ChronoArchiver ${{ needs.get-version.outputs.version }}
 
             ### Installers
             - **Windows:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe`
-            - **macOS:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app`
+            - **macOS:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip` (unzip first)
             - **Linux:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}`
 
-            ### Installers
+            ### Source
+            - **Source code:** `ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip`
+
+            ### How to install
             1. Download the installer for your platform.
             2. Run the setup — it downloads the full app on first run.
 
