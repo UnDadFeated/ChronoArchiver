@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.6.10": """## [6.6.10] - 2026-06-19
+
+### Changed
+- **Version sync**: Bumped version across all files (`pyproject.toml`, `version.py`, `PKGBUILD`, `README`, spec/launcher) to 6.6.10. Release assets (installers + source zip) now correctly match the tag.
+""",
     "6.6.8": """## [6.6.8] - 2026-06-19
 
 ### Added

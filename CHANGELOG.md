@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.6.10] - 2026-06-19
+
+### Changed
+- **Version sync**: Bumped version across all files (`pyproject.toml`, `version.py`, `PKGBUILD`, `README`, spec/launcher) to 6.6.10. Release assets (installers + source zip) now correctly match the tag.
+
 ## [6.6.4] - 2026-06-19
 
 ### Added
