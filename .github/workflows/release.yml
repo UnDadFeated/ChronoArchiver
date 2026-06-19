@@ -1,5 +1,5 @@
-# Release: build PyInstaller setup launcher, publish GitHub Release
-name: Release
+# Build installers for all platforms and publish a GitHub Release on tag.
+name: Build Releases
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 6.6.5)'
+        description: 'Version (e.g. 6.6.5). Leave empty to read from pyproject.toml.'
         required: false
         default: ''
 
@@ -16,76 +16,122 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            v=$(grep '^version = ' pyproject.toml | sed 's/version = "//;s/"//')
+            echo "version=$v" >> $GITHUB_OUTPUT
+          fi
 
+  build-windows:
+    runs-on: windows-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Windows installer
-        run: |
-          $version = if ("${{ github.event.inputs.version }}" -ne "") { "${{ github.event.inputs.version }}" } else { (Get-Content pyproject.toml | Select-String 'version = "(.+)"' | ForEach-Object { $_.Matches.Groups[1].Value } ) }
-          echo "Building version: $version"
-          echo "CHRONOARCHIVER_VERSION=$version" | Out-File -Encoding utf8 .github\_version.txt
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          $v = "${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" | Out-File -Encoding utf8 tools\_setup_version.txt
           pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
-          echo "Build output:"
-          Get-ChildItem dist/ -Recurse
-
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: dist/ChronoArchiver-Setup-${{ github.event.inputs.version || '6.6.4' }}.exe
+          name: windows
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
+
+  build-macos:
+    runs-on: macos-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          v="${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" > tools/_setup_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libegl1 libgl1 libdbus-1-3 libxcb-cursor0
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          v="${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" > tools/_setup_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
 
   create-release:
-    needs: build-windows
+    needs: [get-version, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download Windows installer
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: windows-installer
-
-      - name: Get version
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create GitHub Release
+          name: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ChronoArchiver ${{ steps.version.outputs.version }}
-          tag_name: v${{ steps.version.outputs.version }}
+          name: ChronoArchiver ${{ needs.get-version.outputs.version }}
+          tag_name: v${{ needs.get-version.outputs.version }}
           draft: false
           prerelease: false
-          files: ChronoArchiver-Setup.exe
+          files: |
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
           body: |
-            ## ChronoArchiver ${{ steps.version.outputs.version }}
+            ## ChronoArchiver ${{ needs.get-version.outputs.version }}
 
-            ### Windows Installer
-            - `ChronoArchiver-Setup.exe` - Self-extracting installer (~6MB)
+            ### Installers
+            - **Windows:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe`
+            - **macOS:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app`
+            - **Linux:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}`
 
-            ### Installation
-            1. Run `ChronoArchiver-Setup.exe`
-            2. The setup launcher will download the full application on first run
-            3. Follow the installation wizard
+            ### Installers
+            1. Download the installer for your platform.
+            2. Run the setup — it downloads the full app on first run.
 
             ### Changelog
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details.
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
