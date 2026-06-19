@@ -15,7 +15,7 @@ repo_root = os.path.normpath(os.path.join(_spec_dir, ".."))
 src_dir = os.path.join(repo_root, "src")
 
 # Embed version at build time
-_version = os.environ.get("CHRONOARCHIVER_VERSION", "6.8.1")
+_version = os.environ.get("CHRONOARCHIVER_VERSION", "6.8.2")
 _version_txt = os.path.join(_spec_dir, "_setup_version.txt")
 with open(_version_txt, "w") as f:
     f.write(_version)
@@ -42,7 +42,14 @@ except Exception:
     _binaries_all = []
     _hidden_imports = ["tkinter"]
 
-# Note: shortcut creation uses PowerShell COM (no win32com needed)
+# Collect win32com/pywin32 DLLs and submodules for shortcut creation
+try:
+    _pw_datas, _pw_binaries, _pw_hidden = collect_all("win32com")
+    _datas_all += _pw_datas
+    _binaries_all += _pw_binaries
+    _hidden_imports += _pw_hidden
+except Exception:
+    pass
 
 a = Analysis(
     [os.path.join(_spec_dir, "setup_launcher.py")],
