@@ -1,0 +1,162 @@
+﻿# Build installers for all platforms and publish a GitHub Release on tag.
+name: Build Releases
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 6.6.5). Leave empty to read from pyproject.toml.'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            v=$(grep '^version = ' pyproject.toml | sed 's/version = "//;s/"//')
+            echo "version=$v" >> $GITHUB_OUTPUT
+          fi
+
+  build-source-zip:
+    runs-on: ubuntu-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create source zip
+        run: |
+          v="${{ needs.get-version.outputs.version }}"
+          git archive --format=zip -o "ChronoArchiver-${v}-src.zip" HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-zip
+          path: ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip
+
+  build-windows:
+    runs-on: windows-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          $v = "${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" | Out-File -Encoding utf8 tools\_setup_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
+
+  build-macos:
+    runs-on: macos-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          v="${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" > tools/_setup_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+          cd dist
+          zip -r "ChronoArchiver-Setup-${v}.app.zip" "ChronoArchiver-Setup-${v}.app"
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: get-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libegl1 libgl1 libdbus-1-3 libxcb-cursor0
+      - run: pip install -r requirements.txt pyinstaller
+      - run: |
+          v="${{ needs.get-version.outputs.version }}"
+          echo "CHRONOARCHIVER_VERSION=$v" > tools/_setup_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+        env:
+          CHRONOARCHIVER_VERSION: ${{ needs.get-version.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
+
+  create-release:
+    needs: [get-version, build-source-zip, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: source-zip
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ChronoArchiver ${{ needs.get-version.outputs.version }}
+          tag_name: v${{ needs.get-version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip
+            ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}
+            ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip
+          body: |
+            ## ChronoArchiver ${{ needs.get-version.outputs.version }}
+
+            ### Installers
+            - **Windows:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.exe`
+            - **macOS:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}.app.zip` (unzip first)
+            - **Linux:** `ChronoArchiver-Setup-${{ needs.get-version.outputs.version }}`
+
+            ### Source
+            - **Source code:** `ChronoArchiver-${{ needs.get-version.outputs.version }}-src.zip`
+
+            ### How to install
+            1. Download the installer for your platform.
+            2. Run the setup ΓÇö it downloads the full app on first run.
+
+            ### Changelog
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
