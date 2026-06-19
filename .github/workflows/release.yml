@@ -62,11 +62,11 @@ jobs:
       - name: Get version
         id: version
         run: |
-          if ("${{ github.event.inputs.version }}" -ne "") {
+          if [ -n "${{ github.event.inputs.version }}" ]; then
             echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          } else {
+          else
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          }
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
