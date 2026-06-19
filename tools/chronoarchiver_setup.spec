@@ -15,7 +15,7 @@ repo_root = os.path.normpath(os.path.join(_spec_dir, ".."))
 src_dir = os.path.join(repo_root, "src")
 
 # Embed version at build time
-_version = os.environ.get("CHRONOARCHIVER_VERSION", "6.8.3")
+_version = os.environ.get("CHRONOARCHIVER_VERSION", "6.8.4")
 _version_txt = os.path.join(_spec_dir, "_setup_version.txt")
 with open(_version_txt, "w") as f:
     f.write(_version)
@@ -41,22 +41,6 @@ except Exception:
     _datas_all = _datas_version + _datas_icons
     _binaries_all = []
     _hidden_imports = ["tkinter"]
-
-# Bundle pywin32/win32com DLLs manually — PyInstaller collect_all can't find them
-try:
-    import win32api
-    _pywin32_dir = os.path.dirname(win32api.__file__)
-    _pywin32_root = os.path.dirname(_pywin32_dir)
-    for _f in os.listdir(_pywin32_dir):
-        if _f.endswith(".dll"):
-            _binaries_all.append((os.path.join(_pywin32_dir, _f), "."))
-    # Also bundle win32com submodules
-    _com_dir = os.path.join(_pywin32_dir, "win32com")
-    if os.path.isdir(_com_dir):
-        _datas_all.append((_com_dir, "win32com"))
-    _hidden_imports.extend(["win32com", "win32com.client", "pywintypes"])
-except Exception:
-    _hidden_imports.extend(["win32com", "win32com.client", "pywintypes"])
 
 a = Analysis(
     [os.path.join(_spec_dir, "setup_launcher.py")],

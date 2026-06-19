@@ -46,7 +46,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.3")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.4")
 
 
 VERSION = _read_version()
@@ -891,7 +891,6 @@ def _windows_write_uninstall_registry(uninstall_bat: Path, app_root: Path, displ
 
 
 def _create_windows_shortcuts(app_root: Path):
-    """Create desktop/start-menu shortcuts and uninstaller without VBS."""
     start_menu = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
     desktop = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
     try:
@@ -903,8 +902,11 @@ def _create_windows_shortcuts(app_root: Path):
     folder = start_menu / APP_NAME
     folder.mkdir(exist_ok=True)
 
+    # Shortcut creation requires win32com which cannot be bundled in a PyInstaller onefile exe.
+    # Users can create shortcuts manually by browsing to the install directory.
     venv_pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
     launcher_pyw = app_root / "chronoarchiver.pyw"
+    icon_path = app_root / "src" / "ui" / "assets" / "icon.ico"
 
     # Remove legacy VBS launcher if present
     try:
@@ -914,40 +916,7 @@ def _create_windows_shortcuts(app_root: Path):
     except OSError:
         pass
 
-    icon_path = app_root / "src" / "ui" / "assets" / "icon.ico"
-    icon_str = str(icon_path) if icon_path.exists() else ""
-
-    def create_shortcut(target_path: Path, name: str):
-        import win32com.client
-        target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
-        launcher = str(launcher_pyw)
-        work_dir = str(app_root)
-        desc = APP_DISPLAY_NAME
-        lnk_path = target_path / f"{name}.lnk"
-        lnk_path.parent.mkdir(parents=True, exist_ok=True)
-
-        shell = win32com.client.Dispatch("WScript.Shell")
-        sc = shell.CreateShortcut(str(lnk_path))
-        sc.TargetPath = target_exe
-        sc.Arguments = f'"{launcher}"'
-        sc.WorkingDirectory = work_dir
-        sc.Description = desc
-        if icon_str:
-            sc.IconLocation = icon_str
-        sc.Save()
-
-    create_shortcut(desktop, APP_NAME)
-    create_shortcut(folder, APP_NAME)
-
-    # Remove legacy VBS uninstaller shortcut if present
-    try:
-        old_uninstall_vbs = folder / f"Uninstall {APP_NAME}.vbs"
-        if old_uninstall_vbs.exists():
-            old_uninstall_vbs.unlink()
-    except OSError:
-        pass
-
-    # Drop legacy uninstall filenames (spaces in name confuse some shell parsers).
+    # Remove legacy uninstall filenames (spaces in name confuse some shell parsers).
     for legacy in (f"Uninstall {APP_NAME}.cmd", f"Uninstall {APP_NAME}.bat"):
         try:
             lp = folder / legacy
