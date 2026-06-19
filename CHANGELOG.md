@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.8.5] - 2026-06-19
+
+### Added
+- **Desktop and Start Menu shortcuts**: Created via wscript.exe + .vbs (no win32com dependency).
+
 ## [6.8.4] - 2026-06-19
 
 ### Fixed
