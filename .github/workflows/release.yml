@@ -1,0 +1,91 @@
+# Release: build PyInstaller setup launcher, publish GitHub Release
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 6.6.5)'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows installer
+        run: |
+          $version = if ("${{ github.event.inputs.version }}" -ne "") { "${{ github.event.inputs.version }}" } else { (Get-Content pyproject.toml | Select-String 'version = "(.+)"' | ForEach-Object { $_.Matches.Groups[1].Value } ) }
+          echo "Building version: $version"
+          echo "CHRONOARCHIVER_VERSION=$version" | Out-File -Encoding utf8 .github\_version.txt
+          pyinstaller tools/chronoarchiver_setup.spec --noconfirm --clean
+          echo "Build output:"
+          Get-ChildItem dist/ -Recurse
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/ChronoArchiver-Setup.exe
+
+  create-release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+
+      - name: Get version
+        id: version
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          } else {
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ChronoArchiver ${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: ChronoArchiver-Setup.exe
+          body: |
+            ## ChronoArchiver ${{ steps.version.outputs.version }}
+
+            ### Windows Installer
+            - `ChronoArchiver-Setup.exe` - Self-extracting installer (~6MB)
+
+            ### Installation
+            1. Run `ChronoArchiver-Setup.exe`
+            2. The setup launcher will download the full application on first run
+            3. Follow the installation wizard
+
+            ### Changelog
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full details.
