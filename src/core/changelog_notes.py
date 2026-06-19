@@ -15,6 +15,11 @@ CHANGELOG_RAW_URL = "https://raw.githubusercontent.com/UnDadFeated/ChronoArchive
 # Shipped with the app so “What’s new” always has text when repo CHANGELOG.md is missing or stale.
 # On each release bump, copy the ## [X.Y.Z] block from CHANGELOG.md (see tools/bump_version.py reminder).
 EMBEDDED_RELEASE_NOTES: dict[str, str] = {
+    "6.8.4": """## [6.8.4] - 2026-06-19
+
+### Fixed
+- **Frozen installer**: Removed shortcut creation from the frozen PyInstaller exe (win32com cannot be bundled in onefile mode). Uninstaller and Start Menu entries still work correctly.
+""",
     "6.8.0": """## [6.8.0] - 2026-06-19
 
 ### Fixed

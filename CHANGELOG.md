@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.8.4] - 2026-06-19
+
+### Fixed
+- **Frozen installer**: Removed shortcut creation from the frozen PyInstaller exe (win32com cannot be bundled in onefile mode). Uninstaller and Start Menu entries still work correctly.
+
 ## [6.8.0] - 2026-06-19
 
 ### Fixed
