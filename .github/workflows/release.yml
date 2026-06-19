@@ -44,7 +44,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/ChronoArchiver-Setup.exe
+          path: dist/ChronoArchiver-Setup-${{ github.event.inputs.version || '6.6.4' }}.exe
 
   create-release:
     needs: build-windows

@@ -75,7 +75,7 @@ if is_win:
         a.zipfiles,
         a.datas,
         [],
-        name="ChronoArchiver-Setup",
+        name=f"ChronoArchiver-Setup-{_version}",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

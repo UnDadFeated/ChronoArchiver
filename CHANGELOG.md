@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.6.4] - 2026-06-19
+
+### Added
+- **Release workflow**: GitHub Actions workflow (`.github/workflows/release.yml`) that builds the PyInstaller setup launcher on tag push (`v*`) and creates a GitHub Release with the versioned installer (`ChronoArchiver-Setup-{version}.exe`). Tag the repo to trigger automated builds.
+
+### Changed
+- **Setup launcher output**: PyInstaller now names the Windows installer with the version embedded (e.g. `ChronoArchiver-Setup-6.6.4.exe`) for easy identification.
+
 ## [6.6.4] - 2026-06-04
 
 ### Changed

@@ -10,7 +10,7 @@ Desktop app for organizing media by date, batch-encoding video to AV1, and optio
 
 ## Get started
 
-**Installers (Windows & macOS):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) (Release **6.6.4**).
+**Installers (Windows):** [GitHub Releases](https://github.com/UnDadFeated/ChronoArchiver/releases) — tag the repo with `v{version}` to trigger automated builds.
 
 **From source** (Python 3.10+):
 
