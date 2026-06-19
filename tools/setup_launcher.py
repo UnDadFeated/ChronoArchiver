@@ -46,7 +46,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.0")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.1")
 
 
 VERSION = _read_version()
@@ -918,24 +918,31 @@ def _create_windows_shortcuts(app_root: Path):
     icon_str = str(icon_path) if icon_path.exists() else ""
 
     def create_shortcut(target_path: Path, name: str):
-        import win32com.client
         target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
         launcher = str(launcher_pyw)
         work_dir = str(app_root)
         desc = APP_DISPLAY_NAME
+        lnk_path = target_path / f"{name}.lnk"
+        lnk_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Use PowerShell COM — no external Python packages needed
+        ps = (
+            '$shell = New-Object -ComObject WScript.Shell; '
+            '$lnk = $shell.CreateShortcut("' + str(lnk_path) + '"); '
+            '$lnk.TargetPath = "' + target_exe + '"; '
+            "$lnk.Arguments = '" + launcher.replace("'", "''") + "'; "
+            '$lnk.WorkingDirectory = "' + work_dir + '"; '
+            '$lnk.Description = "' + desc + '"'
+        )
+        if icon_str:
+            ps += '; $lnk.IconLocation = "' + icon_str.replace("\\", "\\\\") + '"'
+        ps += "; $lnk.Save()"
 
         try:
-            shell = win32com.client.Dispatch("WScript.Shell")
-            lnk_path = target_path / f"{name}.lnk"
-            lnk_path.parent.mkdir(parents=True, exist_ok=True)
-            sc = shell.CreateShortcut(str(lnk_path))
-            sc.TargetPath = target_exe
-            sc.Arguments = f'"{launcher}"'
-            sc.WorkingDirectory = work_dir
-            sc.Description = desc
-            if icon_str:
-                sc.IconLocation = icon_str
-            sc.Save()
+            subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                capture_output=True, timeout=10,
+            )
         except Exception:
             pass
 
