@@ -46,7 +46,7 @@ def _read_version() -> str:
                 return open(vpath, "r", encoding="utf-8").read().strip()
     except Exception:
         pass
-    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.4")
+    return os.environ.get("CHRONOARCHIVER_VERSION", "6.8.5")
 
 
 VERSION = _read_version()
@@ -902,11 +902,41 @@ def _create_windows_shortcuts(app_root: Path):
     folder = start_menu / APP_NAME
     folder.mkdir(exist_ok=True)
 
-    # Shortcut creation requires win32com which cannot be bundled in a PyInstaller onefile exe.
-    # Users can create shortcuts manually by browsing to the install directory.
     venv_pyw = app_root / "venv" / "Scripts" / "pythonw.exe"
     launcher_pyw = app_root / "chronoarchiver.pyw"
     icon_path = app_root / "src" / "ui" / "assets" / "icon.ico"
+    icon_str = str(icon_path) if icon_path.exists() else ""
+    target_exe = str(venv_pyw) if venv_pyw.exists() else "pythonw.exe"
+    launcher = str(launcher_pyw)
+    work_dir = str(app_root)
+
+    def _create_shortcut_via_vbs(lnk_path: Path, desc: str):
+        lnk_path.parent.mkdir(parents=True, exist_ok=True)
+        vbs_path = lnk_path.with_suffix(".lnk.vbs")
+        vbs = (
+            'Set oWS = CreateObject("WScript.Shell")\n'
+            'Set lnk = oWS.CreateShortcut("' + str(lnk_path) + '")\n'
+            'lnk.TargetPath = "' + target_exe + '"\n'
+            'lnk.Arguments = "' + launcher + '"\n'
+            'lnk.WorkingDirectory = "' + work_dir + '"\n'
+            'lnk.Description = "' + desc + '"\n'
+        )
+        if icon_str:
+            vbs += 'lnk.IconLocation = "' + icon_str + '"\n'
+        vbs += "lnk.Save()\n"
+        vbs_path.write_text(vbs, encoding="utf-8")
+        try:
+            subprocess.run(["wscript", str(vbs_path)], capture_output=True, timeout=10)
+        except Exception:
+            pass
+        finally:
+            try:
+                vbs_path.unlink()
+            except OSError:
+                pass
+
+    _create_shortcut_via_vbs(desktop / f"{APP_NAME}.lnk", APP_DISPLAY_NAME)
+    _create_shortcut_via_vbs(folder / f"{APP_NAME}.lnk", APP_DISPLAY_NAME)
 
     # Remove legacy VBS launcher if present
     try:
